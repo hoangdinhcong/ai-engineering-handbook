@@ -1,0 +1,626 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>20 · Cost &amp; FinOps cho AI — AI Engineering</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<nav class="top-nav">
+  <div class="brand"><span class="dot"></span> AI Engineering</div>
+  <div class="crumbs"><a href="../index.html">Mục lục</a> › Phần 7 · <span>20 — Cost &amp; FinOps cho AI</span></div>
+  <div class="nav-actions">
+    <a href="19-mlops-llmops.html">← Trước</a>
+    <a href="21-team-process.html">Tiếp →</a>
+  </div>
+</nav>
+
+<main class="page">
+
+  <section class="hero">
+    <span class="eyebrow">Phần 7 · §20</span>
+    <h1>Cost &amp; FinOps cho AI</h1>
+    <p class="lede">
+      Token economics, prompt caching, model cascading, batch API — hiểu và kiểm soát chi phí
+      AI là kỹ năng cốt lõi để build sản phẩm bền vững, không chỉ build demo.
+    </p>
+    <img class="hero-image" src="../images/20-cost-finops.png" alt="Hero illustration" onerror="this.style.display='none'">
+  </section>
+
+  <aside class="toc">
+    <div class="toc-title">Trong trang này</div>
+    <ul>
+      <li><a href="#token-economics">20.1 Token economics</a></li>
+      <li><a href="#cost-calculation">20.2 Cost calculation</a></li>
+      <li><a href="#prompt-caching">20.3 Prompt caching</a></li>
+      <li><a href="#semantic-caching">20.4 Semantic caching</a></li>
+      <li><a href="#model-routing">20.5 Model routing / cascading</a></li>
+      <li><a href="#token-budgeting">20.6 Token budgeting</a></li>
+      <li><a href="#batch-api">20.7 Batch API</a></li>
+      <li><a href="#cost-monitoring">20.8 Cost monitoring &amp; alerting</a></li>
+      <li><a href="#cost-quality">20.9 Cost vs quality trade-off</a></li>
+      <li><a href="#vendor-negotiation">20.10 Negotiating với vendors</a></li>
+      <li><a href="#self-host">20.11 Self-host break-even</a></li>
+      <li><a href="#tom-tat">Tóm tắt</a></li>
+    </ul>
+  </aside>
+
+  <h2 id="token-economics">20.1 Token Economics</h2>
+  <p>
+    Hầu hết LLM API tính phí theo <strong>tokens</strong> — đơn vị text nhỏ hơn từ, thường
+    khoảng 3–4 ký tự với tiếng Anh (ít hơn với tiếng không Latin). Chi phí chia thành hai loại:
+  </p>
+
+  <div class="grid-2">
+    <div class="card">
+      <h4>Input Tokens</h4>
+      <p>Tất cả text bạn gửi vào model: system prompt, conversation history, context từ RAG,
+      user message, tool definitions. Thường rẻ hơn output.</p>
+      <p class="label-sm" style="color:var(--text-mute)">Ví dụ: $3/M tokens (GPT-4o)</p>
+    </div>
+    <div class="card">
+      <h4>Output Tokens</h4>
+      <p>Text model generate ra. Thường đắt hơn input 3–5x vì model phải autoregressive
+      generate từng token một.</p>
+      <p class="label-sm" style="color:var(--text-mute)">Ví dụ: $15/M tokens (GPT-4o)</p>
+    </div>
+  </div>
+
+  <h3>Cached vs Uncached tokens</h3>
+  <p>
+    Nhiều providers có pricing ưu đãi cho <strong>cached tokens</strong> — phần prompt đã được
+    cache sẵn. Tỉ lệ discount đáng kể:
+  </p>
+  <ul>
+    <li><strong>Anthropic</strong>: Cache write ~25% đắt hơn, cache read ~90% rẻ hơn</li>
+    <li><strong>OpenAI</strong>: Cached input tokens 50% off (tự động khi prompt dài)</li>
+    <li><strong>Google Gemini</strong>: Context caching explicit — charge theo token-hour lưu trữ</li>
+  </ul>
+
+  <h3>Batch discount</h3>
+  <p>
+    Hầu hết providers cho phép gửi requests theo batch với giá giảm 50% đổi lấy latency cao hơn
+    (vài phút đến vài giờ thay vì real-time). Rất phù hợp cho offline processing, eval pipelines,
+    data enrichment.
+  </p>
+
+  <div class="callout note">
+    <div class="icon">≡</div>
+    <div>
+      <div class="title">Lưu ý về pricing</div>
+      <p>
+        Pricing LLM thay đổi thường xuyên và khác nhau rất nhiều giữa models/providers.
+        Luôn check trang pricing chính thức của provider trước khi estimate cost cho dự án.
+        Các con số trong tài liệu này chỉ mang tính minh họa.
+      </p>
+    </div>
+  </div>
+
+  <h2 id="cost-calculation">20.2 Cost Calculation</h2>
+  <p>
+    Để estimate và track cost, cần tính ở nhiều levels:
+  </p>
+
+  <h3>Per-request cost</h3>
+  <pre><code><span class="cm"># Công thức cơ bản</span>
+cost_per_request = (input_tokens / 1_000_000) * input_price_per_million
+                 + (output_tokens / 1_000_000) * output_price_per_million
+
+<span class="cm"># Ví dụ: GPT-4o, prompt 1000 tokens, response 300 tokens</span>
+cost = (1000 / 1_000_000) * 2.50 + (300 / 1_000_000) * 10.00
+     = 0.0025 + 0.003
+     = $0.0055 per request</code></pre>
+
+  <h3>Per-session cost</h3>
+  <p>
+    Trong conversational AI, mỗi turn append vào history → input tokens tăng dần.
+    Session với 10 turns có thể tốn nhiều hơn 10× single request vì mỗi turn gửi
+    lại toàn bộ history.
+  </p>
+  <pre><code><span class="cm"># Session cost tăng phi tuyến</span>
+Turn 1: 500 input + 200 output
+Turn 2: 700 input + 150 output  <span class="cm"># 500 history + 200 output + 0 user msg</span>
+Turn 3: 900 input + 300 output  <span class="cm"># history tích lũy</span>
+<span class="cm"># ... context window có thể đầy ở turn 20-30 tùy model và response length</span></code></pre>
+
+  <h3>Per-user và per-feature cost</h3>
+  <p>
+    Để có visibility thực sự về cost, tag mỗi request với:
+    <code>user_id</code>, <code>feature_name</code>, <code>environment</code>,
+    <code>tenant_id</code>. Sau đó aggregate để biết feature nào tốn nhất,
+    user nào dùng nhiều nhất, và environment nào đang over-spend.
+  </p>
+
+  <svg class="diagram" viewBox="0 0 760 220" role="img" aria-label="Cost stack: model + infra + ops">
+    <defs>
+      <marker id="arrowhead3" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#6f7c92"/>
+      </marker>
+    </defs>
+
+    <!-- Total bar -->
+    <text x="380" y="22" text-anchor="middle" font-weight="700" font-size="14">Total AI Cost Stack</text>
+
+    <!-- Model API cost -->
+    <rect class="node-accent" x="50" y="35" width="480" height="44" rx="6"/>
+    <text x="70" y="57" font-weight="600" font-size="13">① Model API Cost</text>
+    <text x="70" y="73" class="label-sm">Input tokens + Output tokens + Cached reads. Thường 60–80% tổng chi phí.</text>
+    <text x="550" y="62" font-weight="700" font-size="14">~70%</text>
+
+    <!-- Infra cost -->
+    <rect class="node-blue" x="50" y="95" width="360" height="44" rx="6"/>
+    <text x="70" y="117" font-weight="600" font-size="13">② Infrastructure Cost</text>
+    <text x="70" y="133" class="label-sm">Vector DB, embedding, reranker, orchestration, storage.</text>
+    <text x="430" y="122" font-weight="700" font-size="14">~20%</text>
+
+    <!-- Ops cost -->
+    <rect class="node-green" x="50" y="155" width="220" height="44" rx="6"/>
+    <text x="70" y="177" font-weight="600" font-size="13">③ Ops &amp; Tooling</text>
+    <text x="70" y="193" class="label-sm">Observability, eval tools, monitoring.</text>
+    <text x="290" y="182" font-weight="700" font-size="14">~10%</text>
+  </svg>
+
+  <h2 id="prompt-caching">20.3 Prompt Caching</h2>
+  <p>
+    Prompt caching là kỹ thuật tiết kiệm cost lớn nhất và dễ implement nhất. Ý tưởng: phần
+    <strong>prefix cố định</strong> của prompt (system prompt, static context, few-shot examples)
+    được cache trên server của provider. Các request sau chỉ trả tiền cho phần <em>mới</em>.
+  </p>
+
+  <svg class="diagram" viewBox="0 0 760 180" role="img" aria-label="Prompt caching breakdown">
+    <defs>
+      <marker id="arrowhead4" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#6f7c92"/>
+      </marker>
+    </defs>
+
+    <text x="380" y="22" text-anchor="middle" font-weight="700" font-size="14">Anatomy của một cached request</text>
+
+    <!-- Cached prefix -->
+    <rect class="node-green" x="30" y="40" width="430" height="50" rx="6"/>
+    <text x="245" y="62" text-anchor="middle" font-weight="600" font-size="12">Cached Prefix (system prompt + few-shot)</text>
+    <text x="245" y="80" text-anchor="middle" class="label-sm">~90% rẻ hơn (cache hit) — ví dụ $0.30/M thay vì $3/M</text>
+
+    <!-- New tokens -->
+    <rect class="node-accent" x="470" y="40" width="260" height="50" rx="6"/>
+    <text x="600" y="62" text-anchor="middle" font-weight="600" font-size="12">New Tokens (user message)</text>
+    <text x="600" y="80" text-anchor="middle" class="label-sm">Full price — thường &lt;10% của prompt</text>
+
+    <!-- Output -->
+    <rect x="30" y="110" width="700" height="50" rx="6" class="node-blue"/>
+    <text x="380" y="132" text-anchor="middle" font-weight="600" font-size="12">Output Tokens (response)</text>
+    <text x="380" y="150" text-anchor="middle" class="label-sm">Full output price — không cache output</text>
+  </svg>
+
+  <h3>Thiết kế prompt cho caching tốt</h3>
+  <ul>
+    <li><strong>Đặt phần static lên đầu</strong>: system prompt, static context, few-shot examples — phần thay đổi (user message) xuống cuối</li>
+    <li><strong>Anthropic</strong>: Cần đánh dấu cache breakpoints bằng <code>"cache_control": {"type": "ephemeral"}</code></li>
+    <li><strong>OpenAI</strong>: Caching tự động với prompts ≥1024 tokens, prefix phải match chính xác</li>
+    <li><strong>Gemini</strong>: Explicit context caching với TTL — trả phí lưu trữ theo token-hour</li>
+  </ul>
+
+  <h3>Savings math ví dụ</h3>
+  <pre><code><span class="cm"># Scenario: chatbot với system prompt 2000 tokens, 10k requests/ngày</span>
+<span class="cm"># Without caching:</span>
+daily_input_cost = 10000 requests * 2000 tokens * $3/M = $0.06/ngày
+
+<span class="cm"># With caching (Anthropic, cache read = $0.30/M):</span>
+cache_read_cost = 10000 * 2000 * $0.30/M = $0.006/ngày
+
+savings = 90%  <span class="cm"># trên phần cached — system prompt</span>
+
+<span class="cm"># Nếu system prompt là 80% total input, overall savings ~ 72%</span></code></pre>
+
+  <h2 id="semantic-caching">20.4 Semantic Caching</h2>
+  <p>
+    Prompt caching hoạt động ở token-level: cùng prefix → cache hit. Semantic caching hoạt động
+    ở <strong>meaning-level</strong>: câu hỏi có <em>ý nghĩa tương tự</em> → trả về cached response.
+  </p>
+
+  <h3>Cách hoạt động</h3>
+  <ol>
+    <li>Request đến → embed user query thành vector</li>
+    <li>Tìm kiếm trong cache store (vector similarity search)</li>
+    <li>Nếu similarity ≥ threshold → return cached response</li>
+    <li>Nếu không → call LLM, lưu response vào cache với embedding</li>
+  </ol>
+
+  <h3>GPTCache pattern</h3>
+  <p>
+    GPTCache là thư viện open-source implement semantic caching cho LLM calls. Cấu hình:
+  </p>
+  <pre><code><span class="kw">from</span> gptcache <span class="kw">import</span> cache
+<span class="kw">from</span> gptcache.adapter <span class="kw">import</span> openai
+
+<span class="cm"># Setup cache với similarity threshold</span>
+cache.init(
+  similarity_evaluation=<span class="fn">SearchDistanceEvaluation</span>(),
+  data_manager=<span class="fn">get_data_manager</span>(<span class="str">"map"</span>)
+)
+cache.set_openai_key()
+
+<span class="cm"># Sau đó dùng như bình thường — cache tự động</span>
+response = openai.ChatCompletion.create(
+  model=<span class="str">"gpt-3.5-turbo"</span>,
+  messages=[{<span class="str">"role"</span>: <span class="str">"user"</span>, <span class="str">"content"</span>: <span class="str">"What is Python?"</span>}]
+)</code></pre>
+
+  <div class="callout warn">
+    <div class="icon">!</div>
+    <div>
+      <div class="title">Khi nào KHÔNG dùng semantic cache</div>
+      <p>
+        Semantic cache không phù hợp khi: responses cần up-to-date (news, stock prices),
+        user-specific data (responses personalized), hoặc khi false cache hit (trả lời sai câu hỏi)
+        nghiêm trọng hơn gọi thêm API. Tune threshold cẩn thận.
+      </p>
+    </div>
+  </div>
+
+  <h2 id="model-routing">20.5 Model Routing / Cascading</h2>
+  <p>
+    Không phải mọi request đều cần model đắt nhất. Model cascading: dùng model rẻ trước,
+    chỉ escalate lên model đắt khi cần thiết.
+  </p>
+
+  <svg class="diagram" viewBox="0 0 760 300" role="img" aria-label="Model cascade flow với cost annotations">
+    <defs>
+      <marker id="arrowhead5" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#6f7c92"/>
+      </marker>
+    </defs>
+
+    <!-- Request input -->
+    <rect class="node-bg" x="310" y="10" width="140" height="45" rx="8"/>
+    <text x="380" y="32" text-anchor="middle" font-weight="600" font-size="12">User Request</text>
+    <text x="380" y="48" text-anchor="middle" class="label-sm">classify complexity</text>
+
+    <!-- Complexity classifier -->
+    <line class="arrow" marker-end="url(#arrowhead5)" x1="380" y1="55" x2="380" y2="80"/>
+
+    <rect class="node-accent" x="280" y="80" width="200" height="45" rx="8"/>
+    <text x="380" y="102" text-anchor="middle" font-weight="600" font-size="12">Complexity Classifier</text>
+    <text x="380" y="118" text-anchor="middle" class="label-sm">fast + cheap (e.g. GPT-3.5)</text>
+
+    <!-- Simple path -->
+    <line class="arrow" marker-end="url(#arrowhead5)" x1="280" y1="103" x2="210" y2="160"/>
+    <text x="215" y="145" font-size="11" fill="#b4e07a">simple</text>
+
+    <rect class="node-green" x="60" y="160" width="160" height="55" rx="8"/>
+    <text x="140" y="182" text-anchor="middle" font-weight="600" font-size="12">Small Model</text>
+    <text x="140" y="198" text-anchor="middle" class="label-sm">Haiku / GPT-3.5-turbo</text>
+    <text x="140" y="212" text-anchor="middle" class="label-sm" style="fill:#b4e07a">~$0.001/req</text>
+
+    <!-- Complex path -->
+    <line class="arrow" marker-end="url(#arrowhead5)" x1="480" y1="103" x2="550" y2="160"/>
+    <text x="510" y="145" font-size="11" fill="#ffb86b">complex</text>
+
+    <rect class="node-accent" x="490" y="160" width="160" height="55" rx="8"/>
+    <text x="570" y="182" text-anchor="middle" font-weight="600" font-size="12">Large Model</text>
+    <text x="570" y="198" text-anchor="middle" class="label-sm">Sonnet / GPT-4o</text>
+    <text x="570" y="212" text-anchor="middle" class="label-sm" style="fill:#ffb86b">~$0.01/req</text>
+
+    <!-- Very complex path from large model -->
+    <line class="arrow" marker-end="url(#arrowhead5)" x1="570" y1="215" x2="570" y2="245"/>
+
+    <rect class="node-blue" x="490" y="245" width="160" height="45" rx="8"/>
+    <text x="570" y="266" text-anchor="middle" font-weight="600" font-size="12">Reasoning Model</text>
+    <text x="570" y="282" text-anchor="middle" class="label-sm" style="fill:#7cc4ff">~$0.05+/req</text>
+    <text x="490" y="245" text-anchor="right" font-size="10" fill="#6f7c92">if confidence low</text>
+  </svg>
+
+  <h3>Routing strategies</h3>
+  <ul>
+    <li>
+      <strong>Rule-based routing</strong>: Đơn giản nhất — dựa trên input length, keywords,
+      feature type. Ví dụ: requests ngắn dưới 100 tokens → small model.
+    </li>
+    <li>
+      <strong>Classifier-based routing</strong>: Train hoặc prompt một small model để classify
+      complexity, sau đó route. RouteLLM (open-source) cung cấp sẵn router.
+    </li>
+    <li>
+      <strong>Confidence-based</strong>: Small model generate xong, check confidence/quality,
+      nếu thấp thì escalate.
+    </li>
+    <li>
+      <strong>Task-type routing</strong>: Code generation → code-specialized model,
+      summarization → general model, customer-facing → safest model.
+    </li>
+  </ul>
+
+  <h2 id="token-budgeting">20.6 Token Budgeting</h2>
+  <p>
+    Context window của LLM không phải vô hạn — và ngay cả khi có long-context model,
+    nhiều tokens hơn = nhiều tiền hơn + latency cao hơn. Token budgeting là các kỹ thuật
+    kiểm soát lượng tokens tiêu thụ.
+  </p>
+
+  <h3>max_tokens</h3>
+  <p>
+    Luôn set <code>max_tokens</code> (hoặc <code>max_completion_tokens</code>) phù hợp với
+    use case. Đừng để mặc định — nếu response thực tế chỉ cần 200 tokens mà bạn để max_tokens=4096,
+    bạn không trả tiền cho phần không dùng, nhưng latency bị ảnh hưởng bởi context pressure.
+  </p>
+
+  <h3>Sliding window memory</h3>
+  <p>
+    Thay vì giữ toàn bộ conversation history, chỉ giữ N turns gần nhất:
+  </p>
+  <pre><code><span class="kw">function</span> <span class="fn">buildContext</span>(messages, maxTokens = <span class="num">4000</span>) {
+  <span class="kw">const</span> recent = []
+  <span class="kw">let</span> tokenCount = <span class="num">0</span>
+
+  <span class="cm">// Thêm messages từ cuối vào, cho đến khi đủ budget</span>
+  <span class="kw">for</span> (<span class="kw">const</span> msg <span class="kw">of</span> [...messages].reverse()) {
+    <span class="kw">const</span> est = estimateTokens(msg.content)
+    <span class="kw">if</span> (tokenCount + est > maxTokens) <span class="kw">break</span>
+    recent.unshift(msg)
+    tokenCount += est
+  }
+  <span class="kw">return</span> recent
+}</code></pre>
+
+  <h3>Summary memory</h3>
+  <p>
+    Khi conversation dài, thay vì drop messages cũ, tóm tắt chúng:
+    "Trước đó user đã nói về X, Y, Z. Kết luận là A." Tóm tắt tiêu thụ ít tokens hơn
+    nhiều so với full history, nhưng giữ được context quan trọng.
+  </p>
+
+  <h2 id="batch-api">20.7 Batch API cho Non-Realtime</h2>
+  <p>
+    Batch API cho phép submit nhiều requests cùng lúc, provider xử lý async (thường trong
+    24 giờ) và trả về kết quả. Đổi lại, giá giảm 50%.
+  </p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Provider</th><th>Discount</th><th>Max turnaround</th><th>Max requests/batch</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Anthropic</strong></td>
+          <td>50% off</td>
+          <td>24 giờ</td>
+          <td>10,000 requests</td>
+        </tr>
+        <tr>
+          <td><strong>OpenAI</strong></td>
+          <td>50% off</td>
+          <td>24 giờ</td>
+          <td>50,000 requests</td>
+        </tr>
+        <tr>
+          <td><strong>Google Gemini</strong></td>
+          <td>50% off</td>
+          <td>24 giờ</td>
+          <td>Varies by tier</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Use cases phù hợp với Batch API</h3>
+  <ul>
+    <li><strong>Eval pipelines</strong>: Chạy test cases không cần real-time — tiết kiệm 50% eval cost</li>
+    <li><strong>Data enrichment</strong>: Classify, label, hoặc extract từ large datasets</li>
+    <li><strong>Offline report generation</strong>: Tạo summaries, analyses theo batch đêm</li>
+    <li><strong>Training data generation</strong>: Tạo synthetic examples cho fine-tuning</li>
+    <li><strong>SEO/content generation</strong>: Tạo product descriptions, metadata không cần real-time</li>
+  </ul>
+
+  <div class="callout tip">
+    <div class="icon">★</div>
+    <div>
+      <div class="title">Kết hợp Batch API với prompt caching</div>
+      <p>
+        Trong batch requests, nếu tất cả requests có cùng system prompt, prompt caching vẫn
+        hoạt động — tiết kiệm thêm 45–90% trên phần cached, cộng 50% từ batch discount.
+        Kết hợp lại có thể giảm 75–95% cost so với uncached real-time.
+      </p>
+    </div>
+  </div>
+
+  <h2 id="cost-monitoring">20.8 Cost Monitoring &amp; Alerting</h2>
+  <p>
+    Không có visibility về cost, bạn sẽ chỉ biết mình overspend khi nhận hóa đơn cuối tháng.
+    Setup monitoring từ sớm.
+  </p>
+
+  <h3>Metrics cần track</h3>
+  <ul>
+    <li><code>cost_per_request</code> — trung bình và percentile (p50, p95, p99)</li>
+    <li><code>cost_per_feature</code> — biết feature nào tốn nhất</li>
+    <li><code>cost_per_user</code> — phát hiện power users và abuse</li>
+    <li><code>cost_per_tenant</code> (multi-tenant) — đảm bảo fair billing</li>
+    <li><code>cache_hit_rate</code> — nếu thấp, điều chỉnh prompt structure</li>
+    <li><code>daily/monthly_spend</code> vs budget</li>
+  </ul>
+
+  <h3>Budget enforcement</h3>
+  <ul>
+    <li><strong>Per-environment budget</strong>: Dev môi trường có hard limit thấp hơn production</li>
+    <li><strong>Per-user rate limiting</strong>: Max X requests/phút hoặc $Y/tháng per user</li>
+    <li><strong>Per-tenant quota</strong>: Mỗi tenant có allocation, UI hiển thị usage</li>
+    <li><strong>Alerting</strong>: Alert khi cost daily > $X, hoặc tốc độ tăng bất thường</li>
+  </ul>
+
+  <pre><code><span class="cm"># Ví dụ: track cost với metadata trong request</span>
+response = client.messages.create(
+  model=<span class="str">"claude-3-5-sonnet-20241022"</span>,
+  messages=messages,
+  <span class="cm"># Lưu metadata cho tracking</span>
+  metadata={
+    <span class="str">"user_id"</span>: user_id,
+    <span class="str">"feature"</span>: <span class="str">"chat"</span>,
+    <span class="str">"tenant_id"</span>: tenant_id,
+    <span class="str">"env"</span>: <span class="str">"production"</span>
+  }
+)
+
+<span class="cm"># Track sau khi nhận response</span>
+track_cost(
+  input_tokens=response.usage.input_tokens,
+  output_tokens=response.usage.output_tokens,
+  cache_creation_tokens=response.usage.cache_creation_input_tokens,
+  cache_read_tokens=response.usage.cache_read_input_tokens,
+  metadata=metadata
+)</code></pre>
+
+  <h2 id="cost-quality">20.9 Cost vs Quality Trade-off Framework</h2>
+  <p>
+    Cost optimization không bao giờ là absolute — luôn là trade-off với quality và latency.
+    Framework để ra quyết định:
+  </p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Optimization</th><th>Cost impact</th><th>Quality impact</th><th>Latency impact</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Prompt caching</td>
+          <td class="tag green">−50–90%</td>
+          <td class="tag green">Không đổi</td>
+          <td class="tag green">Giảm nhẹ</td>
+        </tr>
+        <tr>
+          <td>Batch API</td>
+          <td class="tag green">−50%</td>
+          <td class="tag green">Không đổi</td>
+          <td class="tag">+giờ/ngày</td>
+        </tr>
+        <tr>
+          <td>Switch sang model nhỏ hơn</td>
+          <td class="tag green">−70–95%</td>
+          <td class="tag">Giảm vừa–nhiều</td>
+          <td class="tag green">Giảm nhiều</td>
+        </tr>
+        <tr>
+          <td>Model cascading</td>
+          <td class="tag green">−30–60%</td>
+          <td class="tag green">Gần không đổi</td>
+          <td class="tag">+nhỏ (overhead)</td>
+        </tr>
+        <tr>
+          <td>Giảm max_tokens</td>
+          <td class="tag green">−nhỏ</td>
+          <td class="tag">Có thể truncate</td>
+          <td class="tag green">Giảm nhẹ</td>
+        </tr>
+        <tr>
+          <td>Semantic caching</td>
+          <td class="tag green">−20–80%</td>
+          <td class="tag">Rủi ro false hit</td>
+          <td class="tag green">Giảm nhiều (cache hit)</td>
+        </tr>
+        <tr>
+          <td>Shorter prompts</td>
+          <td class="tag green">−10–30%</td>
+          <td class="tag">Có thể giảm</td>
+          <td class="tag green">Giảm nhẹ</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout tip">
+    <div class="icon">★</div>
+    <div>
+      <div class="title">Thứ tự ưu tiên</div>
+      <p>
+        1. Prompt caching trước — không đổi quality, tiết kiệm lớn. 2. Batch API cho offline
+        workflows. 3. Model cascading cho features có nhiều request types. 4. Switch model nhỏ hơn
+        CHỈ SAU KHI eval confirms quality đủ tốt cho use case.
+      </p>
+    </div>
+  </div>
+
+  <h2 id="vendor-negotiation">20.10 Negotiating với Vendors</h2>
+  <p>
+    Khi spend đủ lớn (~$5k–10k/tháng+), có thể bắt đầu negotiate với providers:
+  </p>
+
+  <h3>Enterprise pricing</h3>
+  <ul>
+    <li><strong>Volume discount</strong>: Spend nhiều → giảm giá per token</li>
+    <li><strong>Committed spend</strong>: Cam kết $X/năm đổi lấy giá thấp hơn và dedicated capacity</li>
+    <li><strong>Private deployment</strong>: Một số providers cho phép deploy model trong cloud của bạn</li>
+    <li><strong>Rate limit tăng</strong>: Enterprise tier thường có rate limits cao hơn</li>
+    <li><strong>SLA tốt hơn</strong>: Uptime guarantees, support priority</li>
+  </ul>
+
+  <h3>Multi-vendor strategy</h3>
+  <p>
+    Đừng lock-in hoàn toàn vào một provider. Giữ code abstract với interface chung
+    (OpenAI-compatible API, LiteLLM layer) để có thể switch khi cần. Điều này cũng tăng
+    leverage khi negotiate.
+  </p>
+
+  <h2 id="self-host">20.11 Self-Host Break-Even Analysis</h2>
+  <p>
+    Khi nào tự host model (inference server trên GPU) rẻ hơn dùng API? Đây là phân tích
+    break-even đơn giản:
+  </p>
+
+  <h3>Chi phí self-host</h3>
+  <ul>
+    <li><strong>GPU cost</strong>: Cloud GPU (A100, H100) ~$2–5/giờ, on-premise ~$20k–150k mua</li>
+    <li><strong>Engineering time</strong>: Setup, maintain, optimize inference server</li>
+    <li><strong>Downtime risk</strong>: Không có managed SLA</li>
+    <li><strong>Model quality gap</strong>: Open-source models thường kém hơn frontier models</li>
+  </ul>
+
+  <h3>Khi self-host có lợi</h3>
+  <ul>
+    <li>Volume cực lớn (hàng triệu requests/ngày) với model cỡ 7B–70B</li>
+    <li>Data không được phép gửi ra ngoài (compliance, on-prem requirement)</li>
+    <li>Cần customize sâu (fine-tune liên tục, đặc thù domain)</li>
+    <li>Latency requirements rất thấp và predictable</li>
+  </ul>
+
+  <div class="callout warn">
+    <div class="icon">!</div>
+    <div>
+      <div class="title">Đừng vội self-host</div>
+      <p>
+        Hầu hết startups và teams nhỏ–vừa không nên self-host frontier-class models.
+        Engineering overhead lớn, và các optimization (caching, batching, routing) thường
+        đủ để giảm cost về mức acceptable. Self-host cân nhắc khi đã exhaust mọi optimization
+        ở API layer và volume thực sự warrant đầu tư infra.
+      </p>
+    </div>
+  </div>
+
+  <h2 id="tom-tat">Tóm tắt</h2>
+  <ol>
+    <li><strong>Prompt caching</strong> là optimization cao nhất ROI: implement sớm, tiết kiệm 50–90% trên phần cached mà không ảnh hưởng quality.</li>
+    <li><strong>Batch API</strong> giảm 50% cost cho mọi offline/async workflow — eval, enrichment, report generation.</li>
+    <li><strong>Model cascading</strong> dùng model rẻ cho simple requests, escalate khi cần — giảm 30–60% mà quality gần không đổi.</li>
+    <li><strong>Track cost với metadata</strong> từ ngày đầu: per-feature, per-user, per-tenant — không có visibility thì không optimize được.</li>
+    <li><strong>Thứ tự optimize</strong>: caching → batch → routing → model downgrade → self-host (cuối cùng).</li>
+    <li><strong>Cost vs quality là trade-off</strong> — luôn validate với eval trước khi sacrifice quality để save cost.</li>
+  </ol>
+
+  <nav class="section-footer">
+    <a href="19-mlops-llmops.html" class="prev">
+      <div class="label">← trước</div>
+      <div class="title">19 — MLOps / LLMOps</div>
+    </a>
+    <a href="21-team-process.html" class="next">
+      <div class="label">tiếp theo →</div>
+      <div class="title">21 — Team &amp; Process</div>
+    </a>
+  </nav>
+
+</main>
+
+<script src="../assets/script.js"></script>
+</body>
+</html>

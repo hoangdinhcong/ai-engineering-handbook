@@ -1,0 +1,625 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>13 · Observability &amp; Evaluation in Production — AI Engineering</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<nav class="top-nav">
+  <div class="brand"><span class="dot"></span> AI Engineering</div>
+  <div class="crumbs"><a href="../index.html">Mục lục</a> › Phần 5 · <span>13 — Observability &amp; Evaluation in Production</span></div>
+  <div class="nav-actions">
+    <a href="12-inference-serving.html">← Trước</a>
+    <a href="14-reliability-safety.html">Tiếp →</a>
+  </div>
+</nav>
+
+<main class="page">
+
+  <section class="hero">
+    <span class="eyebrow">Phần 5 · §13</span>
+    <h1>Observability &amp; Evaluation in Production</h1>
+    <p class="lede">
+      LLM không có "error 500" rõ ràng — chúng thất bại một cách im lặng. Tracing, online evals, drift detection và user feedback loops là vũ khí duy nhất để biết hệ thống đang hoạt động tốt hay không.
+    </p>
+    <img class="hero-image" src="../images/13-observability.png" alt="Hero illustration" onerror="this.style.display='none'">
+  </section>
+
+  <aside class="toc">
+    <div class="toc-title">Trong trang này</div>
+    <ul>
+      <li><a href="#why-different">11.1 Tại sao LLM observability khác biệt</a></li>
+      <li><a href="#tracing">11.2 Tracing với OpenTelemetry</a></li>
+      <li><a href="#tools">11.3 Tooling landscape</a></li>
+      <li><a href="#logging">11.4 Logging strategy</a></li>
+      <li><a href="#online-eval">11.5 Online evaluation</a></li>
+      <li><a href="#drift">11.6 Drift detection</a></li>
+      <li><a href="#feedback">11.7 User feedback loops</a></li>
+      <li><a href="#slo">11.8 Dashboards &amp; SLOs</a></li>
+      <li><a href="#debugging">11.9 Debugging với traces</a></li>
+      <li><a href="#tom-tat">Tóm tắt</a></li>
+    </ul>
+  </aside>
+
+  <h2 id="why-different">11.1 Tại sao LLM observability khác monitoring truyền thống</h2>
+  <p>
+    Với một REST API bình thường, observability tương đối đơn giản: đo latency, đếm error 4xx/5xx,
+    trace request qua các service. Hệ thống <em>đúng</em> khi không có exception và response đúng schema.
+  </p>
+  <p>
+    Với LLM, mọi thứ phức tạp hơn nhiều:
+  </p>
+
+  <div class="grid-2">
+    <div class="card">
+      <h4>Non-deterministic</h4>
+      <p>Cùng prompt, cùng model, có thể ra output khác nhau. Không có "đúng" hay "sai" tuyệt đối — chỉ có "tốt hơn" hay "tệ hơn".</p>
+    </div>
+    <div class="card">
+      <h4>Failure modes ẩn</h4>
+      <p>Model có thể trả về HTTP 200, JSON hợp lệ, nhưng nội dung hallucination, sai thực tế, hoặc không phù hợp context. Traditional monitoring không catch được.</p>
+    </div>
+    <div class="card">
+      <h4>Multi-step complexity</h4>
+      <p>Agent gọi nhiều LLM, tool calls, RAG queries. Một failure ở bước 3 trong pipeline 7 bước rất khó trace nếu không có span-level visibility.</p>
+    </div>
+    <div class="card">
+      <h4>Chất lượng = opinion</h4>
+      <p>Không có ground truth cho most production queries. Cần LLM-as-judge hoặc human raters — cả hai đắt và có bias riêng.</p>
+    </div>
+  </div>
+
+  <div class="callout note">
+    <div class="icon">≡</div>
+    <div>
+      <div class="title">Khái niệm cốt lõi: Observability cho LLM = Tracing + Logging + Evals + Feedback</div>
+      <p>
+        Không thể chỉ dùng Prometheus/Grafana vì metric truyền thống không capture "content quality".
+        Phải combine infrastructure metrics (latency, error rate, cost) với semantic metrics (eval score, relevance, faithfulness).
+      </p>
+    </div>
+  </div>
+
+  <h2 id="tracing">11.2 Tracing — OpenTelemetry semantics cho LLM</h2>
+  <p>
+    OpenTelemetry (OTel) là tiêu chuẩn vendor-neutral cho distributed tracing. LLM ecosystem đã
+    bổ sung semantic conventions riêng cho AI workloads. Một <em>trace</em> là cây các <em>spans</em>
+    — mỗi span đại diện cho một operation.
+  </p>
+
+  <!-- SVG: Trace Tree -->
+  <svg class="diagram" viewBox="0 0 760 380" role="img" aria-label="Trace tree: root span to LLM calls to tool calls">
+    <defs>
+      <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#6f7c92"/>
+      </marker>
+    </defs>
+
+    <text x="380" y="24" text-anchor="middle" font-weight="700" font-size="14">Trace Tree: Agent Request</text>
+
+    <!-- Root span -->
+    <rect class="node-accent" x="60" y="40" width="640" height="40" rx="8"/>
+    <text x="80" y="55" font-weight="700" font-size="13">Root Span: agent.run</text>
+    <text x="80" y="71" font-size="12" fill="#ffb86b">duration: 4.2s · cost: $0.0043 · status: OK</text>
+    <text x="640" y="65" text-anchor="end" font-family="monospace" font-size="11" fill="#6f7c92">trace_id: a1b2c3d4</text>
+
+    <!-- LLM Call 1 -->
+    <rect class="node-blue" x="100" y="105" width="300" height="40" rx="8"/>
+    <text x="120" y="120" font-weight="600" font-size="12">llm.chat: plan_step</text>
+    <text x="120" y="136" font-size="11" fill="#7cc4ff">model: claude-3-5-sonnet · in: 1240 tok · out: 312 tok · 890ms</text>
+
+    <!-- Tool call: search -->
+    <rect class="node-green" x="140" y="168" width="240" height="36" rx="8"/>
+    <text x="160" y="183" font-weight="600" font-size="12">tool.call: web_search</text>
+    <text x="160" y="197" font-size="11" fill="#b4e07a">query: "..." · results: 5 · 320ms</text>
+
+    <!-- LLM Call 2 -->
+    <rect class="node-blue" x="100" y="228" width="300" height="40" rx="8"/>
+    <text x="120" y="243" font-weight="600" font-size="12">llm.chat: synthesize</text>
+    <text x="120" y="259" font-size="11" fill="#7cc4ff">model: claude-3-5-sonnet · in: 2840 tok · out: 780 tok · 1.9s</text>
+
+    <!-- RAG Retrieval -->
+    <rect class="node-green" x="140" y="168" width="240" height="36" rx="8"/>
+
+    <!-- Second branch: RAG -->
+    <rect class="node-green" x="460" y="105" width="240" height="40" rx="8"/>
+    <text x="480" y="120" font-weight="600" font-size="12">retrieval.query: rag_fetch</text>
+    <text x="480" y="136" font-size="11" fill="#b4e07a">k=5 · similarity: 0.87 avg · 145ms</text>
+
+    <!-- Embed call under RAG -->
+    <rect class="node-bg" x="490" y="168" width="200" height="36" rx="8"/>
+    <text x="510" y="183" font-size="12">embed.create</text>
+    <text x="510" y="197" font-size="11" fill="#6f7c92">model: text-embedding-3 · 42ms</text>
+
+    <!-- Connectors -->
+    <line x1="380" y1="80" x2="250" y2="105" class="arrow" marker-end="url(#arrowhead)"/>
+    <line x1="380" y1="80" x2="580" y2="105" class="arrow" marker-end="url(#arrowhead)"/>
+    <line x1="250" y1="145" x2="260" y2="168" class="arrow" marker-end="url(#arrowhead)"/>
+    <line x1="250" y1="145" x2="250" y2="228" class="arrow" marker-end="url(#arrowhead)"/>
+    <line x1="580" y1="145" x2="590" y2="168" class="arrow" marker-end="url(#arrowhead)"/>
+
+    <!-- Eval score annotation -->
+    <rect fill="rgba(211,164,255,0.15)" stroke="#d3a4ff" stroke-width="1" x="80" y="295" width="600" height="60" rx="8"/>
+    <text x="380" y="315" text-anchor="middle" font-weight="600" font-size="13" fill="#d3a4ff">Span Attributes (OTel LLM Semantic Conventions)</text>
+    <text x="380" y="333" text-anchor="middle" font-size="12" fill="#aab4c5">gen_ai.system · gen_ai.request.model · gen_ai.usage.input_tokens · gen_ai.usage.output_tokens</text>
+    <text x="380" y="349" text-anchor="middle" font-size="12" fill="#aab4c5">gen_ai.response.finish_reason · gen_ai.response.id · llm.eval.score · llm.cost.usd</text>
+  </svg>
+
+  <h3>Span attributes quan trọng nhất</h3>
+  <pre><code><span class="cm"># OpenTelemetry LLM semantic conventions</span>
+span.set_attributes({
+  <span class="cm"># Mandatory</span>
+  <span class="str">"gen_ai.system"</span>: <span class="str">"anthropic"</span>,
+  <span class="str">"gen_ai.request.model"</span>: <span class="str">"claude-3-5-sonnet-20241022"</span>,
+  <span class="str">"gen_ai.usage.input_tokens"</span>: <span class="num">1240</span>,
+  <span class="str">"gen_ai.usage.output_tokens"</span>: <span class="num">312</span>,
+
+  <span class="cm"># Recommended</span>
+  <span class="str">"gen_ai.request.temperature"</span>: <span class="num">0.7</span>,
+  <span class="str">"gen_ai.request.max_tokens"</span>: <span class="num">2048</span>,
+  <span class="str">"gen_ai.response.finish_reason"</span>: <span class="str">"end_turn"</span>,
+
+  <span class="cm"># Custom: cost &amp; eval</span>
+  <span class="str">"llm.cost.usd"</span>: <span class="num">0.00186</span>,
+  <span class="str">"llm.latency.ttft_ms"</span>: <span class="num">312</span>,
+  <span class="str">"llm.eval.relevance"</span>: <span class="num">0.87</span>,
+  <span class="str">"llm.eval.faithfulness"</span>: <span class="num">0.92</span>,
+})</code></pre>
+
+  <h2 id="tools">11.3 Tools — Tooling landscape</h2>
+  <p>
+    Có nhiều tools chuyên biệt cho LLM observability, từ open-source đến SaaS.
+    Mỗi tool có trade-off riêng:
+  </p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Tool</th>
+          <th>Type</th>
+          <th>Điểm mạnh</th>
+          <th>Điểm yếu</th>
+          <th>Pricing</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Langfuse</strong></td>
+          <td>Open-source / SaaS</td>
+          <td>Self-host được, eval tích hợp, dataset management, prompt versioning</td>
+          <td>UI còn đang phát triển</td>
+          <td>Free self-host; cloud có free tier</td>
+        </tr>
+        <tr>
+          <td><strong>Braintrust</strong></td>
+          <td>SaaS</td>
+          <td>Eval framework mạnh, dataset versioning, CI integration tốt</td>
+          <td>Không self-host, tất cả cloud</td>
+          <td>Freemium, $50+/tháng cho team</td>
+        </tr>
+        <tr>
+          <td><strong>Arize Phoenix</strong></td>
+          <td>Open-source</td>
+          <td>Tracing cực tốt, OpenInference standard, đẹp cho debugging</td>
+          <td>Cần tự setup infra</td>
+          <td>MIT license, free</td>
+        </tr>
+        <tr>
+          <td><strong>LangSmith</strong></td>
+          <td>SaaS (LangChain)</td>
+          <td>Tích hợp sâu với LangChain, tracing automatic</td>
+          <td>Lock-in LangChain ecosystem</td>
+          <td>Freemium</td>
+        </tr>
+        <tr>
+          <td><strong>Helicone</strong></td>
+          <td>SaaS proxy</td>
+          <td>Zero-code: chỉ đổi base URL, auto log mọi thứ</td>
+          <td>Tất cả request đi qua proxy của họ</td>
+          <td>Free tier, $20+/tháng</td>
+        </tr>
+        <tr>
+          <td><strong>Custom OTel</strong></td>
+          <td>Self-built</td>
+          <td>Full control, tích hợp với Grafana/Jaeger/Datadog existing stack</td>
+          <td>Cần effort build &amp; maintain</td>
+          <td>Infrastructure cost only</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout tip">
+    <div class="icon">★</div>
+    <div>
+      <div class="title">Khuyến nghị thực tế</div>
+      <p>
+        Nếu bắt đầu: dùng <strong>Langfuse</strong> self-hosted — free, flexible, không vendor lock-in.
+        Nếu đã có Grafana/Datadog stack: add <strong>Arize Phoenix</strong> với OTel export.
+        Nếu team nhỏ, không muốn ops: <strong>Helicone</strong> setup trong 5 phút.
+      </p>
+    </div>
+  </div>
+
+  <!-- SVG: Observability Stack Layers -->
+  <svg class="diagram" viewBox="0 0 760 320" role="img" aria-label="Observability stack layers">
+    <defs>
+      <marker id="arrowhead2" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#6f7c92"/>
+      </marker>
+    </defs>
+
+    <text x="380" y="24" text-anchor="middle" font-weight="700" font-size="14">LLM Observability Stack</text>
+
+    <!-- Layer 5: Dashboards -->
+    <rect class="node-accent" x="40" y="40" width="680" height="44" rx="8"/>
+    <text x="380" y="57" text-anchor="middle" font-weight="700" font-size="13">Dashboards &amp; Alerting</text>
+    <text x="380" y="75" text-anchor="middle" font-size="12">Grafana · Datadog · Langfuse UI · Custom — SLO tracking, cost charts, eval trend</text>
+
+    <!-- Layer 4: Evaluation -->
+    <rect class="node-blue" x="40" y="100" width="680" height="44" rx="8"/>
+    <text x="380" y="117" text-anchor="middle" font-weight="700" font-size="13">Evaluation Layer</text>
+    <text x="380" y="135" text-anchor="middle" font-size="12">Online eval (LLM-as-judge) · Offline eval (dataset) · Human annotation · A/B scoring</text>
+
+    <!-- Layer 3: Tracing & Logging -->
+    <rect class="node-green" x="40" y="160" width="680" height="44" rx="8"/>
+    <text x="380" y="177" text-anchor="middle" font-weight="700" font-size="13">Tracing &amp; Logging Layer</text>
+    <text x="380" y="195" text-anchor="middle" font-size="12">OpenTelemetry spans · Prompt &amp; completion logs (PII-filtered) · Token counts · Cost per request</text>
+
+    <!-- Layer 2: Instrumentation -->
+    <rect class="node-bg" x="40" y="220" width="680" height="44" rx="8"/>
+    <text x="380" y="237" text-anchor="middle" font-weight="700" font-size="13">Instrumentation Layer</text>
+    <text x="380" y="255" text-anchor="middle" font-size="12">SDK wrappers · Middleware · OpenInference · Auto-instrumentation (LangChain/LlamaIndex callbacks)</text>
+
+    <!-- Layer 1: LLM calls -->
+    <rect class="node-bg" x="40" y="280" width="680" height="30" rx="8"/>
+    <text x="380" y="300" text-anchor="middle" font-size="12" fill="#6f7c92">LLM API calls · Tool calls · Embeddings · Vector DB queries</text>
+  </svg>
+
+  <h2 id="logging">11.4 Logging strategy</h2>
+  <p>
+    Log toàn bộ prompt và completion là công cụ debugging mạnh nhất — nhưng cũng tốn kém và rủi ro privacy.
+    Cần chiến lược cân bằng giữa observability và cost/compliance.
+  </p>
+
+  <h3>Cái gì nên log?</h3>
+  <ul>
+    <li><strong>Luôn luôn:</strong> token counts, latency, cost, model, finish reason, trace IDs</li>
+    <li><strong>Thường xuyên (sampled):</strong> full prompt + completion — với PII filtering</li>
+    <li><strong>Khi cần debug:</strong> raw tool call inputs/outputs, intermediate chain steps</li>
+    <li><strong>Không bao giờ:</strong> raw PII (tên, email, CMND, thông tin y tế), secrets, API keys trong prompt</li>
+  </ul>
+
+  <h3>PII Filtering trước khi log</h3>
+  <pre><code><span class="kw">import</span> re
+
+PII_PATTERNS = {
+  <span class="str">"email"</span>: <span class="str">r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'</span>,
+  <span class="str">"phone_vn"</span>: <span class="str">r'\b(0|\+84)[0-9]{9,10}\b'</span>,
+  <span class="str">"cccd"</span>: <span class="str">r'\b\d{9,12}\b'</span>,
+}
+
+<span class="kw">def</span> <span class="fn">redact_pii</span>(text: str) -&gt; str:
+  <span class="kw">for</span> label, pattern <span class="kw">in</span> PII_PATTERNS.items():
+    text = re.sub(pattern, <span class="str">f"[{label.upper()}_REDACTED]"</span>, text)
+  <span class="kw">return</span> text</code></pre>
+
+  <h3>Sampling strategy</h3>
+  <p>
+    Log 100% requests quá tốn kém với scale lớn. Dùng tiered sampling:
+  </p>
+  <ul>
+    <li>100% cho errors và low eval score (&lt;0.5)</li>
+    <li>10% cho normal requests (random sampling)</li>
+    <li>100% cho requests từ power users hoặc requests với user feedback</li>
+    <li>100% cho requests trong A/B test windows</li>
+  </ul>
+
+  <div class="callout warn">
+    <div class="icon">⚠</div>
+    <div>
+      <div class="title">Chi phí của logging đầy đủ</div>
+      <p>
+        Một request Claude với 4k token in + 1k token out = ~5k token = ~5k characters = ~5 KB.
+        100k request/ngày × 5 KB = 500 MB/ngày log. Với 90 ngày retention: 45 GB storage.
+        Nhân thêm replication và indexing → chi phí S3/BigQuery không nhỏ. Cân nhắc sampling + compression.
+      </p>
+    </div>
+  </div>
+
+  <h2 id="online-eval">11.5 Online Evaluation — score production traffic</h2>
+  <p>
+    Online eval là đánh giá quality trên traffic thực, theo thời gian thực hoặc near-real-time.
+    Không như offline eval (chạy trên dataset cố định), online eval phản ánh distribution thực của user queries.
+  </p>
+
+  <h3>LLM-as-Judge pattern</h3>
+  <pre><code>EVAL_PROMPT = <span class="str">"""Bạn là evaluator cho một AI assistant.
+Đánh giá response sau theo thang 1-5:
+
+User query: {query}
+Assistant response: {response}
+Context (if RAG): {context}
+
+Chấm điểm RELEVANCE (1-5): response có liên quan đến query không?
+Chấm điểm FAITHFULNESS (1-5): response có consistent với context không? (N/A nếu không có context)
+Chấm điểm HELPFULNESS (1-5): response có hữu ích cho user không?
+
+Output JSON: {{"relevance": X, "faithfulness": X, "helpfulness": X, "reasoning": "..."}}
+"""</span>
+
+<span class="kw">async def</span> <span class="fn">eval_sample</span>(query, response, context=None, sample_rate=<span class="num">0.1</span>):
+  <span class="kw">if</span> random.random() &gt; sample_rate:
+    <span class="kw">return</span>  <span class="cm"># skip based on sampling rate</span>
+
+  judge_response = <span class="kw">await</span> cheap_llm.complete(
+    EVAL_PROMPT.format(query=query, response=response, context=context),
+    model=<span class="str">"claude-3-haiku-20240307"</span>  <span class="cm"># dùng cheap model cho judge</span>
+  )
+  scores = json.loads(judge_response)
+  metrics.record(<span class="str">"llm.eval"</span>, scores)
+  <span class="kw">if</span> scores[<span class="str">"relevance"</span>] &lt; <span class="num">3</span>:
+    alert.send(<span class="str">f"Low relevance score: {scores}"</span>)</code></pre>
+
+  <div class="callout note">
+    <div class="icon">≡</div>
+    <div>
+      <div class="title">LLM-as-Judge bias</div>
+      <p>
+        LLM judges có xu hướng favor response dài hơn, và model của nhà nào thì bias về phía đó.
+        Luôn calibrate judge với human ratings trước khi trust kết quả. Dùng 2-3 judge models khác nhau
+        và lấy majority vote khi quan trọng.
+      </p>
+    </div>
+  </div>
+
+  <h2 id="drift">11.6 Drift Detection</h2>
+  <p>
+    Drift xảy ra khi hành vi của hệ thống thay đổi theo thời gian — có thể do model update,
+    distribution shift của user queries, hay thay đổi prompt. 3 loại drift cần theo dõi:
+  </p>
+
+  <h3>1. Input distribution drift</h3>
+  <p>
+    Queries từ users thay đổi về topic, language, độ phức tạp. Track bằng:
+    embedding clustering (so sánh centroid distribution), topic model, hay đơn giản là
+    distribution của query length theo thời gian.
+  </p>
+
+  <h3>2. Output quality drift</h3>
+  <p>
+    Eval score trung bình giảm theo thời gian. Thường xảy ra khi: provider update model (silent upgrade),
+    prompt bị thay đổi không có ý định, hay data trong RAG index stale/corrupted.
+    Cần alert khi rolling 7-day eval score drops &gt;10%.
+  </p>
+
+  <h3>3. Cost spike detection</h3>
+  <p>
+    Cost/request tăng đột biến thường do: prompt injection khiến output dài bất thường,
+    bug trong code khiến context window bị nhồi, hay model upgrade lên tier đắt hơn.
+  </p>
+
+  <pre><code><span class="cm"># Anomaly detection đơn giản cho cost</span>
+<span class="kw">def</span> <span class="fn">check_cost_anomaly</span>(hourly_costs: list[float]) -&gt; bool:
+  mean = np.mean(hourly_costs[:-<span class="num">1</span>])  <span class="cm"># historical mean</span>
+  std  = np.std(hourly_costs[:-<span class="num">1</span>])
+  current = hourly_costs[-<span class="num">1</span>]
+  z_score = (current - mean) / (std + <span class="num">1e-9</span>)
+  <span class="kw">return</span> z_score &gt; <span class="num">3.0</span>  <span class="cm"># 3-sigma threshold → alert</span></code></pre>
+
+  <h2 id="feedback">11.7 User Feedback Loops</h2>
+  <p>
+    Feedback từ users là signal quality quý giá nhất — nhưng cũng khó thu thập.
+    Có 3 loại feedback signal:
+  </p>
+
+  <div class="tabs" data-tabs>
+    <div class="tab-buttons">
+      <button class="active">Explicit Ratings</button>
+      <button>Implicit Signals</button>
+      <button>Vòng lặp cải thiện</button>
+    </div>
+    <div class="tab-panel active">
+      <p><strong>Thumbs up/down</strong> là cách phổ biến nhất — friction thấp, data sạch. Nhưng response rate thường chỉ 2-5%.</p>
+      <p><strong>Star rating (1-5)</strong> cho nhiều granularity hơn nhưng inconsistent giữa users.</p>
+      <p><strong>Comment box</strong> sau bad rating: giá trị cao nhưng open-ended, cần phân tích định tính.</p>
+      <p><strong>Best practice:</strong> chỉ hỏi khi user đã đọc response xong (delay 3-5 giây), không block UX.</p>
+    </div>
+    <div class="tab-panel">
+      <p>Implicit signals không cần user action nhưng cần inference về intent:</p>
+      <ul>
+        <li><strong>Copy action</strong>: user copy response → likely positive signal</li>
+        <li><strong>Retry/Regenerate</strong>: user regenerate cùng prompt → strong negative signal</li>
+        <li><strong>Follow-up question mang tính sửa lỗi</strong>: "không, ý tôi là…" → negative</li>
+        <li><strong>Session continuation</strong>: user tiếp tục chat dài → positive engagement</li>
+        <li><strong>Rage click / close ngay lập tức</strong>: negative engagement</li>
+      </ul>
+    </div>
+    <div class="tab-panel">
+      <p><strong>Vòng lặp cải thiện từ feedback:</strong></p>
+      <ol>
+        <li>Collect feedback → tag vào trace trong Langfuse/Braintrust</li>
+        <li>Filter bad-rated examples → add vào eval dataset</li>
+        <li>Phân tích pattern: loại query nào thường nhận bad feedback?</li>
+        <li>Fix prompt hoặc RAG cho pattern đó</li>
+        <li>Chạy offline eval trên bad-rated dataset → verify improvement</li>
+        <li>Deploy và monitor online eval score</li>
+      </ol>
+    </div>
+  </div>
+
+  <h2 id="slo">11.8 Dashboards &amp; SLOs cho LLM</h2>
+  <p>
+    SLO (Service Level Objective) là cam kết về chất lượng dịch vụ đo được. Với LLM, cần define
+    cả infrastructure SLOs và semantic SLOs:
+  </p>
+
+  <!-- SVG: Mock Dashboard -->
+  <svg class="diagram" viewBox="0 0 760 300" role="img" aria-label="LLM dashboard mockup với metrics">
+    <defs>
+      <marker id="arrowhead3" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#6f7c92"/>
+      </marker>
+    </defs>
+
+    <text x="380" y="22" text-anchor="middle" font-weight="700" font-size="14">LLM Production Dashboard — 7 ngày qua</text>
+
+    <!-- KPI cards -->
+    <rect class="node-bg" x="20" y="36" width="150" height="64" rx="8"/>
+    <text x="95" y="55" text-anchor="middle" font-size="11" fill="#6f7c92">P95 TTFT</text>
+    <text x="95" y="78" text-anchor="middle" font-size="22" font-weight="700" fill="#b4e07a">1.2s</text>
+    <text x="95" y="93" text-anchor="middle" font-size="11" fill="#6f7c92">SLO: &lt;2s ✓</text>
+
+    <rect class="node-bg" x="190" y="36" width="150" height="64" rx="8"/>
+    <text x="265" y="55" text-anchor="middle" font-size="11" fill="#6f7c92">Error Rate</text>
+    <text x="265" y="78" text-anchor="middle" font-size="22" font-weight="700" fill="#b4e07a">0.12%</text>
+    <text x="265" y="93" text-anchor="middle" font-size="11" fill="#6f7c92">SLO: &lt;1% ✓</text>
+
+    <rect class="node-bg" x="360" y="36" width="150" height="64" rx="8"/>
+    <text x="435" y="55" text-anchor="middle" font-size="11" fill="#6f7c92">Eval Score (avg)</text>
+    <text x="435" y="78" text-anchor="middle" font-size="22" font-weight="700" fill="#ffb86b">4.1/5</text>
+    <text x="435" y="93" text-anchor="middle" font-size="11" fill="#ffb86b">SLO: &gt;4.0 ⚠</text>
+
+    <rect class="node-bg" x="530" y="36" width="210" height="64" rx="8"/>
+    <text x="635" y="55" text-anchor="middle" font-size="11" fill="#6f7c92">Cost / 1k Request</text>
+    <text x="635" y="78" text-anchor="middle" font-size="22" font-weight="700" fill="#7cc4ff">$0.48</text>
+    <text x="635" y="93" text-anchor="middle" font-size="11" fill="#6f7c92">Budget: &lt;$0.60 ✓</text>
+
+    <!-- Latency trend chart -->
+    <rect class="node-bg" x="20" y="118" width="360" height="160" rx="8"/>
+    <text x="200" y="136" text-anchor="middle" font-size="12" font-weight="600">P50 / P95 TTFT Trend (7 ngày)</text>
+
+    <!-- Y axis -->
+    <text x="55" y="155" text-anchor="end" font-size="10" fill="#6f7c92">3s</text>
+    <text x="55" y="185" text-anchor="end" font-size="10" fill="#6f7c92">2s</text>
+    <text x="55" y="215" text-anchor="end" font-size="10" fill="#6f7c92">1s</text>
+    <text x="55" y="245" text-anchor="end" font-size="10" fill="#6f7c92">0</text>
+
+    <!-- P95 bars (blue) -->
+    <rect fill="rgba(124,196,255,0.3)" x="68"  y="175" width="30" height="68" rx="2"/>
+    <rect fill="rgba(124,196,255,0.3)" x="108" y="168" width="30" height="75" rx="2"/>
+    <rect fill="rgba(124,196,255,0.3)" x="148" y="181" width="30" height="62" rx="2"/>
+    <rect fill="rgba(124,196,255,0.3)" x="188" y="172" width="30" height="71" rx="2"/>
+    <rect fill="rgba(124,196,255,0.3)" x="228" y="169" width="30" height="74" rx="2"/>
+    <rect fill="rgba(124,196,255,0.3)" x="268" y="176" width="30" height="67" rx="2"/>
+    <rect fill="rgba(124,196,255,0.3)" x="308" y="171" width="30" height="72" rx="2"/>
+
+    <!-- P50 bars (green) -->
+    <rect fill="rgba(180,224,122,0.5)" x="68"  y="210" width="30" height="33" rx="2"/>
+    <rect fill="rgba(180,224,122,0.5)" x="108" y="208" width="30" height="35" rx="2"/>
+    <rect fill="rgba(180,224,122,0.5)" x="148" y="212" width="30" height="31" rx="2"/>
+    <rect fill="rgba(180,224,122,0.5)" x="188" y="209" width="30" height="34" rx="2"/>
+    <rect fill="rgba(180,224,122,0.5)" x="228" y="207" width="30" height="36" rx="2"/>
+    <rect fill="rgba(180,224,122,0.5)" x="268" y="211" width="30" height="32" rx="2"/>
+    <rect fill="rgba(180,224,122,0.5)" x="308" y="208" width="30" height="35" rx="2"/>
+
+    <!-- SLO line -->
+    <line x1="60" y1="185" x2="350" y2="185" stroke="#ff8a8a" stroke-width="1.5" stroke-dasharray="5,3"/>
+    <text x="355" y="189" font-size="10" fill="#ff8a8a">SLO 2s</text>
+
+    <text x="85"  y="270" text-anchor="middle" font-size="9" fill="#6f7c92">T-6</text>
+    <text x="125" y="270" text-anchor="middle" font-size="9" fill="#6f7c92">T-5</text>
+    <text x="165" y="270" text-anchor="middle" font-size="9" fill="#6f7c92">T-4</text>
+    <text x="205" y="270" text-anchor="middle" font-size="9" fill="#6f7c92">T-3</text>
+    <text x="245" y="270" text-anchor="middle" font-size="9" fill="#6f7c92">T-2</text>
+    <text x="285" y="270" text-anchor="middle" font-size="9" fill="#6f7c92">T-1</text>
+    <text x="325" y="270" text-anchor="middle" font-size="9" fill="#6f7c92">Today</text>
+
+    <!-- Eval score trend chart -->
+    <rect class="node-bg" x="400" y="118" width="340" height="160" rx="8"/>
+    <text x="570" y="136" text-anchor="middle" font-size="12" font-weight="600">Eval Score Trend (avg, 7 ngày)</text>
+
+    <!-- Line chart approximation with polyline -->
+    <polyline
+      points="430,210 475,200 520,205 565,195 610,208 655,215 700,200"
+      fill="none" stroke="#ffb86b" stroke-width="2"/>
+    <circle cx="430" cy="210" r="3" fill="#ffb86b"/>
+    <circle cx="475" cy="200" r="3" fill="#ffb86b"/>
+    <circle cx="520" cy="205" r="3" fill="#ffb86b"/>
+    <circle cx="565" cy="195" r="3" fill="#ffb86b"/>
+    <circle cx="610" cy="208" r="3" fill="#ffb86b"/>
+    <circle cx="655" cy="215" r="3" fill="#ff8a8a"/>
+    <circle cx="700" cy="200" r="3" fill="#ffb86b"/>
+
+    <!-- SLO line for eval -->
+    <line x1="415" y1="215" x2="725" y2="215" stroke="#b4e07a" stroke-width="1.5" stroke-dasharray="5,3"/>
+    <text x="727" y="219" font-size="10" fill="#b4e07a">SLO</text>
+    <text x="414" y="155" text-anchor="middle" font-size="10" fill="#6f7c92">5</text>
+    <text x="414" y="185" text-anchor="middle" font-size="10" fill="#6f7c92">4</text>
+    <text x="414" y="215" text-anchor="middle" font-size="10" fill="#6f7c92">3</text>
+    <text x="414" y="245" text-anchor="middle" font-size="10" fill="#6f7c92">2</text>
+  </svg>
+
+  <h3>SLOs khuyến nghị cho LLM API</h3>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Metric</th><th>Target điển hình</th><th>Alert threshold</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>P50 TTFT</td><td>&lt;500ms</td><td>&gt;1s trong 5 phút</td></tr>
+        <tr><td>P95 TTFT</td><td>&lt;2s</td><td>&gt;4s trong 5 phút</td></tr>
+        <tr><td>HTTP error rate</td><td>&lt;0.5%</td><td>&gt;2% trong 5 phút</td></tr>
+        <tr><td>Eval score (avg)</td><td>&gt;4.0/5</td><td>&lt;3.5 trong 1 giờ</td></tr>
+        <tr><td>Cost/request</td><td>Theo budget</td><td>&gt;3x baseline trong 15 phút</td></tr>
+        <tr><td>Token/request (avg)</td><td>Theo use case</td><td>&gt;5x baseline (injection signal)</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 id="debugging">11.9 Debugging với Traces</h2>
+  <p>
+    Traces là công cụ chính để debug khi hệ thống hoạt động kém. Flow điển hình:
+  </p>
+  <ol>
+    <li><strong>Alert fires</strong>: eval score drops dưới SLO threshold lúc 14:30</li>
+    <li><strong>Filter traces</strong>: Langfuse → filter by <code>eval.score &lt; 3</code> trong khoảng 14:00-15:00</li>
+    <li><strong>Identify pattern</strong>: 80% bad traces có cùng system prompt version? Cùng loại query? Cùng user segment?</li>
+    <li><strong>Drill into span</strong>: xem exact prompt + completion của một trace cụ thể</li>
+    <li><strong>Hypothesis</strong>: system prompt mới deploy lúc 14:15 thay đổi behavior → rollback hoặc fix</li>
+    <li><strong>Verify</strong>: sau fix, monitor eval score recover</li>
+  </ol>
+
+  <div class="callout tip">
+    <div class="icon">★</div>
+    <div>
+      <div class="title">Correlation IDs là bắt buộc</div>
+      <p>
+        Mỗi user request phải có một <code>trace_id</code> xuyên suốt từ frontend → API → LLM call.
+        Khi user report bug ("AI trả lời sai lúc 3pm"), bạn cần trace ID để tìm exact conversation.
+        Log trace ID trong UI (ẩn với user, nhưng accessible qua browser devtools hay support ticket).
+      </p>
+    </div>
+  </div>
+
+  <h2 id="tom-tat">Tóm tắt</h2>
+  <ol>
+    <li><strong>LLM failure ẩn:</strong> HTTP 200 không có nghĩa là output đúng — cần semantic observability bên cạnh infrastructure metrics.</li>
+    <li><strong>Tracing đầy đủ:</strong> mọi LLM call phải có span với token count, latency, cost, model. Dùng OpenTelemetry semantic conventions.</li>
+    <li><strong>Tool chọn:</strong> Langfuse (self-host), Braintrust (eval-heavy), Arize Phoenix (tracing-focused), Helicone (zero-code).</li>
+    <li><strong>Logging:</strong> log có chọn lọc, filter PII, sample 10% normal + 100% errors và bad ratings.</li>
+    <li><strong>Online eval:</strong> sample 5-10% traffic, score với cheap LLM judge, alert khi drops.</li>
+    <li><strong>Drift:</strong> monitor input distribution, eval score trend, và cost/request — 3 leading indicators của quality degradation.</li>
+    <li><strong>SLOs:</strong> define ít nhất TTFT P95, error rate, eval score avg, cost/request — và set alert thresholds.</li>
+  </ol>
+
+  <nav class="section-footer">
+    <a href="12-inference-serving.html" class="prev">
+      <div class="label">← trước</div>
+      <div class="title">12 — Inference &amp; Serving</div>
+    </a>
+    <a href="14-reliability-safety.html" class="next">
+      <div class="label">tiếp theo →</div>
+      <div class="title">14 — Reliability &amp; Safety</div>
+    </a>
+  </nav>
+
+</main>
+
+<script src="../assets/script.js"></script>
+</body>
+</html>

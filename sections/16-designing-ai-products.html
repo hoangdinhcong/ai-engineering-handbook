@@ -1,0 +1,443 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>16 · Designing AI Products (UX) — AI Engineering</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<nav class="top-nav">
+  <div class="brand"><span class="dot"></span> AI Engineering</div>
+  <div class="crumbs"><a href="../index.html">Mục lục</a> › Phần 6 · <span>16 — Designing AI Products (UX)</span></div>
+  <div class="nav-actions">
+    <a href="15-security.html">← 15</a>
+    <a href="17-multimodal.html">Tiếp →</a>
+  </div>
+</nav>
+
+<main class="page">
+
+  <section class="hero">
+    <span class="eyebrow">Phần 6 · §16</span>
+    <h1>Designing AI Products (UX)</h1>
+    <p class="lede">
+      AI UX không phải là UX thông thường — probabilistic outputs, latency biến động, và hallucination risk đòi hỏi những pattern thiết kế hoàn toàn khác.
+    </p>
+    <img class="hero-image" src="../images/16-designing-ai-products.png" alt="AI product UX hero" onerror="this.style.display='none'">
+  </section>
+
+  <aside class="toc">
+    <div class="toc-title">Trong trang này</div>
+    <ul>
+      <li><a href="#ai-ux-diff">16.1 AI UX khác UX truyền thống</a></li>
+      <li><a href="#patterns">16.2 Core UX patterns</a></li>
+      <li><a href="#undo">16.3 Undo / Regenerate / Edit</a></li>
+      <li><a href="#hitl">16.4 Human-in-the-loop &amp; approval flows</a></li>
+      <li><a href="#trust">16.5 Trust signals</a></li>
+      <li><a href="#latency">16.6 Latency budget design</a></li>
+      <li><a href="#degradation">16.7 Graceful degradation</a></li>
+      <li><a href="#error-ux">16.8 Error UX</a></li>
+      <li><a href="#onboarding">16.9 Onboarding</a></li>
+      <li><a href="#examples">16.10 Ví dụ thực tế</a></li>
+      <li><a href="#tom-tat">Tóm tắt</a></li>
+    </ul>
+  </aside>
+
+  <h2 id="ai-ux-diff">16.1 AI UX khác UX truyền thống như thế nào</h2>
+  <p>
+    UX truyền thống được xây dựng trên một giả định nền tảng: <strong>cùng input → cùng output</strong>. Button click → action. Form submit → validation. Search query → defined result set. Người dùng học pattern, hệ thống consistent.
+  </p>
+  <p>
+    AI phá vỡ giả định đó theo ba cách:
+  </p>
+
+  <div class="grid-2">
+    <div class="card">
+      <h4>Probabilistic outputs</h4>
+      <p>Cùng một câu hỏi hỏi hai lần có thể ra hai câu trả lời khác nhau. "Tôi có thể cải thiện email này không?" → lần 1 ra bản chỉnh sửa nhẹ, lần 2 ra bản viết lại hoàn toàn. User không biết trước sẽ nhận được gì.</p>
+    </div>
+    <div class="card">
+      <h4>Variable latency</h4>
+      <p>Một câu trả lời ngắn có thể ra sau 1 giây. Một bài phân tích dài có thể mất 30 giây. Latency phụ thuộc vào response length, server load, model complexity — không predictable như database query.</p>
+    </div>
+    <div class="card">
+      <h4>Hallucination risk</h4>
+      <p>Model có thể trả lời tự tin về thông tin sai. Khác với bug trong code (fail explicitly), AI fail silently — output có vẻ hợp lý. UX phải giúp user nhận ra và verify thay vì tin mù quáng.</p>
+    </div>
+    <div class="card">
+      <h4>Capability ambiguity</h4>
+      <p>User thường không biết AI làm được gì và không làm được gì. "Có thể hỏi về tương lai không?", "Có thể đọc file này không?". UX phải set expectations rõ ràng.</p>
+    </div>
+  </div>
+
+  <div class="callout note">
+    <div class="icon">≡</div>
+    <div>
+      <div class="title">Mental model quan trọng nhất</div>
+      <p>AI không phải là tool với defined behavior — AI là <em>collaborator</em> với probabilistic behavior. UX phải thiết kế cho <strong>dialogue và iteration</strong>, không phải cho single-shot deterministic action.</p>
+    </div>
+  </div>
+
+  <h2 id="patterns">16.2 Core UX patterns</h2>
+
+  <h3>Streaming (token-by-token)</h3>
+  <p>
+    Streaming là pattern quan trọng nhất trong AI UX. Thay vì chờ response hoàn chỉnh (5-30 giây), hiển thị từng token ngay khi model generate — perceived latency giảm mạnh dù actual latency như nhau.
+  </p>
+
+  <!-- Perceived vs actual latency SVG -->
+  <svg class="diagram" viewBox="0 0 760 180" role="img" aria-label="Perceived vs actual latency timeline">
+    <defs>
+      <marker id="arr5" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+        <polygon points="0 0, 8 3, 0 6" fill="#6f7c92"/>
+      </marker>
+    </defs>
+
+    <!-- Timeline labels -->
+    <text x="50" y="30" class="label-sm">t=0</text>
+    <text x="350" y="30" class="label-sm">t=3s (first token)</text>
+    <text x="650" y="30" class="label-sm">t=12s (done)</text>
+
+    <!-- Timeline axis -->
+    <line x1="50" y1="40" x2="710" y2="40" stroke="#2a3140" stroke-width="1"/>
+    <line x1="50"  y1="36" x2="50"  y2="44" stroke="#6f7c92" stroke-width="1.5"/>
+    <line x1="370" y1="36" x2="370" y2="44" stroke="#6f7c92" stroke-width="1.5"/>
+    <line x1="700" y1="36" x2="700" y2="44" stroke="#6f7c92" stroke-width="1.5"/>
+
+    <!-- Non-streaming row -->
+    <text x="10" y="82" class="label-sm" fill="#ff8a8a">No stream</text>
+    <rect x="50" y="62" width="650" height="28" rx="4" fill="rgba(255,138,138,0.15)" stroke="#ff8a8a" stroke-width="1"/>
+    <text x="375" y="81" text-anchor="middle" font-size="12" fill="#ff8a8a">⏳ Waiting 12 seconds...</text>
+
+    <!-- Streaming row -->
+    <text x="10" y="142" class="label-sm" fill="#b4e07a">Streaming</text>
+    <rect x="50"  y="122" width="320" height="28" rx="4" fill="rgba(180,224,122,0.08)" stroke="#2a3140" stroke-width="1"/>
+    <text x="210" y="141" text-anchor="middle" font-size="12" fill="#6f7c92">generating...</text>
+    <rect x="370" y="122" width="330" height="28" rx="4" fill="rgba(180,224,122,0.2)" stroke="#b4e07a" stroke-width="1"/>
+    <text x="535" y="141" text-anchor="middle" font-size="12" fill="#b4e07a">▌ Text appears word by word</text>
+
+    <!-- Perceived wait annotation -->
+    <text x="375" y="170" text-anchor="middle" class="label-sm" fill="#b4e07a">Perceived wait = 3s (first token) vs actual 12s</text>
+  </svg>
+
+  <p>
+    Streaming cũng cho phép user can thiệp sớm — nhìn vào 2 giây đầu thấy model đang đi sai hướng, dừng lại và reformulate, thay vì chờ 15 giây rồi mới biết sai.
+  </p>
+
+  <h3>Citations (link to source)</h3>
+  <p>
+    Citations là trust mechanism quan trọng nhất cho RAG systems. Khi model đưa ra thông tin, kèm theo reference đến chunk/document nguồn. User có thể:
+  </p>
+  <ul>
+    <li>Verify thông tin trực tiếp từ nguồn</li>
+    <li>Đọc thêm ngữ cảnh xung quanh</li>
+    <li>Nhận ra khi model "hallucinate" (claim citation cho source không hỗ trợ claim đó)</li>
+  </ul>
+
+  <h3>Confidence indicators</h3>
+  <p>
+    Không phải mọi output đều có cùng độ tin cậy. Confidence indicators giúp user calibrate trust:
+  </p>
+  <ul>
+    <li><strong>Source quality signal</strong>: "Based on 3 official documents" vs "I don't have specific information about this"</li>
+    <li><strong>Hedging language</strong>: model tự nói "This may not be accurate for your specific version"</li>
+    <li><strong>Visual confidence badge</strong>: <span class="tag green">High confidence</span> khi có nhiều supporting sources, <span class="tag">Uncertain</span> khi suy luận từ ít source</li>
+  </ul>
+
+  <!-- Wireframe UI components SVG -->
+  <svg class="diagram" viewBox="0 0 760 180" role="img" aria-label="Common AI UI components wireframe">
+    <!-- Citation chip -->
+    <rect class="node-bg" x="20" y="20" width="220" height="140" rx="8"/>
+    <text x="130" y="44" text-anchor="middle" font-weight="600" font-size="13">Citation chip</text>
+    <rect x="35" y="56" width="190" height="32" rx="6" fill="rgba(124,196,255,0.12)" stroke="#7cc4ff" stroke-width="1"/>
+    <text x="55" y="75" font-size="12" fill="#7cc4ff">📄</text>
+    <text x="72" y="75" font-size="12">Q3 Report 2024</text>
+    <text x="72" y="87" class="label-sm">p. 12 · Revenue section</text>
+    <rect x="35" y="100" width="190" height="32" rx="6" fill="rgba(124,196,255,0.12)" stroke="#7cc4ff" stroke-width="1"/>
+    <text x="55" y="119" font-size="12" fill="#7cc4ff">📄</text>
+    <text x="72" y="119" font-size="12">Board Deck — Jan 2024</text>
+    <text x="72" y="131" class="label-sm">slide 8 · Financial Summary</text>
+
+    <!-- Confidence badge -->
+    <rect class="node-bg" x="270" y="20" width="220" height="140" rx="8"/>
+    <text x="380" y="44" text-anchor="middle" font-weight="600" font-size="13">Confidence badge</text>
+    <rect x="285" y="58" width="100" height="28" rx="999" fill="rgba(180,224,122,0.15)" stroke="#b4e07a" stroke-width="1"/>
+    <text x="335" y="77" text-anchor="middle" font-size="12" fill="#b4e07a">● High confidence</text>
+    <rect x="285" y="96" width="90" height="28" rx="999" fill="rgba(255,184,107,0.15)" stroke="#ffb86b" stroke-width="1"/>
+    <text x="330" y="115" text-anchor="middle" font-size="12" fill="#ffb86b">◐ Uncertain</text>
+    <rect x="285" y="134" width="100" height="22" rx="999" fill="rgba(255,138,138,0.15)" stroke="#ff8a8a" stroke-width="1"/>
+    <text x="335" y="149" text-anchor="middle" font-size="12" fill="#ff8a8a">○ No source found</text>
+
+    <!-- Suggestion chips -->
+    <rect class="node-bg" x="520" y="20" width="220" height="140" rx="8"/>
+    <text x="630" y="44" text-anchor="middle" font-weight="600" font-size="13">Suggestion chips</text>
+    <rect x="535" y="58" width="190" height="26" rx="4" fill="rgba(255,184,107,0.08)" stroke="#ffb86b" stroke-width="1"/>
+    <text x="630" y="75" text-anchor="middle" font-size="11">→ Summarize key findings</text>
+    <rect x="535" y="92" width="190" height="26" rx="4" fill="rgba(255,184,107,0.08)" stroke="#ffb86b" stroke-width="1"/>
+    <text x="630" y="109" text-anchor="middle" font-size="11">→ Compare Q2 vs Q3</text>
+    <rect x="535" y="126" width="190" height="26" rx="4" fill="rgba(255,184,107,0.08)" stroke="#ffb86b" stroke-width="1"/>
+    <text x="630" y="143" text-anchor="middle" font-size="11">→ Export as bullet points</text>
+  </svg>
+
+  <h2 id="undo">16.3 Undo / Regenerate / Edit — let user steer</h2>
+  <p>
+    Vì AI output là probabilistic, user cần control để steer về hướng mong muốn. Ba cơ chế cốt lõi:
+  </p>
+
+  <h3>Regenerate</h3>
+  <p>
+    "Try again" với cùng prompt. Hữu ích khi output không tốt về style, tone, hoặc approach — nhưng không biết cách sửa prompt. Nhiều apps cho phép regenerate với higher temperature để có diversity hơn.
+  </p>
+
+  <h3>Edit và refine</h3>
+  <p>
+    Cho user chỉnh sửa output trực tiếp — không cần "rephrase your request". Cursor làm tốt điều này: inline diff view, user accept/reject từng change, có thể viết thêm comment cho từng diff.
+  </p>
+
+  <h3>Branch history</h3>
+  <p>
+    Claude, ChatGPT cho phép chỉnh sửa message và tạo parallel conversation branches. User có thể thử nhiều cách hỏi, compare outcomes, rồi tiếp tục từ nhánh tốt nhất. Đây là pattern quan trọng cho "exploration" use cases.
+  </p>
+
+  <div class="callout tip">
+    <div class="icon">★</div>
+    <div>
+      <div class="title">Friction là tốt khi nó cứu user</div>
+      <p>Không phải mọi action đều nên một-click. Với write actions (send email, create PR, delete data), thêm confirmation step có giá trị — AI có thể misinterpret intent. Rule: friction proportional to reversibility.</p>
+    </div>
+  </div>
+
+  <h2 id="hitl">16.4 Human-in-the-loop &amp; approval flows</h2>
+  <p>
+    Khi AI thực hiện <strong>write actions</strong> — gửi email, tạo ticket, thực thi code, gọi API bên thứ ba — cần approval flow. "Read before act" là nguyên tắc cốt lõi của agentic systems.
+  </p>
+
+  <!-- Approval flow SVG -->
+  <svg class="diagram" viewBox="0 0 760 200" role="img" aria-label="Human-in-the-loop approval flow diagram">
+    <defs>
+      <marker id="arr6" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+        <polygon points="0 0, 8 3, 0 6" fill="#6f7c92"/>
+      </marker>
+    </defs>
+
+    <!-- User intent -->
+    <rect class="node-accent" x="20" y="80" width="120" height="40" rx="8"/>
+    <text x="80" y="103" text-anchor="middle" font-size="12" font-weight="600">User intent</text>
+    <line x1="140" y1="100" x2="168" y2="100" stroke="#6f7c92" stroke-width="1.5" marker-end="url(#arr6)"/>
+
+    <!-- AI plan -->
+    <rect class="node-blue" x="170" y="70" width="130" height="60" rx="8"/>
+    <text x="235" y="94" text-anchor="middle" font-size="12" font-weight="600">AI Plan</text>
+    <text x="235" y="112" text-anchor="middle" class="label-sm">Generate action plan</text>
+    <text x="235" y="124" text-anchor="middle" class="label-sm">+ show preview</text>
+    <line x1="300" y1="100" x2="328" y2="100" stroke="#6f7c92" stroke-width="1.5" marker-end="url(#arr6)"/>
+
+    <!-- Human review -->
+    <rect class="node-accent" x="330" y="70" width="130" height="60" rx="8"/>
+    <text x="395" y="94" text-anchor="middle" font-size="12" font-weight="600">Human Review</text>
+    <text x="395" y="112" text-anchor="middle" class="label-sm">Approve / Edit / Reject</text>
+    <text x="395" y="124" text-anchor="middle" class="label-sm">Confirm action</text>
+
+    <!-- Approved path -->
+    <line x1="460" y1="90" x2="488" y2="80" stroke="#b4e07a" stroke-width="1.5" marker-end="url(#arr6)"/>
+    <rect class="node-green" x="490" y="50" width="110" height="40" rx="8"/>
+    <text x="545" y="73" text-anchor="middle" font-size="12" fill="#b4e07a">✓ Execute</text>
+
+    <!-- Rejected path -->
+    <line x1="460" y1="110" x2="488" y2="120" stroke="#ff8a8a" stroke-width="1.5" marker-end="url(#arr6)"/>
+    <rect class="node-bg" x="490" y="110" width="110" height="40" rx="8"/>
+    <text x="545" y="133" text-anchor="middle" font-size="12" fill="#ff8a8a">✕ Refine plan</text>
+    <!-- Loop back -->
+    <path d="M 545 150 Q 545 180 350 180 Q 155 180 155 140" stroke="#ff8a8a" stroke-width="1" fill="none" stroke-dasharray="4,3" marker-end="url(#arr6)"/>
+
+    <!-- Done -->
+    <line x1="600" y1="70" x2="628" y2="70" stroke="#b4e07a" stroke-width="1.5" marker-end="url(#arr6)"/>
+    <rect class="node-green" x="630" y="50" width="110" height="40" rx="8"/>
+    <text x="685" y="73" text-anchor="middle" font-size="12" fill="#b4e07a">Done + Audit log</text>
+  </svg>
+
+  <h3>Levels of autonomy</h3>
+  <p>
+    Không phải mọi action đều cần manual approval. Design theo spectrum:
+  </p>
+  <ul>
+    <li><strong>Full auto</strong>: low-risk, easily reversible (e.g., format text, create draft)</li>
+    <li><strong>Auto with notification</strong>: medium-risk, reversible (e.g., create calendar event)</li>
+    <li><strong>Approval required</strong>: high-risk, hard to reverse (e.g., send email, make payment, deploy code)</li>
+    <li><strong>Human executes</strong>: AI shows instructions, human does manually (e.g., production database change)</li>
+  </ul>
+
+  <h2 id="trust">16.5 Trust signals</h2>
+  <p>
+    Trust phải được build qua transparency, không qua assertion. "Trust me, I'm an AI" không đủ. Các trust signals hiệu quả:
+  </p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Trust signal</th><th>Cách implement</th><th>Ví dụ</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><strong>Show sources</strong></td><td>Citation chips linked to original document</td><td>Perplexity citation footnotes</td></tr>
+        <tr><td><strong>Show reasoning</strong></td><td>Expandable thinking/reasoning trace</td><td>Claude Extended Thinking panel</td></tr>
+        <tr><td><strong>Show limitations</strong></td><td>Knowledge cutoff, domain constraints explicit</td><td>"My training data ends Jan 2024"</td></tr>
+        <tr><td><strong>Acknowledge uncertainty</strong></td><td>Hedging language khi model uncertain</td><td>"I'm not certain, but..."</td></tr>
+        <tr><td><strong>Explain what changed</strong></td><td>Diff view cho edit operations</td><td>Cursor diff, Notion AI revision marks</td></tr>
+        <tr><td><strong>Audit trail</strong></td><td>Log all AI actions với timestamp</td><td>Automation activity feed</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 id="latency">16.6 Latency budget design</h2>
+  <p>
+    Latency trong AI apps là multi-dimensional. Cần phân biệt và budget riêng:
+  </p>
+  <ul>
+    <li><strong>Time to first token (TTFT)</strong>: từ lúc gửi đến lúc token đầu tiên xuất hiện. Target: &lt; 1s cho interactive, &lt; 3s cho complex. Dominate bởi: prefill time, queue wait.</li>
+    <li><strong>Time to last token (TTLT)</strong>: total response time. Dominate bởi: generation length, decode speed.</li>
+    <li><strong>Perceived latency</strong>: với streaming, bằng TTFT nếu có visual feedback ngay. Quan trọng hơn TTLT cho UX.</li>
+  </ul>
+
+  <h3>Techniques giảm perceived latency</h3>
+  <ul>
+    <li><strong>Optimistic UI</strong>: show skeleton/placeholder ngay khi user submits, stream vào đó</li>
+    <li><strong>Streaming everything</strong>: kể cả tool calls, reasoning steps — keep user informed</li>
+    <li><strong>Pre-generation</strong>: với predictable next steps (chat interface), start generating likely follow-ups trước khi user hỏi</li>
+    <li><strong>Progress indicators contextual</strong>: "Searching 3 documents...", "Analyzing data..." thay vì generic spinner</li>
+    <li><strong>Interrupt capability</strong>: cho user dừng generation nếu đã đủ</li>
+  </ul>
+
+  <h2 id="degradation">16.7 Graceful degradation</h2>
+  <p>
+    AI services fail — model API down, rate limit hit, context too long, inference timeout. UX phải handle gracefully:
+  </p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Failure mode</th><th>Degraded behavior</th><th>Example</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Model API down</td><td>Fall back to simpler model, hoặc cached response, hoặc "AI features unavailable" với manual workflow</td><td>Copilot falls back to basic autocomplete</td></tr>
+        <tr><td>Rate limit</td><td>Queue request, show estimated wait time, không fail silently</td><td>"High demand — your request is queued (est. 45s)"</td></tr>
+        <tr><td>Context too long</td><td>Auto-summarize older context, warn user, offer to start new context</td><td>"Chat history too long — summarized earlier messages"</td></tr>
+        <tr><td>Low confidence retrieval</td><td>Surface warning, offer alternative phrasing, or skip AI và show search results</td><td>"I couldn't find relevant information — here are search results instead"</td></tr>
+        <tr><td>Timeout</td><td>Partial result + "Continue" option, or retry with shorter timeout + simpler model</td><td>Partial streaming result saved, user can resume</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout tip">
+    <div class="icon">★</div>
+    <div>
+      <div class="title">Keep non-AI functionality working</div>
+      <p>AI là enhancement, bukan replacement. Khi AI unavailable, core functionality (tìm kiếm, xem tài liệu, tạo item thủ công) phải vẫn hoạt động hoàn toàn. Đừng bao giờ gate critical workflows behind AI-only path.</p>
+    </div>
+  </div>
+
+  <h2 id="error-ux">16.8 Error UX</h2>
+  <p>
+    AI error messages tệ nhất là "Something went wrong" hoặc "I don't know". Tốt hơn là <strong>transparent failure + actionable alternative</strong>.
+  </p>
+
+  <div class="tabs" data-tabs>
+    <div class="tab-buttons">
+      <button class="active">Bad ✕</button>
+      <button>Good ✓</button>
+    </div>
+    <div class="tab-panel active">
+      <p style="color: var(--danger)"><strong>"I don't know."</strong></p>
+      <p>Không giải thích tại sao. Không cho user biết làm gì tiếp. Không có alternative.</p>
+      <p style="color: var(--danger)"><strong>"An error occurred. Please try again."</strong></p>
+      <p>Không có context. User không biết: retry hay không? Đổi cách hỏi không? Tìm ở đâu?</p>
+      <p style="color: var(--danger)"><strong>"I cannot help with that."</strong></p>
+      <p>Từ chối mà không giải thích lý do hay cung cấp alternative path.</p>
+    </div>
+    <div class="tab-panel">
+      <p style="color: var(--accent-3)"><strong>"I don't have information about [specific topic] in the documents you've shared. You might find this in [suggested source] or try rephrasing as [example]."</strong></p>
+      <p>Explicit về what's missing, suggests alternative path.</p>
+      <p style="color: var(--accent-3)"><strong>"I couldn't reach the document server. Your question was saved — [Retry] or [Browse manually]."</strong></p>
+      <p>Clear about failure reason. Preserves user's work. Offers alternatives.</p>
+      <p style="color: var(--accent-3)"><strong>"This type of analysis isn't supported yet, but here's what I can do: [list of available actions]."</strong></p>
+      <p>Set expectations. Offers alternative actions within capability.</p>
+    </div>
+  </div>
+
+  <h2 id="onboarding">16.9 Onboarding</h2>
+  <p>
+    First-time user experience với AI products là critical — user đang học không chỉ UI mà còn một paradigm mới. Sai ở đây → user không return.
+  </p>
+
+  <h3>Set expectations early</h3>
+  <p>
+    Ngay màn hình đầu tiên, communicate rõ:
+  </p>
+  <ul>
+    <li><strong>Phạm vi</strong>: "Tôi có thể trả lời câu hỏi về [domain], dựa trên [data source]"</li>
+    <li><strong>Giới hạn</strong>: "Tôi không biết về [out-of-scope], knowledge cutoff là [date]"</li>
+    <li><strong>Cách dùng tốt nhất</strong>: "Câu hỏi cụ thể cho kết quả tốt hơn câu hỏi chung chung"</li>
+  </ul>
+
+  <h3>Starter templates</h3>
+  <p>
+    Blank text box là intimidating. Cung cấp suggested prompts theo use case:
+  </p>
+  <ul>
+    <li>"What are the key risks in Q3 report?"</li>
+    <li>"Summarize the meeting notes from last week"</li>
+    <li>"Compare pricing of product A vs product B"</li>
+  </ul>
+
+  <h3>Progressive disclosure</h3>
+  <p>
+    Bắt đầu với simple chat. Reveal advanced features (citation mode, agent capabilities, settings) sau khi user quen với basics. Đừng overwhelm với features ngay lần đầu.
+  </p>
+
+  <h2 id="examples">16.10 Ví dụ thực tế — những gì họ làm tốt</h2>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Product</th><th>UX pattern nổi bật</th><th>Bài học</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><strong>ChatGPT</strong></td><td>Branch conversation history, custom GPTs cho context, voice mode seamless</td><td>Branch history là killer feature cho exploration — cần cho mọi AI chat</td></tr>
+        <tr><td><strong>Claude (claude.ai)</strong></td><td>Extended thinking visible, artifact panel tách biệt, Projects persistent context</td><td>Show reasoning tăng trust; artifact panel tách riêng "working document" khỏi chat</td></tr>
+        <tr><td><strong>Cursor</strong></td><td>Inline diff với Accept/Reject per change, @file context, Composer cho multi-file</td><td>Granular accept/reject tốt hơn all-or-nothing; explicit context control quan trọng</td></tr>
+        <tr><td><strong>Perplexity</strong></td><td>Every answer có citations với snippet preview, source list có thể filter, Pro search transparent về search steps</td><td>Citations không chỉ link — cần snippet preview để user không phải click mỗi link</td></tr>
+        <tr><td><strong>Notion AI</strong></td><td>AI tích hợp ngay trong text editor, "/" command, "Improve writing" context-aware, revision marks</td><td>AI native trong editing context tốt hơn chat sidebar riêng cho writing tasks</td></tr>
+        <tr><td><strong>GitHub Copilot</strong></td><td>Ghost text completion, Tab to accept một token / toàn bộ suggestion, multi-line context</td><td>Partial acceptance (Tab từng từ) reduce friction; ghost text không interrupt flow</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 id="tom-tat">Tóm tắt</h2>
+  <ol>
+    <li><strong>AI UX ≠ traditional UX</strong>: probabilistic outputs, variable latency, hallucination risk đòi hỏi pattern thiết kế khác — dialogue và iteration thay vì single-shot deterministic.</li>
+    <li><strong>Streaming</strong> là pattern quan trọng nhất: giảm perceived latency từ 15s xuống 1-3s (TTFT), cho phép user can thiệp sớm.</li>
+    <li><strong>Citations + confidence indicators</strong> xây dựng trust — không phải assertion mà là transparency.</li>
+    <li><strong>Undo / Regenerate / Edit</strong>: user phải luôn có cách steer AI theo hướng mong muốn.</li>
+    <li><strong>Approval flows</strong> cho write actions: friction proportional to reversibility. Full auto chỉ khi low-risk và easily reversible.</li>
+    <li><strong>Error UX</strong>: transparent failure + actionable alternative, không bao giờ chỉ nói "I don't know".</li>
+    <li><strong>Graceful degradation</strong>: AI là enhancement — core functionality phải hoạt động khi AI unavailable.</li>
+    <li><strong>Onboarding</strong>: set expectations, provide templates, progressive disclosure. First session quyết định retention.</li>
+  </ol>
+
+  <nav class="section-footer">
+    <a href="15-security.html" class="prev">
+      <div class="label">← trước</div>
+      <div class="title">15 — Security</div>
+    </a>
+    <a href="17-multimodal.html" class="next">
+      <div class="label">tiếp theo →</div>
+      <div class="title">17 — Multimodal Applications</div>
+    </a>
+  </nav>
+
+</main>
+
+<script src="../assets/script.js"></script>
+</body>
+</html>

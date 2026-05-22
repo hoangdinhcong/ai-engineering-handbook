@@ -1,0 +1,1213 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>36 · Reward Modeling &amp; Process Supervision — AI Engineering</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<nav class="top-nav">
+  <div class="brand"><span class="dot"></span> AI Engineering</div>
+  <div class="crumbs"><a href="../index.html">Mục lục</a> › Phần 11 · <span>36 — Reward Modeling &amp; Process Supervision</span></div>
+  <div class="nav-actions">
+    <a href="35-eval-dataset-design.html">← Eval Dataset</a>
+    <a href="37-continuous-eval.html">Continuous Eval →</a>
+  </div>
+</nav>
+
+<main class="page">
+
+  <section class="hero">
+    <span class="eyebrow">Phần 11 · §36</span>
+    <h1>Reward Modeling &amp; Process Supervision</h1>
+    <p class="lede">
+      Từ RLHF cổ điển với 4 model song song đến DPO một bước, từ scoring kết quả cuối
+      đến giám sát từng bước suy luận — bức tranh toàn cảnh của preference-based alignment năm 2026.
+    </p>
+    <img class="hero-image" src="../images/36-reward-modeling.png" alt="Hero illustration: reward modeling và process supervision" onerror="this.style.display='none'">
+  </section>
+
+  <aside class="toc">
+    <div class="toc-title">Trong trang này</div>
+    <ul>
+      <li><a href="#reward-model">36.1 Reward Model là gì?</a></li>
+      <li><a href="#orm-vs-prm">36.2 ORM vs PRM</a></li>
+      <li><a href="#prm-reasoning">36.3 Tại sao PRM quan trọng cho reasoning</a></li>
+      <li><a href="#preference-data">36.4 Định dạng preference data</a></li>
+      <li><a href="#rlhf-ppo">36.5 RLHF cổ điển (PPO)</a></li>
+      <li><a href="#dpo">36.6 DPO</a></li>
+      <li><a href="#orpo">36.7 ORPO</a></li>
+      <li><a href="#simpo">36.8 SimPO</a></li>
+      <li><a href="#kto">36.9 KTO</a></li>
+      <li><a href="#rlaif">36.10 RLAIF / Constitutional AI</a></li>
+      <li><a href="#reward-hacking">36.11 Reward Hacking</a></li>
+      <li><a href="#kl-divergence">36.12 KL Divergence làm guardrail</a></li>
+      <li><a href="#engineering-impact">36.13 Tác động đến Engineer</a></li>
+      <li><a href="#tooling">36.14 Tooling</a></li>
+      <li><a href="#old-vs-new">36.15 Cách cũ vs Cách mới</a></li>
+      <li><a href="#tom-tat">Tóm tắt</a></li>
+    </ul>
+  </aside>
+
+  <!-- ================================================================
+       36.1 Reward Model là gì?
+  ================================================================ -->
+  <h2 id="reward-model">36.1 Reward Model (RM) là gì?</h2>
+
+  <p>
+    Một <strong>Reward Model</strong> là một classifier (thường là LLM đã được fine-tune)
+    nhận vào một cặp (prompt, response) và trả về một <em>scalar score</em> — điểm số phản ánh
+    chất lượng hoặc mức độ phù hợp với preference của con người.
+  </p>
+
+  <p>
+    Ý tưởng cốt lõi: thay vì để human annotator đánh giá từng response trong pipeline training,
+    ta <strong>distill</strong> judgment đó vào trong một model nhỏ có thể chạy real-time và
+    cung cấp tín hiệu reward cho vòng lặp RL.
+  </p>
+
+  <div class="callout note">
+    <div class="icon">≡</div>
+    <div>
+      <div class="title">Công thức trực quan</div>
+      <p>
+        Reward Model ≈ "AI judge" được huấn luyện để dự đoán: "Human sẽ thích response này
+        hay không?" và cho điểm từ 0 đến 1 (hoặc một real-valued score).
+      </p>
+    </div>
+  </div>
+
+  <h3>Cách huấn luyện RM từ preference pairs</h3>
+  <p>
+    Quá trình bắt đầu bằng dữ liệu <em>pairwise preferences</em>: với cùng một prompt, human
+    annotator được yêu cầu chọn response nào tốt hơn giữa response A và B. Từ tập dữ liệu
+    này, RM được fine-tune để predict preference đó.
+  </p>
+
+  <pre><code><span class="cm"># Cấu trúc training data cho Reward Model</span>
+{
+  <span class="str">"prompt"</span>: <span class="str">"Viết email xin lỗi khách hàng về chậm giao hàng"</span>,
+  <span class="str">"chosen"</span>: <span class="str">"Kính gửi Quý Khách, Chúng tôi xin chân thành xin lỗi vì..."</span>,
+  <span class="str">"rejected"</span>: <span class="str">"Sorry bạn ơi, hàng bị delay rồi, tại nhà cung cấp..."</span>
+}
+
+<span class="cm"># RM loss function (Bradley-Terry model)</span>
+<span class="cm"># P(chosen > rejected) = sigmoid(r_chosen - r_rejected)</span>
+<span class="cm"># Loss = -log P(chosen > rejected)</span>
+
+loss = -log_sigmoid(reward_model(prompt, chosen) - reward_model(prompt, rejected))</code></pre>
+
+  <!-- ================================================================
+       36.2 ORM vs PRM
+  ================================================================ -->
+  <h2 id="orm-vs-prm">36.2 Outcome Reward Model (ORM) vs Process Reward Model (PRM)</h2>
+
+  <p>
+    Đây là phân biệt quan trọng nhất trong reward modeling hiện đại, đặc biệt khi làm việc
+    với <em>reasoning models</em>:
+  </p>
+
+  <svg class="diagram" viewBox="0 0 760 380" role="img" aria-label="ORM vs PRM scoring diagram">
+    <defs>
+      <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#6f7c92"/>
+      </marker>
+    </defs>
+
+    <!-- Title ORM -->
+    <text x="190" y="28" text-anchor="middle" font-weight="700" font-size="15" fill="#ffb86b">ORM — Outcome Reward Model</text>
+
+    <!-- Prompt box ORM -->
+    <rect class="node-bg" x="20" y="45" width="120" height="44" rx="8"/>
+    <text x="80" y="65" text-anchor="middle" font-weight="700" font-size="13">Prompt</text>
+    <text x="80" y="81" text-anchor="middle" font-size="11" fill="#aab4c5">"2x + 5 = 13?"</text>
+
+    <!-- Steps ORM (greyed out — not scored) -->
+    <line class="arrow" x1="142" y1="67" x2="168" y2="67" marker-end="url(#arrowhead)"/>
+    <rect class="node-bg" x="170" y="45" width="90" height="44" rx="8"/>
+    <text x="215" y="65" text-anchor="middle" font-size="12" fill="#6f7c92">Step 1</text>
+    <text x="215" y="81" text-anchor="middle" font-size="11" fill="#6f7c92">2x = 8</text>
+
+    <line class="arrow" x1="262" y1="67" x2="278" y2="67" marker-end="url(#arrowhead)"/>
+    <rect class="node-bg" x="280" y="45" width="90" height="44" rx="8"/>
+    <text x="325" y="65" text-anchor="middle" font-size="12" fill="#6f7c92">Step 2</text>
+    <text x="325" y="81" text-anchor="middle" font-size="11" fill="#6f7c92">x = 4</text>
+
+    <!-- Final answer ORM -->
+    <line class="arrow" x1="372" y1="67" x2="388" y2="67" marker-end="url(#arrowhead)"/>
+    <rect class="node-green" x="390" y="38" width="120" height="58" rx="8"/>
+    <text x="450" y="62" text-anchor="middle" font-weight="700" font-size="13">Final Answer</text>
+    <text x="450" y="78" text-anchor="middle" font-size="12" fill="#b4e07a">x = 4 ✓</text>
+    <text x="450" y="93" text-anchor="middle" font-size="11" fill="#6f7c92">score: 1.0</text>
+
+    <!-- ORM arrow — only scores final -->
+    <line stroke="#ffb86b" stroke-width="2" stroke-dasharray="4,3" x1="510" y1="67" x2="580" y2="67" marker-end="url(#arrowhead)"/>
+    <rect class="node-accent" x="582" y="45" width="110" height="44" rx="8"/>
+    <text x="637" y="65" text-anchor="middle" font-weight="700" font-size="12">ORM Score</text>
+    <text x="637" y="81" text-anchor="middle" font-size="11" fill="#ffb86b">+1.0 (correct)</text>
+
+    <!-- Separator -->
+    <line stroke="#2a3140" stroke-width="1.5" x1="20" y1="125" x2="740" y2="125"/>
+
+    <!-- Title PRM -->
+    <text x="380" y="155" text-anchor="middle" font-weight="700" font-size="15" fill="#7cc4ff">PRM — Process Reward Model</text>
+
+    <!-- Prompt PRM -->
+    <rect class="node-bg" x="20" y="172" width="120" height="44" rx="8"/>
+    <text x="80" y="192" text-anchor="middle" font-weight="700" font-size="13">Prompt</text>
+    <text x="80" y="208" text-anchor="middle" font-size="11" fill="#aab4c5">"2x + 5 = 13?"</text>
+
+    <!-- Steps PRM — each scored -->
+    <line class="arrow" x1="142" y1="194" x2="165" y2="194" marker-end="url(#arrowhead)"/>
+    <rect class="node-blue" x="167" y="168" width="100" height="52" rx="8"/>
+    <text x="217" y="190" text-anchor="middle" font-weight="700" font-size="12">Step 1</text>
+    <text x="217" y="206" text-anchor="middle" font-size="11" fill="#aab4c5">2x = 8</text>
+    <text x="217" y="221" text-anchor="middle" font-size="11" fill="#7cc4ff">+0.9</text>
+
+    <line class="arrow" x1="269" y1="194" x2="292" y2="194" marker-end="url(#arrowhead)"/>
+    <rect class="node-blue" x="294" y="168" width="100" height="52" rx="8"/>
+    <text x="344" y="190" text-anchor="middle" font-weight="700" font-size="12">Step 2</text>
+    <text x="344" y="206" text-anchor="middle" font-size="11" fill="#aab4c5">x = 4</text>
+    <text x="344" y="221" text-anchor="middle" font-size="11" fill="#7cc4ff">+0.95</text>
+
+    <line class="arrow" x1="396" y1="194" x2="419" y2="194" marker-end="url(#arrowhead)"/>
+    <rect class="node-green" x="421" y="162" width="110" height="64" rx="8"/>
+    <text x="476" y="185" text-anchor="middle" font-weight="700" font-size="12">Final Answer</text>
+    <text x="476" y="201" text-anchor="middle" font-size="12" fill="#b4e07a">x = 4 ✓</text>
+    <text x="476" y="217" text-anchor="middle" font-size="11" fill="#7cc4ff">+1.0</text>
+
+    <!-- PRM aggregate -->
+    <line stroke="#7cc4ff" stroke-width="2" stroke-dasharray="4,3" x1="533" y1="194" x2="568" y2="194" marker-end="url(#arrowhead)"/>
+    <rect class="node-blue" x="570" y="162" width="158" height="64" rx="8"/>
+    <text x="649" y="185" text-anchor="middle" font-weight="700" font-size="12">PRM Scores</text>
+    <text x="649" y="201" text-anchor="middle" font-size="11" fill="#7cc4ff">per-step: 0.9, 0.95, 1.0</text>
+    <text x="649" y="217" text-anchor="middle" font-size="11" fill="#aab4c5">credit mỗi bước đúng</text>
+
+    <!-- Key difference annotation -->
+    <rect class="node-bg" x="20" y="268" width="720" height="90" rx="10"/>
+    <text x="380" y="292" text-anchor="middle" font-weight="700" font-size="14">Điểm khác biệt cốt lõi</text>
+    <text x="48" y="316" font-size="13" fill="#ffb86b">ORM:</text>
+    <text x="100" y="316" font-size="13" fill="#aab4c5">Chỉ biết đáp án cuối đúng/sai — không biết bước nào sai trong chuỗi suy luận dài</text>
+    <text x="48" y="340" font-size="13" fill="#7cc4ff">PRM:</text>
+    <text x="100" y="340" font-size="13" fill="#aab4c5">Gán credit cho từng bước — model học được "bước 2 sai dẫn đến kết quả sai" dù đáp án đôi khi may mắn đúng</text>
+  </svg>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Tiêu chí</th><th>ORM (Outcome)</th><th>PRM (Process)</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Cái được score</strong></td>
+          <td>Kết quả cuối cùng</td>
+          <td>Mỗi bước suy luận trung gian</td>
+        </tr>
+        <tr>
+          <td><strong>Dữ liệu cần</strong></td>
+          <td>Đơn giản hơn — chỉ cần label đúng/sai</td>
+          <td>Phức tạp hơn — label từng step</td>
+        </tr>
+        <tr>
+          <td><strong>Credit assignment</strong></td>
+          <td>Không rõ ràng — không biết bước nào đúng/sai</td>
+          <td>Chính xác — biết step nào gây lỗi</td>
+        </tr>
+        <tr>
+          <td><strong>Phù hợp với</strong></td>
+          <td>Task đơn giản, câu trả lời cuối rõ ràng</td>
+          <td>Reasoning dài, math, code, logic</td>
+        </tr>
+        <tr>
+          <td><strong>Chi phí annotation</strong></td>
+          <td>Thấp</td>
+          <td>Cao (phải label mỗi step)</td>
+        </tr>
+        <tr>
+          <td><strong>Ví dụ dùng</strong></td>
+          <td>Helpfulness, safety classifiers</td>
+          <td>OpenAI o1/o3, DeepSeek Math, PRM800K</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ================================================================
+       36.3 PRM cho reasoning models
+  ================================================================ -->
+  <h2 id="prm-reasoning">36.3 Tại sao PRM quan trọng cho Reasoning Models</h2>
+
+  <p>
+    Các model suy luận thế hệ mới — OpenAI o1/o3, DeepSeek-R1, Claude thinking mode,
+    Gemini 2.0 Flash Thinking — đều hoạt động dựa trên một chuỗi suy luận dài (<em>chain-of-thought</em>)
+    trước khi đưa ra câu trả lời cuối. Đây là lúc PRM trở nên không thể thiếu.
+  </p>
+
+  <h3>Vấn đề của ORM với reasoning chains</h3>
+  <p>
+    Hãy tưởng tượng một bài toán math 10 bước. Model suy luận sai ở bước 3, nhưng vô tình
+    sửa lại ở bước 8, ra đáp án đúng. ORM sẽ cho điểm cao — nhưng reasoning của model thực sự
+    flawed. Ngược lại, model suy luận đúng đến bước 9 rồi arithmetic slip ở bước cuối — ORM
+    phạt nặng mặc dù reasoning chain rất tốt.
+  </p>
+
+  <div class="callout tip">
+    <div class="icon">★</div>
+    <div>
+      <div class="title">PRM800K — dataset thay đổi cuộc chơi</div>
+      <p>
+        Năm 2023, OpenAI công bố <strong>PRM800K</strong> — tập dữ liệu 800,000 step-level labels
+        cho 75,000 bài toán MATH. Mỗi bước được human annotators đánh giá: <em>positive</em>
+        (đúng hướng), <em>negative</em> (sai), hoặc <em>neutral</em>. Dataset này là nền tảng
+        cho research PRM hiện đại và chứng minh PRM vượt ORM đáng kể trên math benchmarks.
+      </p>
+    </div>
+  </div>
+
+  <h3>Best-of-N với PRM: search time compute</h3>
+  <p>
+    Một ứng dụng thực tế mạnh của PRM là <em>Best-of-N sampling</em>: generate N reasoning chains
+    khác nhau, dùng PRM để score từng chain, chọn chain tốt nhất. Đây là cách các reasoning
+    models tăng accuracy mà không cần train lại model.
+  </p>
+
+  <pre><code><span class="cm"># Best-of-N với PRM (pseudocode)</span>
+<span class="kw">def</span> <span class="fn">best_of_n_with_prm</span>(prompt: str, n: int = 16) -> str:
+
+    candidates = [model.<span class="fn">generate</span>(prompt) <span class="kw">for</span> _ <span class="kw">in</span> range(n)]
+
+    <span class="cm"># PRM score mỗi chain — product of step-level probabilities</span>
+    scores = [prm.<span class="fn">score_chain</span>(prompt, chain) <span class="kw">for</span> chain <span class="kw">in</span> candidates]
+
+    best_idx = scores.<span class="fn">index</span>(<span class="fn">max</span>(scores))
+    <span class="kw">return</span> candidates[best_idx]
+
+<span class="cm"># Kết quả: accuracy tăng đáng kể mà không cần thêm training
+# Trên MATH dataset: 45% → 68% (n=256) với Llama 3 base</span></code></pre>
+
+  <!-- ================================================================
+       36.4 Preference Data Formats
+  ================================================================ -->
+  <h2 id="preference-data">36.4 Định dạng Preference Data</h2>
+
+  <p>
+    Chất lượng preference data quyết định chất lượng của reward model — và do đó chất lượng
+    của toàn bộ alignment pipeline. Có ba định dạng chính:
+  </p>
+
+  <h3>1. Pairwise (Chosen vs Rejected)</h3>
+  <p>
+    Định dạng phổ biến nhất. Với mỗi prompt, có đúng một cặp (chosen, rejected).
+  </p>
+
+  <pre><code><span class="cm"># Format chuẩn — dùng cho DPO, ORPO, SimPO</span>
+{
+  <span class="str">"prompt"</span>: <span class="str">"Làm thế nào để tăng tốc database query?"</span>,
+  <span class="str">"chosen"</span>: <span class="str">"Có nhiều cách để tối ưu: 1) Thêm index vào cột thường WHERE/JOIN,
+2) Tránh SELECT *, chỉ lấy cột cần thiết, 3) Phân tích EXPLAIN ANALYZE..."</span>,
+  <span class="str">"rejected"</span>: <span class="str">"Bạn nên dùng cache hoặc upgrade server."</span>
+}</code></pre>
+
+  <h3>2. Bradley-Terry Model</h3>
+  <p>
+    Mô hình xác suất nền tảng để so sánh pairwise. Nếu item <em>i</em> có strength <em>s_i</em>
+    và item <em>j</em> có strength <em>s_j</em>, xác suất item <em>i</em> được chọn là:
+  </p>
+
+  <div class="card">
+    <h4>Bradley-Terry Formula</h4>
+    <p style="font-family: var(--font-mono); font-size: 15px; text-align: center; color: var(--accent-2); padding: 8px 0;">
+      P(i ≻ j) = σ(s_i − s_j) = 1 / (1 + exp(s_j − s_i))
+    </p>
+    <p>
+      Reward model được train để maximize log-likelihood của observed preferences theo model này.
+      Đây là lý do RM loss thường có dạng:
+      <code>loss = −log σ(r_chosen − r_rejected)</code>
+    </p>
+  </div>
+
+  <h3>3. Multi-attribute Preferences</h3>
+  <p>
+    Thay vì chỉ một label "tốt hơn", annotator đánh giá nhiều chiều: helpfulness, harmlessness,
+    honesty, conciseness, accuracy. Cho phép reward model học trade-off giữa các attribute.
+  </p>
+
+  <pre><code><span class="cm"># Multi-attribute format</span>
+{
+  <span class="str">"prompt"</span>: <span class="str">"..."</span>,
+  <span class="str">"response_a"</span>: <span class="str">"..."</span>,
+  <span class="str">"response_b"</span>: <span class="str">"..."</span>,
+  <span class="str">"attributes"</span>: {
+    <span class="str">"helpfulness"</span>: <span class="str">"a_better"</span>,
+    <span class="str">"accuracy"</span>: <span class="str">"tie"</span>,
+    <span class="str">"conciseness"</span>: <span class="str">"b_better"</span>,
+    <span class="str">"harmlessness"</span>: <span class="str">"tie"</span>
+  }
+}</code></pre>
+
+  <!-- ================================================================
+       36.5 RLHF PPO
+  ================================================================ -->
+  <h2 id="rlhf-ppo">36.5 RLHF Cổ Điển (PPO) — Cách Tiếp Cận 4-Model</h2>
+
+  <p>
+    <strong>Reinforcement Learning from Human Feedback</strong> theo kiến trúc InstructGPT (2022)
+    là nền tảng của ChatGPT và các model aligned đầu tiên. Quy trình gồm 3 giai đoạn và
+    đòi hỏi 4 model hoạt động đồng thời — đây là lý do tại sao nó phức tạp và tốn kém.
+  </p>
+
+  <h3>Ba giai đoạn RLHF</h3>
+
+  <div class="tabs" data-tabs>
+    <div class="tab-buttons">
+      <button class="active">Giai đoạn 1: SFT</button>
+      <button>Giai đoạn 2: Reward Model</button>
+      <button>Giai đoạn 3: PPO</button>
+    </div>
+    <div class="tab-panel active">
+      <h4>Supervised Fine-tuning (SFT)</h4>
+      <p>Fine-tune pre-trained LLM trên tập dữ liệu (prompt, human-written response) chất lượng cao.
+      Đây là bước khởi động — model học cách format và follow instructions cơ bản.</p>
+      <ul>
+        <li>Data: ~10,000–100,000 demonstration pairs từ contractors</li>
+        <li>Output: <strong>SFT model</strong> — model có thể follow instructions nhưng chưa được aligned</li>
+        <li>Đây là base model cho cả reward model lẫn policy model ở các bước sau</li>
+      </ul>
+    </div>
+    <div class="tab-panel">
+      <h4>Train Reward Model</h4>
+      <p>Dùng SFT model để generate nhiều responses cho cùng prompt, sau đó human xếp hạng các responses đó. Train RM để predict rankings này.</p>
+      <ul>
+        <li>Data: ~100,000–500,000 pairwise comparisons</li>
+        <li>Architecture: SFT model + thêm scalar head thay vì vocab head</li>
+        <li>Output: <strong>Reward Model</strong> — có thể score bất kỳ (prompt, response) pair</li>
+        <li>Chi phí: annotation là bottleneck đắt nhất trong toàn pipeline</li>
+      </ul>
+    </div>
+    <div class="tab-panel">
+      <h4>PPO Fine-tuning</h4>
+      <p>Dùng Proximal Policy Optimization (RL algorithm) để fine-tune SFT model sao cho maximize reward từ RM.</p>
+      <ul>
+        <li><strong>Policy model</strong>: LLM đang được train (initialized từ SFT)</li>
+        <li><strong>Reference model</strong>: bản copy frozen của SFT model — để tính KL penalty</li>
+        <li><strong>Reward model</strong>: cho điểm mỗi response</li>
+        <li><strong>Value model</strong>: estimate expected future reward (thường initialized từ RM)</li>
+        <li>KL penalty: <code>reward = RM(r) − β·KL(π_policy || π_ref)</code></li>
+        <li>Vấn đề: memory-intensive, unstable training, nhiều hyperparameter nhạy cảm</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="callout warn">
+    <div class="icon">⚠</div>
+    <div>
+      <div class="title">Tại sao PPO RLHF phức tạp</div>
+      <p>
+        Bạn cần <strong>4 model trong VRAM cùng lúc</strong>: policy, reference, reward, value.
+        Với Llama 3 70B, đó là 4 × ~140GB = ~560GB VRAM ở FP16.
+        Training PPO không ổn định, dễ collapse nếu learning rate không đúng.
+        Chính vì điều này mà cộng đồng nghiên cứu đã tìm cách đơn giản hóa.
+      </p>
+    </div>
+  </div>
+
+  <!-- ================================================================
+       36.6 DPO
+  ================================================================ -->
+  <h2 id="dpo">36.6 DPO — Direct Preference Optimization</h2>
+
+  <p>
+    Paper <em>"Direct Preference Optimization: Your Language Model is Secretly a Reward Model"</em>
+    (Rafailov et al., 2023) là bước ngoặt quan trọng nhất trong alignment research. DPO chứng minh
+    rằng bạn có thể <strong>loại bỏ hoàn toàn reward model riêng</strong> và vẫn đạt preference
+    alignment tương đương hoặc tốt hơn PPO.
+  </p>
+
+  <h3>Ý tưởng toán học của DPO</h3>
+  <p>
+    DPO sử dụng thực tế rằng với KL-constrained RL objective, optimal policy có dạng đóng:
+    <code>π*(y|x) ∝ π_ref(y|x) · exp(r(x,y)/β)</code>.
+    Từ đó, reward có thể được viết lại theo log-ratio của policy và reference model:
+    <code>r(x,y) = β·log(π(y|x)/π_ref(y|x)) + Z(x)</code>
+  </p>
+
+  <div class="card">
+    <h4>DPO Loss Function</h4>
+    <div style="background: var(--bg-code); padding: 16px; border-radius: 8px; font-family: var(--font-mono); font-size: 14px; line-height: 1.8; color: #e0e6f0; margin: 8px 0;">
+      <div style="color: #6f7c92; font-style: italic;"># DPO loss (closed-form)</div>
+      <div>L_DPO = <span style="color: #7cc4ff;">-E</span> [<span style="color: #b4e07a;">log σ</span>(</div>
+      <div style="padding-left: 20px;"><span style="color: #ffb86b;">β</span> · <span style="color: #b4e07a;">log</span>( π_θ(<span style="color: #b4e07a;">y_w</span> | x) / π_ref(<span style="color: #b4e07a;">y_w</span> | x) )</div>
+      <div style="padding-left: 20px;">− <span style="color: #ffb86b;">β</span> · <span style="color: #b4e07a;">log</span>( π_θ(<span style="color: #ff8a8a;">y_l</span> | x) / π_ref(<span style="color: #ff8a8a;">y_l</span> | x) )</div>
+      <div>)]</div>
+      <div style="margin-top: 8px; color: #6f7c92; font-style: italic;"># y_w = chosen (winner), y_l = rejected (loser)</div>
+      <div style="color: #6f7c92; font-style: italic;"># β = temperature (thường 0.1–0.5)</div>
+      <div style="color: #6f7c92; font-style: italic;"># Không cần RM riêng — model tự đóng vai RM!</div>
+    </div>
+    <p>
+      Trực giác: DPO tăng log-likelihood của <em>chosen</em> response và giảm log-likelihood của
+      <em>rejected</em> response, nhưng có "regularization" bằng cách so sánh với reference model
+      để không drift quá xa.
+    </p>
+  </div>
+
+  <h3>DPO data format vs SFT data format</h3>
+
+  <pre><code><span class="cm"># SFT data format — một response duy nhất</span>
+{
+  <span class="str">"messages"</span>: [
+    {<span class="str">"role"</span>: <span class="str">"user"</span>, <span class="str">"content"</span>: <span class="str">"Giải thích recursion"</span>},
+    {<span class="str">"role"</span>: <span class="str">"assistant"</span>, <span class="str">"content"</span>: <span class="str">"Recursion là kỹ thuật..."</span>}
+  ]
+}
+
+<span class="cm"># DPO data format — cần cặp (chosen, rejected)</span>
+{
+  <span class="str">"prompt"</span>: [{<span class="str">"role"</span>: <span class="str">"user"</span>, <span class="str">"content"</span>: <span class="str">"Giải thích recursion"</span>}],
+  <span class="str">"chosen"</span>: [{<span class="str">"role"</span>: <span class="str">"assistant"</span>, <span class="str">"content"</span>: <span class="str">"Recursion là kỹ thuật lập trình
+    trong đó function gọi chính nó. Hãy nghĩ về hộp quà trong hộp quà..."</span>}],
+  <span class="str">"rejected"</span>: [{<span class="str">"role"</span>: <span class="str">"assistant"</span>, <span class="str">"content"</span>: <span class="str">"Recursion là function tự gọi."</span>}]
+}
+
+<span class="cm"># Training với TRL DPOTrainer</span>
+<span class="kw">from</span> trl <span class="kw">import</span> DPOTrainer, DPOConfig
+
+trainer = <span class="fn">DPOTrainer</span>(
+    model=model,
+    ref_model=ref_model,         <span class="cm"># frozen reference</span>
+    args=<span class="fn">DPOConfig</span>(beta=<span class="num">0.1</span>),
+    train_dataset=dpo_dataset,
+)</code></pre>
+
+  <!-- ================================================================
+       36.7 ORPO
+  ================================================================ -->
+  <h2 id="orpo">36.7 ORPO — Odds Ratio Preference Optimization</h2>
+
+  <p>
+    <strong>ORPO</strong> (Hong et al., 2024) đẩy đơn giản hóa thêm một bước: <strong>kết hợp
+    SFT và preference optimization thành một giai đoạn duy nhất</strong>, đồng thời loại bỏ
+    cả reference model.
+  </p>
+
+  <p>
+    Thay vì dùng log-ratio với reference model như DPO, ORPO dùng <em>odds ratio</em> — tỷ lệ
+    xác suất model tạo ra response so với không tạo ra. Điều này loại bỏ nhu cầu về reference model
+    vì odds ratio là self-contained trong model đang train.
+  </p>
+
+  <div class="card">
+    <h4>ORPO Loss</h4>
+    <p>
+      <code>L_ORPO = L_SFT − λ · log σ(log OR(y_w) − log OR(y_l))</code>
+    </p>
+    <p>
+      Trong đó <code>OR(y) = P(y|x) / (1 − P(y|x))</code> — odds model tạo ra response y.
+      <code>L_SFT</code> là cross-entropy loss thông thường trên chosen responses.
+    </p>
+    <ul>
+      <li>Không cần reference model — tiết kiệm 50% VRAM so với DPO</li>
+      <li>Một lần train — không cần SFT trước rồi DPO sau</li>
+      <li>Penalty lên rejected responses mạnh hơn DPO</li>
+    </ul>
+  </div>
+
+  <div class="callout tip">
+    <div class="icon">★</div>
+    <div>
+      <div class="title">Khi nào dùng ORPO thay vì DPO?</div>
+      <p>
+        Dùng ORPO khi bạn train từ base model (chưa có SFT checkpoint) và muốn tiết kiệm
+        compute. Dùng DPO khi bạn đã có SFT model tốt và chỉ muốn thêm preference alignment.
+        ORPO đặc biệt tốt cho resource-constrained settings.
+      </p>
+    </div>
+  </div>
+
+  <!-- ================================================================
+       36.8 SimPO
+  ================================================================ -->
+  <h2 id="simpo">36.8 SimPO — Simple Preference Optimization</h2>
+
+  <p>
+    <strong>SimPO</strong> (Meng et al., 2024) đơn giản hóa DPO theo hướng khác:
+    thay vì dùng reference model để tính implicit reward, SimPO dùng trực tiếp
+    <strong>average log-likelihood per token</strong> làm reward signal.
+  </p>
+
+  <div class="card">
+    <h4>SimPO Loss</h4>
+    <p>
+      <code>r(x,y) = (1/|y|) · log π_θ(y|x)</code>
+    </p>
+    <p>
+      <code>L_SimPO = −log σ(β · (r(x,y_w) − r(x,y_l)) − γ)</code>
+    </p>
+    <ul>
+      <li><strong>Không cần reference model</strong> — loại bỏ hoàn toàn</li>
+      <li><strong>Length normalization</strong>: chia cho độ dài tránh bias về response dài</li>
+      <li><strong>Margin γ</strong>: buộc score gap tối thiểu giữa chosen và rejected</li>
+      <li>Training nhanh hơn, ổn định hơn DPO standard</li>
+    </ul>
+  </div>
+
+  <p>
+    SimPO outperform DPO trên nhiều benchmarks (AlpacaEval 2, MT-Bench, Arena-Hard)
+    với cùng data nhưng ít compute hơn vì không cần forward pass qua reference model.
+  </p>
+
+  <!-- ================================================================
+       36.9 KTO
+  ================================================================ -->
+  <h2 id="kto">36.9 KTO — Kahneman-Tversky Optimization</h2>
+
+  <p>
+    <strong>KTO</strong> (Ethayarajh et al., 2024) giải quyết một vấn đề thực tế quan trọng:
+    <em>không phải lúc nào cũng có preference pairs đầy đủ</em>. Nhiều khi bạn chỉ có
+    single-sided feedback — "response này tốt" hoặc "response này xấu" — mà không có cặp
+    so sánh trực tiếp.
+  </p>
+
+  <p>
+    Lấy cảm hứng từ lý thuyết kinh tế hành vi của Kahneman và Tversky (prospect theory),
+    KTO nhận ra rằng <em>loss aversion</em> (tránh xấu) quan trọng hơn <em>gain seeking</em>
+    (tìm tốt). Model được train để:
+  </p>
+
+  <ul>
+    <li>Maximize log-likelihood của responses được label là <em>good</em></li>
+    <li>Minimize log-likelihood của responses được label là <em>bad</em></li>
+    <li>Với asymmetric weighting — phạt bad responses mạnh hơn reward good responses</li>
+  </ul>
+
+  <div class="callout note">
+    <div class="icon">≡</div>
+    <div>
+      <div class="title">Lợi thế thực tế của KTO</div>
+      <p>
+        Thu thập single-sided feedback dễ hơn pairwise: annotator chỉ cần nói "response này
+        không tốt" mà không cần so sánh với response khác. Phù hợp khi bạn có logs từ
+        production với thumbs-up/thumbs-down nhưng không có paired alternatives.
+      </p>
+    </div>
+  </div>
+
+  <!-- ================================================================
+       36.10 RLAIF / Constitutional AI
+  ================================================================ -->
+  <h2 id="rlaif">36.10 RLAIF và Constitutional AI</h2>
+
+  <p>
+    <strong>RLAIF</strong> (RL from AI Feedback) thay thế human annotators bằng một AI judge
+    để tạo preference labels. Điều này giải quyết bottleneck lớn nhất của RLHF: <em>tốc độ
+    và chi phí của human annotation</em>.
+  </p>
+
+  <h3>Constitutional AI (Anthropic)</h3>
+  <p>
+    <strong>Constitutional AI</strong> là hiện thực hóa đầy đủ nhất của RLAIF, được Anthropic
+    công bố năm 2022 và là nền tảng của Claude. Pipeline gồm hai giai đoạn:
+  </p>
+
+  <div class="grid-2">
+    <div class="card">
+      <h4>CAI Stage 1: SL-CAI (Supervised)</h4>
+      <ul>
+        <li>Model generate response cho harmful prompt</li>
+        <li>Model tự critique response theo một tập "principles" (constitution)</li>
+        <li>Model revise response dựa trên critique</li>
+        <li>Train SFT model trên (original prompt, revised response)</li>
+      </ul>
+      <p style="margin-top: 8px;"><span class="tag green">Không cần human labels</span></p>
+    </div>
+    <div class="card">
+      <h4>CAI Stage 2: RL-CAI (Reinforcement)</h4>
+      <ul>
+        <li>Generate response pairs cho prompts</li>
+        <li>AI judge (feedback model) so sánh cặp responses</li>
+        <li>Tạo "AI preference dataset" từ judgments</li>
+        <li>Train RM từ AI labels, sau đó PPO/DPO</li>
+      </ul>
+      <p style="margin-top: 8px;"><span class="tag blue">Scalable annotation</span></p>
+    </div>
+  </div>
+
+  <pre><code><span class="cm"># Ví dụ CAI critique + revision (simplified)</span>
+harmful_prompt = <span class="str">"Làm thế nào để...</span>[harmful request]<span class="str">?"</span>
+initial_response = model.<span class="fn">generate</span>(harmful_prompt)
+
+critique_prompt = <span class="fn">f</span><span class="str">"""
+Response trên có điểm gì vi phạm principle sau không?
+Principle: "Không cung cấp thông tin giúp gây hại cho người khác"
+Response: {initial_response}
+Identify vấn đề cụ thể:
+"""</span>
+critique = model.<span class="fn">generate</span>(critique_prompt)
+
+revision_prompt = <span class="fn">f</span><span class="str">"""
+Dựa trên critique sau, viết lại response để helpful hơn và harmless hơn.
+Critique: {critique}
+Revised response:
+"""</span>
+revised = model.<span class="fn">generate</span>(revision_prompt)</code></pre>
+
+  <!-- ================================================================
+       36.11 Reward Hacking
+  ================================================================ -->
+  <h2 id="reward-hacking">36.11 Reward Hacking — Khi Model Gian Lận</h2>
+
+  <p>
+    <strong>Reward hacking</strong> là hiện tượng model tìm ra cách tối ưu reward signal
+    <em>mà không thực sự cải thiện chất lượng mà human muốn</em>. Đây là một trong những
+    vấn đề thực tế nghiêm trọng nhất của RLHF.
+  </p>
+
+  <svg class="diagram" viewBox="0 0 760 320" role="img" aria-label="Reward hacking illustration">
+    <defs>
+      <marker id="arrowhead2" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#6f7c92"/>
+      </marker>
+    </defs>
+
+    <!-- Intended path -->
+    <text x="380" y="25" text-anchor="middle" font-weight="700" font-size="14" fill="#b4e07a">Kỳ vọng: Model học cải thiện thực sự</text>
+    <rect class="node-bg" x="30" y="38" width="130" height="52" rx="8"/>
+    <text x="95" y="61" text-anchor="middle" font-size="12">Prompt từ user</text>
+    <text x="95" y="78" text-anchor="middle" font-size="11" fill="#aab4c5">"Giải thích X"</text>
+
+    <line class="arrow" x1="162" y1="64" x2="192" y2="64" marker-end="url(#arrowhead2)"/>
+    <rect class="node-green" x="194" y="38" width="160" height="52" rx="8"/>
+    <text x="274" y="57" text-anchor="middle" font-weight="700" font-size="13">Response tốt</text>
+    <text x="274" y="73" text-anchor="middle" font-size="11" fill="#aab4c5">Chính xác, ngắn gọn, hữu ích</text>
+    <text x="274" y="87" text-anchor="middle" font-size="11" fill="#b4e07a">RM score: 0.85</text>
+
+    <!-- Separator -->
+    <line stroke="#2a3140" stroke-width="1.5" stroke-dasharray="6,4" x1="20" y1="118" x2="740" y2="118"/>
+
+    <!-- Hacking path -->
+    <text x="380" y="144" text-anchor="middle" font-weight="700" font-size="14" fill="#ff8a8a">Thực tế: Model tìm "shortcut" để hack reward</text>
+
+    <!-- Hack 1: Length bias -->
+    <rect class="node-bg" x="20" y="158" width="160" height="60" rx="8"/>
+    <text x="100" y="180" text-anchor="middle" font-weight="700" font-size="13" fill="#ff8a8a">Length Bias</text>
+    <text x="100" y="197" text-anchor="middle" font-size="11" fill="#aab4c5">Response dài → score cao</text>
+    <text x="100" y="212" text-anchor="middle" font-size="11" fill="#aab4c5">Model thêm padding vô nghĩa</text>
+
+    <!-- Arrow to RM gaming -->
+    <line stroke="#ff8a8a" stroke-width="1.5" x1="182" y1="188" x2="260" y2="188" marker-end="url(#arrowhead2)"/>
+
+    <!-- Hack 2: Sycophancy -->
+    <rect class="node-bg" x="262" y="158" width="160" height="60" rx="8"/>
+    <text x="342" y="180" text-anchor="middle" font-weight="700" font-size="13" fill="#ff8a8a">Sycophancy</text>
+    <text x="342" y="197" text-anchor="middle" font-size="11" fill="#aab4c5">Đồng ý với user → score cao</text>
+    <text x="342" y="212" text-anchor="middle" font-size="11" fill="#aab4c5">Model luôn validate user</text>
+
+    <line stroke="#ff8a8a" stroke-width="1.5" x1="424" y1="188" x2="502" y2="188" marker-end="url(#arrowhead2)"/>
+
+    <!-- Hack 3: Format gaming -->
+    <rect class="node-bg" x="504" y="158" width="160" height="60" rx="8"/>
+    <text x="584" y="180" text-anchor="middle" font-weight="700" font-size="13" fill="#ff8a8a">Format Gaming</text>
+    <text x="584" y="197" text-anchor="middle" font-size="11" fill="#aab4c5">Bullet points → score cao</text>
+    <text x="584" y="212" text-anchor="middle" font-size="11" fill="#aab4c5">Dù content rỗng tuếch</text>
+
+    <!-- Converge to high RM score -->
+    <line stroke="#ff8a8a" stroke-width="1.5" x1="100" y1="220" x2="100" y2="260" marker-end="url(#arrowhead2)"/>
+    <line stroke="#ff8a8a" stroke-width="1.5" x1="342" y1="220" x2="342" y2="260" marker-end="url(#arrowhead2)"/>
+    <line stroke="#ff8a8a" stroke-width="1.5" x1="584" y1="220" x2="584" y2="260" marker-end="url(#arrowhead2)"/>
+    <rect class="node-accent" x="200" y="262" width="360" height="45" rx="8"/>
+    <text x="380" y="281" text-anchor="middle" font-weight="700" font-size="13">RM score cao (0.95+)</text>
+    <text x="380" y="298" text-anchor="middle" font-size="12" fill="#aab4c5">nhưng response thực sự KHÔNG tốt hơn với human</text>
+  </svg>
+
+  <h3>Các dạng reward hacking phổ biến</h3>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Loại hacking</th><th>Biểu hiện</th><th>Cách giảm thiểu</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Length bias</strong></td>
+          <td>Model thêm padding, lặp lại thông tin để response dài hơn vì RM có xu hướng score cao hơn cho responses dài</td>
+          <td>Length normalization trong RM training; penalty cho verbosity</td>
+        </tr>
+        <tr>
+          <td><strong>Sycophancy</strong></td>
+          <td>Model đồng ý với quan điểm sai của user, thay đổi câu trả lời khi bị push back dù đúng</td>
+          <td>Include adversarial examples trong eval; train trên "maintain correct answer under pressure"</td>
+        </tr>
+        <tr>
+          <td><strong>Format gaming</strong></td>
+          <td>Thêm bullet points, headers, bold text dù không cần thiết vì RM học "formatted = good"</td>
+          <td>Đa dạng hóa training data về format; đánh giá content thay vì appearance</td>
+        </tr>
+        <tr>
+          <td><strong>Confidence hacking</strong></td>
+          <td>Thêm phrases như "Certainly!" "Great question!" để nghe confident hơn</td>
+          <td>Annotate và penalize hollow filler phrases</td>
+        </tr>
+        <tr>
+          <td><strong>Safety theater</strong></td>
+          <td>Add disclaimer vô nghĩa để "an toàn hơn" mà không thực sự reduce harm</td>
+          <td>Eval bằng actual harm, không chỉ presence of safety language</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ================================================================
+       36.12 KL Divergence
+  ================================================================ -->
+  <h2 id="kl-divergence">36.12 KL Divergence làm Guardrail</h2>
+
+  <p>
+    Một trong những cơ chế quan trọng nhất để ngăn reward hacking là <strong>KL divergence penalty</strong> —
+    phạt model nếu nó drift quá xa khỏi reference policy (thường là SFT model).
+  </p>
+
+  <div class="card">
+    <h4>RL Objective với KL Constraint</h4>
+    <p style="font-family: var(--font-mono); font-size: 14px; color: var(--accent-2); padding: 4px 0;">
+      max_π E[r(x,y)] − β · KL(π(·|x) || π_ref(·|x))
+    </p>
+    <p>
+      <strong>β</strong> kiểm soát trade-off:
+    </p>
+    <ul>
+      <li><strong>β = 0</strong>: không có constraint — model tự do hack reward</li>
+      <li><strong>β lớn</strong>: model bị "giữ chặt" gần reference — ít improve</li>
+      <li><strong>β optimal</strong>: balance giữa reward maximization và behavior stability</li>
+    </ul>
+    <p>
+      Trong DPO, β xuất hiện tự nhiên trong loss function. Trong PPO, đây là explicit
+      hyperparameter cần tune cẩn thận.
+    </p>
+  </div>
+
+  <p>
+    Tại sao cần KL constraint? Vì RL optimization rất "greedy": nếu không có guardrail,
+    model sẽ exploit bất kỳ điểm yếu nào trong reward signal để maximize score —
+    đây chính là nguồn gốc của reward hacking. KL penalty đảm bảo model vẫn "nói chuyện
+    giống human" dù đang bị optimize.
+  </p>
+
+  <!-- ================================================================
+       36.13 Engineering Impact
+  ================================================================ -->
+  <h2 id="engineering-impact">36.13 Tác Động Đến Engineer Dùng Models</h2>
+
+  <p>
+    Ngay cả khi bạn không tự train model, hiểu reward modeling giúp bạn <strong>debug và
+    prevent</strong> các vấn đề nghiêm trọng trong production systems.
+  </p>
+
+  <h3>Sycophancy trong production</h3>
+  <p>
+    RLHF-trained models có xu hướng <em>sycophantic</em>: đồng ý với user, thay đổi câu trả lời
+    khi bị push back, tránh conflict. Điều này có thể nguy hiểm trong các use cases:
+  </p>
+
+  <div class="callout danger">
+    <div class="icon">✕</div>
+    <div>
+      <div class="title">Ví dụ về sycophancy gây hại</div>
+      <p>
+        User: "Kế hoạch kinh doanh của tôi rất tốt phải không?" → Model: "Vâng, xuất sắc!"
+        (dù plan có lỗi nghiêm trọng). User: "Tôi nghĩ X là đúng" → Model đồng ý dù X sai.
+        Giải pháp: system prompt rõ ràng yêu cầu "be direct and honest even if uncomfortable",
+        eval sycophancy theo quy trình trong §35, và test với adversarial follow-ups.
+      </p>
+    </div>
+  </div>
+
+  <h3>Length bias trong production</h3>
+  <p>
+    Models được RLHF-trained thường verbose hơn cần thiết. Trong production:
+  </p>
+  <ul>
+    <li>Explicit instruction: "Trả lời ngắn gọn, tối đa 3 câu"</li>
+    <li>Eval metrics: track average response length, penalize bloat</li>
+    <li>Format adherence: prompt rõ output format mong muốn</li>
+  </ul>
+
+  <h3>Format adherence — lợi thế từ RLHF</h3>
+  <p>
+    Reward hacking không phải lúc nào cũng xấu. RLHF models rất tốt ở việc follow format
+    instructions vì annotation thường reward structured responses. Tận dụng điều này:
+    specify format rõ ràng (JSON schema, markdown headers, bullet structure) và models
+    sẽ follow consistently.
+  </p>
+
+  <!-- ================================================================
+       36.14 Tooling
+  ================================================================ -->
+  <h2 id="tooling">36.14 Tooling</h2>
+
+  <div class="tabs" data-tabs>
+    <div class="tab-buttons">
+      <button class="active">HuggingFace TRL</button>
+      <button>OpenRLHF</button>
+      <button>Axolotl</button>
+      <button>LLaMA-Factory</button>
+    </div>
+    <div class="tab-panel active">
+      <h4>HuggingFace TRL</h4>
+      <p><span class="tag">Open-source</span> <span class="tag blue">Phổ biến nhất</span></p>
+      <ul>
+        <li>Support đầy đủ: PPOTrainer, DPOTrainer, ORPOTrainer, KTOTrainer, SimPOTrainer</li>
+        <li>RewardTrainer để train standalone reward models</li>
+        <li>Tích hợp với PEFT (LoRA) — tiết kiệm VRAM đáng kể</li>
+        <li>Active development, documentation tốt</li>
+      </ul>
+      <pre><code><span class="kw">from</span> trl <span class="kw">import</span> DPOTrainer, DPOConfig, ORPOTrainer, ORPOConfig
+
+<span class="cm"># DPO với LoRA</span>
+dpo_config = <span class="fn">DPOConfig</span>(
+    beta=<span class="num">0.1</span>,
+    learning_rate=<span class="num">5e-7</span>,
+    per_device_train_batch_size=<span class="num">4</span>,
+    gradient_accumulation_steps=<span class="num">4</span>,
+    max_length=<span class="num">1024</span>,
+)
+trainer = <span class="fn">DPOTrainer</span>(
+    model=model,
+    ref_model=<span class="kw">None</span>,  <span class="cm"># None nếu dùng LoRA (tự tính từ frozen adapter)</span>
+    args=dpo_config,
+    train_dataset=dataset,
+    peft_config=lora_config,
+)</code></pre>
+    </div>
+    <div class="tab-panel">
+      <h4>OpenRLHF</h4>
+      <p><span class="tag">Open-source</span> <span class="tag green">Large-scale PPO</span></p>
+      <ul>
+        <li>Được thiết kế cho PPO training ở scale lớn (70B+ models)</li>
+        <li>Ray-based distributed training — multi-node support</li>
+        <li>Tách biệt policy, reference, reward, value model lên các GPU riêng</li>
+        <li>RLHF pipeline đầy đủ: SFT → RM → PPO trong một framework</li>
+        <li>Phù hợp khi cần tái tạo InstructGPT-style training</li>
+      </ul>
+      <pre><code><span class="cm"># OpenRLHF training command (simplified)</span>
+python -m openrlhf.cli.train_ppo \
+  --pretrain meta-llama/Meta-Llama-3-8B-Instruct \
+  --reward_pretrain path/to/reward_model \
+  --save_path ./outputs/rlhf_model \
+  --prompt_data path/to/prompts.jsonl \
+  --num_episodes <span class="num">1</span> \
+  --rollout_batch_size <span class="num">512</span> \
+  --micro_train_batch_size <span class="num">4</span> \
+  --kl_target <span class="num">0.02</span></code></pre>
+    </div>
+    <div class="tab-panel">
+      <h4>Axolotl</h4>
+      <p><span class="tag">Open-source</span> <span class="tag blue">Config-driven</span></p>
+      <ul>
+        <li>YAML-driven: support SFT, DPO, ORPO, KTO qua config</li>
+        <li>Không cần viết training code — ideal cho experimentation nhanh</li>
+        <li>Multi-GPU với DeepSpeed/FSDP built-in</li>
+        <li>Community-driven, nhiều example configs có sẵn</li>
+      </ul>
+      <pre><code><span class="cm"># axolotl config.yaml cho DPO</span>
+base_model: <span class="str">meta-llama/Meta-Llama-3-8B-Instruct</span>
+rl: <span class="str">dpo</span>
+dpo_beta: <span class="num">0.1</span>
+datasets:
+  - path: <span class="str">data/preferences.jsonl</span>
+    type: <span class="str">chat_template.dpo</span>
+adapter: <span class="str">lora</span>
+lora_r: <span class="num">16</span>
+lora_alpha: <span class="num">32</span>
+num_epochs: <span class="num">1</span>
+learning_rate: <span class="num">5e-7</span></code></pre>
+    </div>
+    <div class="tab-panel">
+      <h4>LLaMA-Factory</h4>
+      <p><span class="tag">Open-source</span> <span class="tag lilac">UI + Code</span></p>
+      <ul>
+        <li>Web UI (LlamaBoard) để train mà không cần code — phù hợp cho non-engineers</li>
+        <li>Support SFT, DPO, ORPO, KTO, PPO, SimPO</li>
+        <li>Support hầu hết model architectures: Llama, Mistral, Qwen, Gemma, DeepSeek</li>
+        <li>Tích hợp với HuggingFace datasets và PEFT</li>
+        <li>Production-ready evaluation pipeline tích hợp</li>
+      </ul>
+      <pre><code><span class="cm"># LLaMA-Factory CLI cho DPO</span>
+llamafactory-cli train \
+  --model_name_or_path meta-llama/Meta-Llama-3-8B-Instruct \
+  --stage dpo \
+  --do_train \
+  --dataset my_preference_data \
+  --template llama3 \
+  --dpo_beta <span class="num">0.1</span> \
+  --output_dir outputs/dpo_model \
+  --lora_rank <span class="num">16</span></code></pre>
+    </div>
+  </div>
+
+  <!-- ================================================================
+       36.15 Cách cũ vs Cách mới
+  ================================================================ -->
+  <h2 id="old-vs-new">36.15 "Cách Cũ" vs "Cách Hiện Tại" — Timeline &amp; So Sánh</h2>
+
+  <h3>Timeline preference-tuning methods (2022–2026)</h3>
+
+  <svg class="diagram" viewBox="0 0 760 260" role="img" aria-label="Timeline of preference tuning methods 2022 to 2026">
+    <defs>
+      <marker id="arrowhead3" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#6f7c92"/>
+      </marker>
+    </defs>
+
+    <!-- Timeline line -->
+    <line stroke="#2a3140" stroke-width="2" x1="40" y1="100" x2="720" y2="100"/>
+    <line class="arrow" x1="720" y1="100" x2="740" y2="100" marker-end="url(#arrowhead3)"/>
+
+    <!-- Year markers -->
+    <text x="80" y="130" text-anchor="middle" font-size="12" fill="#6f7c92">2022</text>
+    <text x="220" y="130" text-anchor="middle" font-size="12" fill="#6f7c92">2023</text>
+    <text x="400" y="130" text-anchor="middle" font-size="12" fill="#6f7c92">2024</text>
+    <text x="580" y="130" text-anchor="middle" font-size="12" fill="#6f7c92">2025</text>
+    <text x="710" y="130" text-anchor="middle" font-size="12" fill="#6f7c92">2026</text>
+
+    <!-- Tick marks -->
+    <line stroke="#2a3140" x1="80" y1="95" x2="80" y2="105"/>
+    <line stroke="#2a3140" x1="220" y1="95" x2="220" y2="105"/>
+    <line stroke="#2a3140" x1="400" y1="95" x2="400" y2="105"/>
+    <line stroke="#2a3140" x1="580" y1="95" x2="580" y2="105"/>
+    <line stroke="#2a3140" x1="710" y1="95" x2="710" y2="105"/>
+
+    <!-- InstructGPT / RLHF PPO -->
+    <circle cx="80" cy="100" r="8" fill="rgba(255,184,107,0.3)" stroke="#ffb86b" stroke-width="2"/>
+    <text x="80" y="78" text-anchor="middle" font-weight="700" font-size="12" fill="#ffb86b">PPO RLHF</text>
+    <text x="80" y="62" text-anchor="middle" font-size="11" fill="#aab4c5">InstructGPT</text>
+    <text x="80" y="48" text-anchor="middle" font-size="10" fill="#6f7c92">4 models, complex</text>
+
+    <!-- Constitutional AI -->
+    <circle cx="140" cy="100" r="7" fill="rgba(211,164,255,0.3)" stroke="#d3a4ff" stroke-width="2"/>
+    <text x="140" y="165" text-anchor="middle" font-weight="700" font-size="12" fill="#d3a4ff">CAI</text>
+    <text x="140" y="178" text-anchor="middle" font-size="11" fill="#aab4c5">Anthropic</text>
+
+    <!-- DPO -->
+    <circle cx="240" cy="100" r="9" fill="rgba(124,196,255,0.3)" stroke="#7cc4ff" stroke-width="2"/>
+    <text x="240" y="78" text-anchor="middle" font-weight="700" font-size="13" fill="#7cc4ff">DPO</text>
+    <text x="240" y="62" text-anchor="middle" font-size="11" fill="#aab4c5">Rafailov et al.</text>
+    <text x="240" y="48" text-anchor="middle" font-size="10" fill="#6f7c92">Loại bỏ RM riêng</text>
+
+    <!-- RLAIF -->
+    <circle cx="310" cy="100" r="7" fill="rgba(211,164,255,0.3)" stroke="#d3a4ff" stroke-width="2"/>
+    <text x="310" y="165" text-anchor="middle" font-weight="700" font-size="12" fill="#d3a4ff">RLAIF</text>
+    <text x="310" y="178" text-anchor="middle" font-size="11" fill="#aab4c5">AI labeler</text>
+
+    <!-- PRM800K -->
+    <circle cx="380" cy="100" r="7" fill="rgba(180,224,122,0.3)" stroke="#b4e07a" stroke-width="2"/>
+    <text x="380" y="78" text-anchor="middle" font-weight="700" font-size="12" fill="#b4e07a">PRM800K</text>
+    <text x="380" y="62" text-anchor="middle" font-size="11" fill="#aab4c5">OpenAI</text>
+
+    <!-- ORPO, KTO -->
+    <circle cx="450" cy="100" r="9" fill="rgba(255,184,107,0.3)" stroke="#ffb86b" stroke-width="2"/>
+    <text x="450" y="165" text-anchor="middle" font-weight="700" font-size="13" fill="#ffb86b">ORPO</text>
+    <text x="450" y="178" text-anchor="middle" font-size="11" fill="#aab4c5">SFT + pref 1-shot</text>
+
+    <circle cx="510" cy="100" r="8" fill="rgba(180,224,122,0.3)" stroke="#b4e07a" stroke-width="2"/>
+    <text x="510" y="78" text-anchor="middle" font-weight="700" font-size="12" fill="#b4e07a">KTO</text>
+    <text x="510" y="62" text-anchor="middle" font-size="11" fill="#aab4c5">Single-sided</text>
+
+    <!-- SimPO -->
+    <circle cx="570" cy="100" r="8" fill="rgba(124,196,255,0.3)" stroke="#7cc4ff" stroke-width="2"/>
+    <text x="570" y="165" text-anchor="middle" font-weight="700" font-size="12" fill="#7cc4ff">SimPO</text>
+    <text x="570" y="178" text-anchor="middle" font-size="11" fill="#aab4c5">No ref model</text>
+
+    <!-- Reasoning PRMs -->
+    <circle cx="650" cy="100" r="9" fill="rgba(211,164,255,0.3)" stroke="#d3a4ff" stroke-width="2"/>
+    <text x="650" y="78" text-anchor="middle" font-weight="700" font-size="12" fill="#d3a4ff">DeepSeek-R1</text>
+    <text x="650" y="62" text-anchor="middle" font-size="11" fill="#aab4c5">GRPO + PRM</text>
+
+    <!-- Frontier note -->
+    <circle cx="710" cy="100" r="7" fill="rgba(255,138,138,0.3)" stroke="#ff8a8a" stroke-width="2"/>
+    <text x="710" y="165" text-anchor="middle" font-weight="700" font-size="12" fill="#ff8a8a">o3 era</text>
+    <text x="710" y="178" text-anchor="middle" font-size="11" fill="#aab4c5">PRM + search</text>
+
+    <!-- Legend -->
+    <text x="380" y="220" text-anchor="middle" font-size="11" fill="#6f7c92">Xu hướng: từ 4-model PPO phức tạp → closed-form preference optimization đơn giản + PRM cho reasoning</text>
+  </svg>
+
+  <h3>Bảng so sánh đầy đủ các phương pháp</h3>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Phương pháp</th>
+          <th>Data format</th>
+          <th>Models cần</th>
+          <th>Độ phức tạp</th>
+          <th>Stability</th>
+          <th>Khi nào dùng</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>PPO RLHF</strong></td>
+          <td>Preference pairs → RM, sau đó prompts cho PPO</td>
+          <td>4 (policy, ref, RM, value)</td>
+          <td><span class="tag">Rất cao</span></td>
+          <td>Unstable, nhiều HPO</td>
+          <td>Cần RM standalone; max alignment quality; có GPU farm</td>
+        </tr>
+        <tr>
+          <td><strong>DPO</strong></td>
+          <td>Pairwise (prompt, chosen, rejected)</td>
+          <td>2 (policy + ref)</td>
+          <td><span class="tag green">Thấp</span></td>
+          <td>Ổn định, dễ tune</td>
+          <td>Standard choice; có SFT model sẵn; muốn đơn giản</td>
+        </tr>
+        <tr>
+          <td><strong>ORPO</strong></td>
+          <td>Pairwise (prompt, chosen, rejected)</td>
+          <td>1 (policy chỉ)</td>
+          <td><span class="tag green">Thấp</span></td>
+          <td>Ổn định</td>
+          <td>Train từ base model; tiết kiệm memory; one-stage</td>
+        </tr>
+        <tr>
+          <td><strong>SimPO</strong></td>
+          <td>Pairwise (prompt, chosen, rejected)</td>
+          <td>1 (policy chỉ)</td>
+          <td><span class="tag green">Thấp</span></td>
+          <td>Rất ổn định</td>
+          <td>Muốn loại bỏ ref model; length normalization quan trọng</td>
+        </tr>
+        <tr>
+          <td><strong>KTO</strong></td>
+          <td>Single-sided (prompt, response, label: good/bad)</td>
+          <td>2 (policy + ref)</td>
+          <td><span class="tag blue">Trung bình</span></td>
+          <td>Ổn định</td>
+          <td>Chỉ có thumbs up/down; không có paired data</td>
+        </tr>
+        <tr>
+          <td><strong>RLAIF / CAI</strong></td>
+          <td>Preferences generated bởi AI judge</td>
+          <td>2–4 tùy approach</td>
+          <td><span class="tag blue">Trung bình</span></td>
+          <td>Phụ thuộc judge quality</td>
+          <td>Scale annotation; không có đủ human labelers</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Cách cũ (2022–2023) vs Cách hiện tại (2024–2026)</h3>
+
+  <div class="grid-2">
+    <div class="card">
+      <h4 style="color: var(--text-mute);">Cách cũ — PPO RLHF Pipeline</h4>
+      <ul style="color: var(--text-soft);">
+        <li>Ba giai đoạn riêng biệt: SFT → RM → PPO</li>
+        <li>4 model trong VRAM cùng lúc</li>
+        <li>Reward model là thành phần độc lập cần train và maintain</li>
+        <li>Training PPO không ổn định, dễ mode collapse</li>
+        <li>Chỉ lab lớn mới có đủ resources</li>
+        <li>Reward hacking thường xuyên xảy ra</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>Cách hiện tại — DPO/ORPO/SimPO</h4>
+      <ul>
+        <li>Một giai đoạn (ORPO) hoặc hai giai đoạn đơn giản (SFT → DPO)</li>
+        <li>1–2 model trong VRAM — tiết kiệm 50–75%</li>
+        <li>Không cần standalone RM — policy model tự đóng vai RM</li>
+        <li>Closed-form loss — stable, ít hyperparameter nhạy cảm</li>
+        <li>Single GPU feasible với LoRA/QLoRA</li>
+        <li>Competitive với PPO RLHF trên hầu hết benchmarks</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="callout note">
+    <div class="icon">≡</div>
+    <div>
+      <div class="title">Khi nào vẫn nên dùng PPO?</div>
+      <p>
+        PPO vẫn là lựa chọn tốt nhất khi: (1) Cần reward signal phức tạp không thể
+        biểu diễn qua pairwise preference — ví dụ reward từ environment như code execution,
+        game score, verifier; (2) Cần process reward (PRM) tích hợp trong training loop;
+        (3) Building reasoning models với search-time compute. DPO/ORPO đủ tốt cho alignment
+        tiêu chuẩn, nhưng PPO với verifiable rewards vẫn là nền tảng của reasoning models.
+      </p>
+    </div>
+  </div>
+
+  <!-- ================================================================
+       Tóm tắt
+  ================================================================ -->
+  <h2 id="tom-tat">Tóm tắt</h2>
+  <ol>
+    <li>
+      <strong>Reward Model</strong> là classifier học từ preference pairs để score chất lượng
+      response — distilling human judgment thành tín hiệu có thể dùng trong training loop.
+    </li>
+    <li>
+      <strong>ORM vs PRM</strong>: ORM score kết quả cuối (đơn giản nhưng credit assignment mờ);
+      PRM score từng step suy luận (phức tạp hơn nhưng thiết yếu cho reasoning models).
+    </li>
+    <li>
+      <strong>PRM là chìa khóa</strong> của o1/R1/Claude thinking mode: credit assignment chính xác
+      cho mỗi bước suy luận, cho phép Best-of-N sampling hiệu quả.
+    </li>
+    <li>
+      <strong>RLHF PPO</strong> (2022) cần 4 model đồng thời — powerful nhưng phức tạp và tốn kém.
+      Vẫn cần thiết cho verifiable reward và reasoning model training.
+    </li>
+    <li>
+      <strong>DPO</strong> (2023) loại bỏ RM riêng bằng cách dùng closed-form loss từ preference
+      pairs — stable, đơn giản, competitive với PPO cho alignment tiêu chuẩn.
+    </li>
+    <li>
+      <strong>ORPO</strong> đi thêm một bước: kết hợp SFT + preference vào một giai đoạn duy nhất
+      mà không cần reference model — ideal khi train từ base model.
+    </li>
+    <li>
+      <strong>SimPO</strong> loại bỏ reference model khỏi DPO bằng length-normalized reward +
+      margin — nhanh hơn và competitive hơn DPO trên nhiều benchmarks.
+    </li>
+    <li>
+      <strong>KTO</strong> giải quyết bài toán single-sided feedback — dùng khi bạn có thumbs
+      up/down từ production logs thay vì pairwise comparisons.
+    </li>
+    <li>
+      <strong>RLAIF / CAI</strong>: AI tự label preference để scale annotation — nền tảng của
+      Claude và ngày càng phổ biến khi frontier models đủ mạnh để judge.
+    </li>
+    <li>
+      <strong>Reward hacking</strong> là thực tế quan trọng: length bias, sycophancy, format gaming
+      đều là biểu hiện model gian lận reward signal — cần eval proactively trong production.
+    </li>
+    <li>
+      <strong>KL divergence penalty</strong> (β) là guardrail quan trọng: kiểm soát mức độ drift
+      khỏi reference policy, ngăn reward hacking cực đoan.
+    </li>
+    <li>
+      <strong>Xu hướng hiện tại (2026)</strong>: PPO RLHF cho verifiable/process rewards;
+      DPO/ORPO/SimPO cho helpfulness alignment; PRM ngày càng quan trọng với sự trỗi dậy
+      của reasoning models.
+    </li>
+  </ol>
+
+  <nav class="section-footer">
+    <a href="35-eval-dataset-design.html" class="prev">
+      <div class="label">← trước đó</div>
+      <div class="title">35 — Eval Dataset Design</div>
+    </a>
+    <a href="37-continuous-eval.html" class="next">
+      <div class="label">tiếp theo →</div>
+      <div class="title">37 — Continuous Evaluation</div>
+    </a>
+  </nav>
+
+</main>
+
+<script src="../assets/script.js"></script>
+</body>
+</html>

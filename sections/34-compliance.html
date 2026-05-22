@@ -1,0 +1,1092 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>34 · Compliance &amp; Governance — AI Engineering</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<nav class="top-nav">
+  <div class="brand"><span class="dot"></span> AI Engineering</div>
+  <div class="crumbs"><a href="../index.html">Mục lục</a> › Phần 10 · <span>34 — Compliance &amp; Governance</span></div>
+  <div class="nav-actions">
+    <a href="33-privacy.html">← Trước</a>
+    <a href="35-eval-dataset-design.html">Tiếp →</a>
+  </div>
+</nav>
+
+<main class="page">
+
+  <section class="hero">
+    <span class="eyebrow">Phần 10 · §34</span>
+    <h1>Compliance &amp; Governance</h1>
+    <p class="lede">
+      Từ EU AI Act đến NIST AI RMF, từ model cards đến audit trails —
+      hướng dẫn toàn diện để xây dựng AI có trách nhiệm, đáp ứng quy định,
+      và bền vững về mặt pháp lý lẫn đạo đức.
+    </p>
+    <img class="hero-image" src="../images/34-compliance.png" alt="Hero illustration — compliance and governance" onerror="this.style.display='none'">
+  </section>
+
+  <aside class="toc">
+    <div class="toc-title">Trong trang này</div>
+    <ul>
+      <li><a href="#why-governance">34.1 Tại sao governance quan trọng</a></li>
+      <li><a href="#eu-ai-act">34.2 EU AI Act</a></li>
+      <li><a href="#nist-rmf">34.3 NIST AI RMF 1.0</a></li>
+      <li><a href="#iso42001">34.4 ISO/IEC 42001:2023</a></li>
+      <li><a href="#us-regs">34.5 Luật Mỹ: EO &amp; state laws</a></li>
+      <li><a href="#industry">34.6 Ngành đặc thù: HIPAA, GLBA, FERPA</a></li>
+      <li><a href="#soc2">34.7 SOC 2 cho AI services</a></li>
+      <li><a href="#model-cards">34.8 Model cards &amp; datasheets</a></li>
+      <li><a href="#audit-trails">34.9 Audit trails</a></li>
+      <li><a href="#bias-audits">34.10 Bias &amp; fairness audits</a></li>
+      <li><a href="#incident-response">34.11 Incident response cho AI failures</a></li>
+      <li><a href="#internal-policy">34.12 Internal AI policies</a></li>
+      <li><a href="#roadmap">34.13 Roadmap thực tế</a></li>
+      <li><a href="#old-vs-new">34.14 Cách cũ vs Cách hiện tại</a></li>
+      <li><a href="#tom-tat">Tóm tắt</a></li>
+    </ul>
+  </aside>
+
+  <!-- ─────────────────────────────────────────── 34.1 ─── -->
+  <h2 id="why-governance">34.1 Tại Sao Governance Quan Trọng</h2>
+  <p>
+    Trong nhiều năm, câu trả lời mặc định cho câu hỏi "Chúng ta có cần lo compliance cho AI không?"
+    là "sau này tính". Nhưng năm 2025–2026 đã thay đổi điều đó hoàn toàn: EU AI Act bắt đầu áp
+    dụng theo từng giai đoạn, hàng chục tiểu bang Mỹ đưa ra luật riêng, và các vụ kiện tụng liên
+    quan đến AI đang gia tăng nhanh chóng.
+  </p>
+  <p>
+    Governance không chỉ là vấn đề pháp lý. Có bốn lý do cốt lõi tại sao mọi tổ chức xây dựng
+    AI cần nghiêm túc với nó:
+  </p>
+
+  <div class="grid-2">
+    <div class="card">
+      <h4>⚖ Rủi ro pháp lý</h4>
+      <p>EU AI Act phạt tới <strong>€35 triệu</strong> hoặc 7% doanh thu toàn cầu. GDPR đã phạt
+      các công ty hàng trăm triệu EUR. Class-action liên quan đến AI bias đang nổi lên ở Mỹ.</p>
+    </div>
+    <div class="card">
+      <h4>🏷 Rủi ro thương hiệu</h4>
+      <p>Một sự cố AI — kết quả phân biệt đối xử, nội dung gây hại, data leak — có thể phá hủy
+      niềm tin của người dùng nhanh hơn bất kỳ bug phần mềm nào. Báo chí và mạng xã hội khuếch
+      đại rất nhanh.</p>
+    </div>
+    <div class="card">
+      <h4>🧭 Rủi ro đạo đức</h4>
+      <p>AI tác động đến quyết định tuyển dụng, vay vốn, y tế, giáo dục. Thiếu governance dẫn
+      đến hại thực sự cho người dùng — đặc biệt nhóm dễ tổn thương.</p>
+    </div>
+    <div class="card">
+      <h4>📋 Trách nhiệm pháp nhân</h4>
+      <p>Khi AI đưa ra quyết định sai (chẩn đoán sai, từ chối cho vay không công bằng), câu hỏi
+      "ai chịu trách nhiệm?" ngày càng rõ ràng hơn về mặt pháp luật — và tổ chức triển khai
+      thường là bên bị kiện đầu tiên.</p>
+    </div>
+  </div>
+
+  <div class="callout note">
+    <div class="icon">≡</div>
+    <div>
+      <div class="title">Bức tranh toàn cầu năm 2026</div>
+      <p>
+        EU AI Act đang trong giai đoạn áp dụng, California đã có nhiều luật về AI, Trung Quốc
+        có quy định về generative AI và thuật toán gợi ý, Singapore có Model AI Governance Framework.
+        Không còn "vùng trắng" pháp lý cho AI ở các thị trường lớn.
+      </p>
+    </div>
+  </div>
+
+  <!-- SVG Regulation Landscape Map -->
+  <svg class="diagram" viewBox="0 0 760 320" role="img" aria-label="Bản đồ quy định AI toàn cầu">
+    <defs>
+      <marker id="arr34" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#6f7c92"/>
+      </marker>
+    </defs>
+
+    <!-- EU -->
+    <rect class="node-accent" x="20" y="20" width="210" height="120" rx="10"/>
+    <text x="125" y="44" text-anchor="middle" font-weight="700" font-size="14">🇪🇺 Liên minh châu Âu</text>
+    <text x="125" y="64" text-anchor="middle" font-size="12">EU AI Act (2024–2027)</text>
+    <text x="125" y="82" text-anchor="middle" class="label-sm">Risk-based approach</text>
+    <text x="125" y="96" text-anchor="middle" class="label-sm">GPAI obligations</text>
+    <text x="125" y="110" text-anchor="middle" class="label-sm">Phạt tới €35M / 7% doanh thu</text>
+    <text x="125" y="128" text-anchor="middle" class="label-sm" style="fill:#ffb86b">Áp dụng: 2025-02 → 2027-08</text>
+
+    <!-- US Federal -->
+    <rect class="node-blue" x="270" y="20" width="210" height="120" rx="10"/>
+    <text x="375" y="44" text-anchor="middle" font-weight="700" font-size="14">🇺🇸 Liên bang Mỹ</text>
+    <text x="375" y="64" text-anchor="middle" font-size="12">EO 14110 (Biden) + follow-ups</text>
+    <text x="375" y="82" text-anchor="middle" class="label-sm">NIST AI RMF 1.0</text>
+    <text x="375" y="96" text-anchor="middle" class="label-sm">Sector-specific (HIPAA, GLBA…)</text>
+    <text x="375" y="110" text-anchor="middle" class="label-sm">NIST AI 600-1 (GPAI)</text>
+    <text x="375" y="128" text-anchor="middle" class="label-sm" style="fill:#7cc4ff">Voluntary frameworks + mandates</text>
+
+    <!-- US States -->
+    <rect class="node-green" x="520" y="20" width="220" height="120" rx="10"/>
+    <text x="630" y="44" text-anchor="middle" font-weight="700" font-size="14">🏛 Tiểu bang Mỹ</text>
+    <text x="630" y="64" text-anchor="middle" font-size="12">California AB 1008, SB 1047</text>
+    <text x="630" y="82" text-anchor="middle" class="label-sm">Colorado AI Act (2026)</text>
+    <text x="630" y="96" text-anchor="middle" class="label-sm">Texas, Illinois, NY đang soạn</text>
+    <text x="630" y="110" text-anchor="middle" class="label-sm">Patchwork of state laws</text>
+    <text x="630" y="128" text-anchor="middle" class="label-sm" style="fill:#b4e07a">Rủi ro: 50 bộ luật khác nhau</text>
+
+    <!-- Asia -->
+    <rect class="node-bg" x="20" y="175" width="210" height="120" rx="10"/>
+    <text x="125" y="199" text-anchor="middle" font-weight="700" font-size="14">🌏 Châu Á</text>
+    <text x="125" y="219" text-anchor="middle" font-size="12">Trung Quốc: Gen AI Measures</text>
+    <text x="125" y="237" text-anchor="middle" class="label-sm">Singapore: Model AI Gov Framework</text>
+    <text x="125" y="251" text-anchor="middle" class="label-sm">Nhật: Soft law approach</text>
+    <text x="125" y="265" text-anchor="middle" class="label-sm">Việt Nam: đang nghiên cứu</text>
+    <text x="125" y="283" text-anchor="middle" class="label-sm" style="fill:#aab4c5">Fragmented, evolving</text>
+
+    <!-- International Standards -->
+    <rect class="node-bg" x="270" y="175" width="210" height="120" rx="10"/>
+    <text x="375" y="199" text-anchor="middle" font-weight="700" font-size="14">📐 Tiêu chuẩn quốc tế</text>
+    <text x="375" y="219" text-anchor="middle" font-size="12">ISO/IEC 42001:2023</text>
+    <text x="375" y="237" text-anchor="middle" class="label-sm">IEEE 7000 series</text>
+    <text x="375" y="251" text-anchor="middle" class="label-sm">OECD AI Principles</text>
+    <text x="375" y="265" text-anchor="middle" class="label-sm">UNESCO AI Ethics</text>
+    <text x="375" y="283" text-anchor="middle" class="label-sm" style="fill:#aab4c5">Voluntary, certification-based</text>
+
+    <!-- Industry -->
+    <rect class="node-bg" x="520" y="175" width="220" height="120" rx="10"/>
+    <text x="630" y="199" text-anchor="middle" font-weight="700" font-size="14">🏥 Ngành đặc thù</text>
+    <text x="630" y="219" text-anchor="middle" font-size="12">Healthcare: HIPAA + FDA</text>
+    <text x="630" y="237" text-anchor="middle" class="label-sm">Finance: GLBA, SR 11-7, OCC</text>
+    <text x="630" y="251" text-anchor="middle" class="label-sm">Education: FERPA, COPPA</text>
+    <text x="630" y="265" text-anchor="middle" class="label-sm">Aviation/Auto: domain safety stds</text>
+    <text x="630" y="283" text-anchor="middle" class="label-sm" style="fill:#aab4c5">Mandatory, high stakes</text>
+  </svg>
+
+  <!-- ─────────────────────────────────────────── 34.2 ─── -->
+  <h2 id="eu-ai-act">34.2 EU AI Act: Risk Tiers, GPAI, Timeline, và Phạt</h2>
+  <p>
+    EU AI Act (chính thức có hiệu lực tháng 8/2024) là khung pháp lý AI toàn diện đầu tiên trên
+    thế giới. Nó phân loại hệ thống AI theo <strong>mức độ rủi ro</strong> và áp đặt nghĩa vụ
+    tương ứng. Bất kỳ công ty nào deploy AI cho người dùng EU — kể cả startup ngoài EU — đều nằm
+    trong phạm vi điều chỉnh.
+  </p>
+
+  <h3>Bốn cấp độ rủi ro</h3>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Tier</th>
+          <th>Định nghĩa</th>
+          <th>Ví dụ ứng dụng AI</th>
+          <th>Nghĩa vụ / Hậu quả</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="tag" style="background:rgba(255,138,138,0.15);color:#ff8a8a;border-color:rgba(255,138,138,0.3)">Unacceptable Risk</span></td>
+          <td>Đe dọa quyền cơ bản, thao túng hành vi người dùng không nhận thức</td>
+          <td>Social scoring công dân, nhận diện cảm xúc nơi làm việc, subliminal manipulation</td>
+          <td><strong>Cấm hoàn toàn</strong> — không có ngoại lệ thương mại</td>
+        </tr>
+        <tr>
+          <td><span class="tag" style="background:rgba(255,184,107,0.15);color:#ffb86b;border-color:rgba(255,184,107,0.3)">High Risk</span></td>
+          <td>Tác động lớn đến an toàn hoặc quyền lợi cơ bản</td>
+          <td>AI trong tuyển dụng, tín dụng, y tế chẩn đoán, hệ thống giáo dục, biên giới/di trú</td>
+          <td>Đăng ký EU database, conformity assessment, human oversight bắt buộc, logging</td>
+        </tr>
+        <tr>
+          <td><span class="tag">Limited Risk</span></td>
+          <td>Rủi ro minh bạch: người dùng tương tác với AI</td>
+          <td>Chatbots, deepfake generators, emotion recognition (commercial)</td>
+          <td>Bắt buộc <strong>disclosure</strong>: "Bạn đang tương tác với AI"</td>
+        </tr>
+        <tr>
+          <td><span class="tag green">Minimal Risk</span></td>
+          <td>Rủi ro thấp, tác động không đáng kể</td>
+          <td>Spam filter, AI trong game, recommender systems thông thường</td>
+          <td>Không bắt buộc — khuyến khích voluntary code of conduct</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>GPAI (General-Purpose AI) Obligations</h3>
+  <p>
+    Đây là phần đặc biệt áp dụng cho <strong>foundation model providers</strong> (OpenAI, Anthropic,
+    Google, Mistral, v.v.) — không phải chỉ người deploy. Các GPAI model với "systemic risk" (compute
+    training > 10²⁵ FLOPs) có thêm nghĩa vụ:
+  </p>
+  <ul>
+    <li>Công bố technical documentation và training data summary</li>
+    <li>Thực hiện adversarial testing (red-teaming) trước khi release</li>
+    <li>Báo cáo serious incidents cho cơ quan có thẩm quyền EU</li>
+    <li>Duy trì cybersecurity protections phù hợp</li>
+  </ul>
+
+  <h3>Timeline áp dụng 2025–2027</h3>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Ngày</th><th>Điều khoản áp dụng</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><strong>Feb 2025</strong></td><td>Cấm Unacceptable Risk AI systems có hiệu lực</td></tr>
+        <tr><td><strong>Aug 2025</strong></td><td>GPAI obligations áp dụng; AI literacy training bắt buộc</td></tr>
+        <tr><td><strong>Aug 2026</strong></td><td>High-Risk AI systems (Annex I — safety components) phải comply</td></tr>
+        <tr><td><strong>Aug 2027</strong></td><td>High-Risk AI systems (Annex III — các lĩnh vực khác) phải comply</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Mức phạt</h3>
+  <ul>
+    <li><strong>Vi phạm cấm (Unacceptable Risk)</strong>: tới €35 triệu hoặc 7% doanh thu toàn cầu</li>
+    <li><strong>Vi phạm nghĩa vụ khác</strong>: tới €15 triệu hoặc 3% doanh thu toàn cầu</li>
+    <li><strong>Cung cấp thông tin sai</strong>: tới €7.5 triệu hoặc 1.5% doanh thu toàn cầu</li>
+    <li>SMEs và startups: phạt theo mức thấp hơn trong hai mức tuyệt đối và tương đối</li>
+  </ul>
+
+  <div class="callout warn">
+    <div class="icon">!</div>
+    <div>
+      <div class="title">Ai phải comply?</div>
+      <p>
+        Nếu bạn deploy AI có người dùng tại EU (kể cả EU citizens đang ở ngoài EU), bạn nằm
+        trong phạm vi. Quy tắc tương tự GDPR: không cần có văn phòng tại EU để bị điều chỉnh.
+        Startups ở Việt Nam, Mỹ, Úc deploy cho EU user — tất cả đều phải comply.
+      </p>
+    </div>
+  </div>
+
+  <!-- ─────────────────────────────────────────── 34.3 ─── -->
+  <h2 id="nist-rmf">34.3 NIST AI Risk Management Framework (AI RMF 1.0)</h2>
+  <p>
+    NIST AI RMF 1.0 (phát hành tháng 1/2023) là framework tự nguyện của Mỹ để quản lý rủi ro AI
+    trong vòng đời của hệ thống. Không mang tính bắt buộc pháp lý (trừ khi contractor chính phủ),
+    nhưng đây là <strong>best practice baseline</strong> được ngành công nhận rộng rãi — và được
+    tham chiếu trong nhiều quy định khác.
+  </p>
+
+  <!-- SVG NIST AI RMF Cycle -->
+  <svg class="diagram" viewBox="0 0 760 400" role="img" aria-label="NIST AI RMF 4 functions cycle">
+    <defs>
+      <marker id="arr34b" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#6f7c92"/>
+      </marker>
+    </defs>
+
+    <!-- Central hub -->
+    <circle cx="380" cy="200" r="52" fill="rgba(255,184,107,0.15)" stroke="#ffb86b" stroke-width="2"/>
+    <text x="380" y="194" text-anchor="middle" font-weight="700" font-size="13">AI RMF</text>
+    <text x="380" y="212" text-anchor="middle" class="label-sm">Core</text>
+
+    <!-- GOVERN — top -->
+    <rect class="node-accent" x="285" y="20" width="190" height="80" rx="10"/>
+    <text x="380" y="48" text-anchor="middle" font-weight="700" font-size="15">GOVERN</text>
+    <text x="380" y="66" text-anchor="middle" class="label-sm">Thiết lập văn hóa, chính sách,</text>
+    <text x="380" y="80" text-anchor="middle" class="label-sm">accountability, governance structures</text>
+    <text x="380" y="94" text-anchor="middle" class="label-sm" style="fill:#ffb86b">Xuyên suốt mọi hoạt động khác</text>
+
+    <!-- MAP — right -->
+    <rect class="node-blue" x="575" y="145" width="175" height="110" rx="10"/>
+    <text x="662" y="173" text-anchor="middle" font-weight="700" font-size="15">MAP</text>
+    <text x="662" y="191" text-anchor="middle" class="label-sm">Xác định context, stakeholders,</text>
+    <text x="662" y="205" text-anchor="middle" class="label-sm">harms tiềm năng, benefits</text>
+    <text x="662" y="223" text-anchor="middle" class="label-sm">của AI system</text>
+    <text x="662" y="241" text-anchor="middle" class="label-sm" style="fill:#7cc4ff">Ai bị ảnh hưởng? Thế nào?</text>
+
+    <!-- MEASURE — bottom -->
+    <rect class="node-green" x="285" y="315" width="190" height="80" rx="10"/>
+    <text x="380" y="343" text-anchor="middle" font-weight="700" font-size="15">MEASURE</text>
+    <text x="380" y="361" text-anchor="middle" class="label-sm">Đánh giá, phân tích, ưu tiên hóa</text>
+    <text x="380" y="375" text-anchor="middle" class="label-sm">rủi ro đã xác định qua metrics</text>
+    <text x="380" y="389" text-anchor="middle" class="label-sm" style="fill:#b4e07a">Evals, bias tests, fairness metrics</text>
+
+    <!-- MANAGE — left -->
+    <rect class="node-bg" x="10" y="145" width="175" height="110" rx="10"/>
+    <text x="97" y="173" text-anchor="middle" font-weight="700" font-size="15">MANAGE</text>
+    <text x="97" y="191" text-anchor="middle" class="label-sm">Prioritize, respond, mitigate</text>
+    <text x="97" y="205" text-anchor="middle" class="label-sm">rủi ro; xây dựng plans,</text>
+    <text x="97" y="223" text-anchor="middle" class="label-sm">incident response, residual risk</text>
+    <text x="97" y="241" text-anchor="middle" class="label-sm" style="fill:#aab4c5">Controls, rollback, monitoring</text>
+
+    <!-- Connecting arrows -->
+    <line class="arrow" marker-end="url(#arr34b)" x1="380" y1="100" x2="430" y2="148"/>
+    <line class="arrow" marker-end="url(#arr34b)" x1="575" y1="200" x2="432" y2="200"/>
+    <line class="arrow" marker-end="url(#arr34b)" x1="380" y1="315" x2="328" y2="252"/>
+    <line class="arrow" marker-end="url(#arr34b)" x1="185" y1="200" x2="328" y2="200"/>
+
+    <!-- Cycle label -->
+    <text x="380" y="390" text-anchor="middle" class="label-sm" style="fill:#6f7c92">Framework là vòng lặp liên tục — không phải checklist một lần</text>
+  </svg>
+
+  <h3>GOVERN — Nền tảng của mọi thứ</h3>
+  <p>
+    GOVERN không phải một bước — nó là điều kiện tiên quyết. Tổ chức cần:
+    thiết lập <em>AI risk tolerance</em> rõ ràng, phân công ownership (ai chịu trách nhiệm cho
+    mỗi AI system), tạo cross-functional team (không chỉ kỹ thuật), và training cho mọi cấp.
+  </p>
+
+  <h3>MAP → MEASURE → MANAGE</h3>
+  <ul>
+    <li><strong>MAP</strong>: Context mapping — ai là end user, ai là người bị ảnh hưởng gián tiếp,
+    harms có thể xảy ra (bias, privacy, safety, fairness), benefits dự kiến. Output: risk taxonomy
+    cho system cụ thể.</li>
+    <li><strong>MEASURE</strong>: Quantify rủi ro đã xác định. Dùng evals, bias audits, red-teaming,
+    third-party assessments. Ưu tiên theo likelihood × severity.</li>
+    <li><strong>MANAGE</strong>: Xây dựng controls, monitoring, incident response plans. Quyết định
+    accept/mitigate/transfer/avoid từng risk. Theo dõi residual risks theo thời gian.</li>
+  </ul>
+
+  <div class="callout tip">
+    <div class="icon">★</div>
+    <div>
+      <div class="title">Bắt đầu với NIST AI RMF ở đâu?</div>
+      <p>
+        Download <code>NIST.AI.100-1.pdf</code> (miễn phí). Phần Profiles cho phép bạn tạo
+        "current profile" (thực trạng) và "target profile" (mục tiêu) để có roadmap cụ thể.
+        Đây là công cụ communication tốt với leadership.
+      </p>
+    </div>
+  </div>
+
+  <!-- ─────────────────────────────────────────── 34.4 ─── -->
+  <h2 id="iso42001">34.4 ISO/IEC 42001:2023 — AI Management System</h2>
+  <p>
+    ISO/IEC 42001:2023 là tiêu chuẩn quốc tế đầu tiên về <strong>AI Management System (AIMS)</strong>.
+    Nó tương tự ISO 27001 cho information security — cung cấp framework để các tổ chức chứng minh
+    họ có systematic approach trong quản lý AI có trách nhiệm.
+  </p>
+
+  <h3>Cấu trúc High-Level Structure (HLS)</h3>
+  <p>
+    42001 tuân theo cấu trúc Annex SL (HLS) giống ISO 9001/27001, cho phép tích hợp dễ dàng:
+  </p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Clause</th><th>Nội dung</th><th>Key requirements</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>4</td><td>Context of the Organization</td><td>Xác định scope AIMS, internal/external context, interested parties</td></tr>
+        <tr><td>5</td><td>Leadership</td><td>Management commitment, AI policy, roles và responsibilities</td></tr>
+        <tr><td>6</td><td>Planning</td><td>Risk và opportunity assessment, AI objectives đo lường được</td></tr>
+        <tr><td>7</td><td>Support</td><td>Resources, AI competency, awareness, communication, documentation</td></tr>
+        <tr><td>8</td><td>Operation</td><td>AI system lifecycle management, supply chain oversight, operational controls</td></tr>
+        <tr><td>9</td><td>Performance Evaluation</td><td>Monitoring, internal audit, management review</td></tr>
+        <tr><td>10</td><td>Improvement</td><td>Nonconformity, corrective action, continual improvement</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Certification Process</h3>
+  <ol>
+    <li><strong>Gap analysis</strong>: Đánh giá hiện trạng so với các requirements</li>
+    <li><strong>AIMS implementation</strong>: Xây dựng policies, procedures, controls (thường 6–18 tháng)</li>
+    <li><strong>Stage 1 audit</strong>: Review documentation bởi accredited certification body</li>
+    <li><strong>Stage 2 audit</strong>: On-site assessment thực tế</li>
+    <li><strong>Certificate issuance</strong>: Có giá trị 3 năm, với annual surveillance audits</li>
+  </ol>
+
+  <div class="callout note">
+    <div class="icon">≡</div>
+    <div>
+      <div class="title">42001 vs 27001</div>
+      <p>
+        Nếu đã có ISO 27001, việc thêm 42001 dễ hơn nhiều vì HLS giống nhau. Annex B của 42001
+        có thêm AI-specific controls không có trong 27001, đặc biệt về data governance, model
+        lifecycle, và AI system transparency.
+      </p>
+    </div>
+  </div>
+
+  <!-- ─────────────────────────────────────────── 34.5 ─── -->
+  <h2 id="us-regs">34.5 Luật Mỹ: Executive Orders và State Laws</h2>
+
+  <h3>Executive Order 14110 (Biden, Oct 2023)</h3>
+  <p>
+    EO 14110 "Safe, Secure, and Trustworthy AI" là văn bản toàn diện nhất của chính quyền liên
+    bang Mỹ về AI. Các điểm quan trọng với AI engineers:
+  </p>
+  <ul>
+    <li>Yêu cầu providers của frontier AI models báo cáo safety test results cho chính phủ</li>
+    <li>NIST phải phát triển thêm guidelines cho generative AI</li>
+    <li>Agencies phải inventory AI use trong chính phủ và đánh giá rủi ro</li>
+    <li>Watermarking/labeling cho AI-generated content (được khuyến khích)</li>
+  </ul>
+
+  <div class="callout warn">
+    <div class="icon">!</div>
+    <div>
+      <div class="title">Chính sách thay đổi theo chính quyền</div>
+      <p>
+        Chính quyền Trump (2025) đã revoke EO 14110 và thay thế bằng EO 14179 với hướng tiếp cận
+        "innovation-first". Các quy định ở cấp liên bang Mỹ rất nhạy cảm với chính trị — theo dõi
+        liên tục. Trong khi đó, luật cấp tiểu bang ổn định hơn.
+      </p>
+    </div>
+  </div>
+
+  <h3>State Laws đáng chú ý năm 2025–2026</h3>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Luật</th><th>Tiểu bang</th><th>Phạm vi</th><th>Điểm nổi bật</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>AB 1008</strong></td>
+          <td>California</td>
+          <td>AI-generated training data</td>
+          <td>Mở rộng CCPA: dữ liệu cá nhân trong AI training phải được phép</td>
+        </tr>
+        <tr>
+          <td><strong>SB 1047</strong> (vetoed)</td>
+          <td>California</td>
+          <td>Frontier AI safety</td>
+          <td>Bị Governor Newsom veto 2024 — nhưng các phiên bản mới đang được soạn</td>
+        </tr>
+        <tr>
+          <td><strong>Colorado AI Act</strong></td>
+          <td>Colorado</td>
+          <td>High-risk AI decisions</td>
+          <td>Yêu cầu impact assessment, disclosure khi AI đưa ra "consequential decisions"</td>
+        </tr>
+        <tr>
+          <td><strong>Texas AI Act</strong></td>
+          <td>Texas</td>
+          <td>Consequential AI decisions</td>
+          <td>Tương tự Colorado — hướng EU-style risk-based approach</td>
+        </tr>
+        <tr>
+          <td><strong>BIPA</strong></td>
+          <td>Illinois</td>
+          <td>Biometric data</td>
+          <td>Đã áp dụng từ 2008, nhưng nghiêm trọng hơn với facial recognition AI</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ─────────────────────────────────────────── 34.6 ─── -->
+  <h2 id="industry">34.6 Ngành Đặc Thù: HIPAA, GLBA, FERPA</h2>
+
+  <h3>Healthcare AI — HIPAA</h3>
+  <p>
+    HIPAA (Health Insurance Portability and Accountability Act) áp dụng cho bất kỳ AI system nào
+    xử lý Protected Health Information (PHI). Key requirements:
+  </p>
+  <ul>
+    <li><strong>Minimum Necessary Standard</strong>: AI chỉ được truy cập PHI cần thiết cho task</li>
+    <li><strong>Business Associate Agreements (BAA)</strong>: Mọi AI vendor xử lý PHI đều phải ký BAA — kể cả OpenAI, Anthropic (họ có HIPAA tiers)</li>
+    <li><strong>Audit logs</strong>: Ghi lại mọi access vào PHI, kể cả qua AI</li>
+    <li><strong>De-identification</strong>: Trước khi dùng PHI cho training, phải de-identify theo Safe Harbor hoặc Expert Determination</li>
+    <li><strong>FDA Software as Medical Device (SaMD)</strong>: AI đưa ra quyết định chẩn đoán/điều trị có thể là medical device — cần FDA clearance/approval</li>
+  </ul>
+
+  <h3>Finance AI — GLBA và SR 11-7</h3>
+  <p>
+    Gramm-Leach-Bliley Act (GLBA) và Supervisory Guidance on Model Risk Management (SR 11-7) của
+    Fed tạo thành khung quản lý model risk trong tài chính:
+  </p>
+  <ul>
+    <li><strong>Model Risk Management (MRM)</strong>: Validate model trước deployment, monitor sau deployment</li>
+    <li><strong>Fair Lending laws</strong> (ECOA, Fair Housing Act): AI credit scoring không được có disparate impact theo race, gender, national origin</li>
+    <li><strong>Explainability</strong>: Khi từ chối credit, phải có adverse action notice giải thích lý do — "AI quyết định" không phải lý do hợp lệ</li>
+    <li><strong>Third-party risk</strong>: OCC, FDIC yêu cầu banks quản lý AI vendor risk như bất kỳ third-party service nào</li>
+  </ul>
+
+  <h3>Education AI — FERPA và COPPA</h3>
+  <ul>
+    <li><strong>FERPA</strong>: Education records (grades, disciplinary records) không được chia sẻ với AI vendors mà không có explicit consent từ phụ huynh/học sinh 18+</li>
+    <li><strong>COPPA</strong>: AI services cho trẻ dưới 13 cần parental consent để collect bất kỳ data nào</li>
+    <li><strong>Student Data Privacy</strong>: Nhiều tiểu bang có thêm luật — California SOPIPA, NY Education Law 2-d</li>
+  </ul>
+
+  <!-- ─────────────────────────────────────────── 34.7 ─── -->
+  <h2 id="soc2">34.7 SOC 2 và AI Services</h2>
+  <p>
+    SOC 2 (System and Organization Controls 2) là audit report chứng minh một service provider
+    có controls đầy đủ cho security, availability, processing integrity, confidentiality, và privacy.
+    Khi bạn offer AI service cho enterprise customers, họ thường yêu cầu SOC 2 Type II report.
+  </p>
+
+  <h3>AI-specific considerations trong SOC 2</h3>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Trust Service Criteria</th><th>AI-specific concern</th><th>Control ví dụ</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Security (CC)</strong></td>
+          <td>Prompt injection attacks, model extraction, unauthorized access to training data</td>
+          <td>Input/output filtering, rate limiting, API key rotation, penetration testing</td>
+        </tr>
+        <tr>
+          <td><strong>Availability (A)</strong></td>
+          <td>LLM API provider outages, model latency degradation</td>
+          <td>Multi-provider fallback, SLA monitoring, circuit breakers</td>
+        </tr>
+        <tr>
+          <td><strong>Processing Integrity (PI)</strong></td>
+          <td>AI outputs có thể sai — integrity của "kết quả" AI rất khác traditional software</td>
+          <td>Output validation, human review cho high-stakes decisions, eval monitoring</td>
+        </tr>
+        <tr>
+          <td><strong>Confidentiality (C)</strong></td>
+          <td>Dữ liệu khách hàng có thể xuất hiện trong AI output (memorization)</td>
+          <td>Data isolation, no training on customer data, data retention policies</td>
+        </tr>
+        <tr>
+          <td><strong>Privacy (P)</strong></td>
+          <td>PII trong prompts có thể được log và retain</td>
+          <td>PII masking, log retention limits, right to deletion procedures</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Vendor Management trong AI Context</h3>
+  <p>
+    SOC 2 yêu cầu bạn quản lý third-party risk — bao gồm AI model providers. Điều này có nghĩa:
+  </p>
+  <ul>
+    <li>Có written agreements với providers (OpenAI, Anthropic, etc.) về data handling</li>
+    <li>Review providers' own SOC 2/security certifications hàng năm</li>
+    <li>Document data flows: dữ liệu gì được gửi đến AI providers và tại sao</li>
+    <li>Có contingency plan khi provider thay đổi terms of service hoặc deprecate models</li>
+  </ul>
+
+  <!-- ─────────────────────────────────────────── 34.8 ─── -->
+  <h2 id="model-cards">34.8 Model Cards và Datasheets</h2>
+  <p>
+    <strong>Model cards</strong> (Mitchell et al., 2019, Google) và <strong>datasheets for datasets</strong>
+    (Gebru et al., 2018, Microsoft Research) là hai artifact documentation quan trọng nhất trong
+    AI governance. Chúng không chỉ là "nice to have" — EU AI Act yêu cầu technical documentation
+    tương đương cho High-Risk AI systems.
+  </p>
+
+  <h3>Model Card — Template</h3>
+
+  <div class="card" style="font-family: var(--font-mono); font-size: 13px; line-height: 1.8;">
+    <div style="color: var(--accent); font-weight: 700; margin-bottom: 12px;">📄 MODEL CARD TEMPLATE</div>
+
+    <div style="color: var(--accent-2); margin-top: 8px;">## Model Details</div>
+    <div style="color: var(--text-soft);">- Name: <span style="color:#ffd9a8">customer-support-classifier-v2.1</span></div>
+    <div style="color: var(--text-soft);">- Type: Text classification (intent detection)</div>
+    <div style="color: var(--text-soft);">- Base model: <span style="color:#ffd9a8">gpt-4o-mini</span> (fine-tuned)</div>
+    <div style="color: var(--text-soft);">- Training date: <span style="color:#ffd9a8">2025-09-15</span></div>
+    <div style="color: var(--text-soft);">- Owners: <span style="color:#ffd9a8">AI Platform Team (ai-platform@company.com)</span></div>
+
+    <div style="color: var(--accent-2); margin-top: 8px;">## Intended Use</div>
+    <div style="color: var(--text-soft);">- Primary: Classify customer support tickets into 24 categories</div>
+    <div style="color: var(--text-soft);">- Out-of-scope: Medical advice, legal decisions, credit decisions</div>
+
+    <div style="color: var(--accent-2); margin-top: 8px;">## Training Data</div>
+    <div style="color: var(--text-soft);">- Source: Internal support tickets 2022–2024 (anonymized)</div>
+    <div style="color: var(--text-soft);">- Size: 45,000 labeled examples</div>
+    <div style="color: var(--text-soft);">- Languages: Vietnamese (70%), English (30%)</div>
+    <div style="color: var(--text-soft);">- Known gaps: Technical queries &lt; 5% of training data</div>
+
+    <div style="color: var(--accent-2); margin-top: 8px;">## Performance Metrics</div>
+    <div style="color: var(--text-soft);">- Overall accuracy: 91.3% (test set, Nov 2025)</div>
+    <div style="color: var(--text-soft);">- Per-class F1: min 0.78 (billing disputes), max 0.97 (greetings)</div>
+    <div style="color: var(--text-soft);">- Latency p50/p99: 180ms / 620ms</div>
+
+    <div style="color: var(--accent-2); margin-top: 8px;">## Limitations &amp; Biases</div>
+    <div style="color: var(--text-soft);">- Performance degrades for tickets > 500 tokens</div>
+    <div style="color: var(--text-soft);">- Trained on B2B context; may underperform for B2C</div>
+    <div style="color: var(--text-soft);">- Code-switching Vi-En sometimes misclassified</div>
+
+    <div style="color: var(--accent-2); margin-top: 8px;">## Ethical Considerations</div>
+    <div style="color: var(--text-soft);">- Not used for decisions with significant customer impact without human review</div>
+    <div style="color: var(--text-soft);">- Monitored for demographic bias quarterly</div>
+
+    <div style="color: var(--accent-2); margin-top: 8px;">## Caveats &amp; Recommendations</div>
+    <div style="color: var(--text-soft);">- Retrain if category distribution shifts > 10%</div>
+    <div style="color: var(--text-soft);">- Next review: 2026-03-01</div>
+  </div>
+
+  <h3>Datasheet for Datasets</h3>
+  <p>
+    Tương tự model card nhưng cho dataset. Các section quan trọng:
+    <em>Motivation</em> (tại sao tạo dataset này),
+    <em>Composition</em> (gồm những gì, phân phối ra sao),
+    <em>Collection Process</em> (thu thập thế nào, ai thu thập),
+    <em>Preprocessing</em> (cleaning, labeling process),
+    <em>Uses</em> (intended use, out-of-scope use),
+    <em>Distribution</em> (có thể share không, license),
+    <em>Maintenance</em> (ai duy trì, cập nhật khi nào).
+  </p>
+
+  <!-- ─────────────────────────────────────────── 34.9 ─── -->
+  <h2 id="audit-trails">34.9 Audit Trails cho AI Systems</h2>
+  <p>
+    Audit trail là <em>immutable record</em> về những gì AI system đã làm, khi nào, với dữ liệu
+    gì, và với kết quả gì. Đây là yêu cầu core trong EU AI Act (High-Risk), HIPAA, SOC 2, và
+    nhiều framework khác. Nhưng logging AI có những thách thức riêng so với traditional software.
+  </p>
+
+  <h3>Audit Log Entry Schema</h3>
+
+  <pre><code><span class="cm">// Cấu trúc tối thiểu cho một AI audit log entry</span>
+{
+  <span class="str">"event_id"</span>: <span class="str">"evt_01HX7K9M2PQRS"</span>,          <span class="cm">// unique, immutable ID</span>
+  <span class="str">"timestamp"</span>: <span class="str">"2025-11-15T08:23:41.421Z"</span>,   <span class="cm">// UTC ISO 8601</span>
+  <span class="str">"session_id"</span>: <span class="str">"sess_abc123"</span>,
+  <span class="str">"user_id"</span>: <span class="str">"usr_hashed_789"</span>,               <span class="cm">// pseudonymized</span>
+  <span class="str">"tenant_id"</span>: <span class="str">"tenant_acme_corp"</span>,
+
+  <span class="str">"ai_system"</span>: {
+    <span class="str">"name"</span>: <span class="str">"support-classifier"</span>,
+    <span class="str">"version"</span>: <span class="str">"v2.1.3"</span>,
+    <span class="str">"model"</span>: <span class="str">"gpt-4o-mini-2024-07-18"</span>,
+    <span class="str">"prompt_hash"</span>: <span class="str">"sha256:a3f1..."</span>          <span class="cm">// hash of system prompt</span>
+  },
+
+  <span class="str">"input"</span>: {
+    <span class="str">"text_hash"</span>: <span class="str">"sha256:b9c2..."</span>,             <span class="cm">// hash, không lưu raw input</span>
+    <span class="str">"token_count"</span>: <span class="num">187</span>,
+    <span class="str">"pii_detected"</span>: <span class="kw">false</span>,
+    <span class="str">"input_category"</span>: <span class="str">"customer_query"</span>
+  },
+
+  <span class="str">"output"</span>: {
+    <span class="str">"text_hash"</span>: <span class="str">"sha256:c7d4..."</span>,
+    <span class="str">"token_count"</span>: <span class="num">43</span>,
+    <span class="str">"latency_ms"</span>: <span class="num">234</span>,
+    <span class="str">"finish_reason"</span>: <span class="str">"stop"</span>,
+    <span class="str">"classification"</span>: <span class="str">"billing_dispute"</span>,
+    <span class="str">"confidence"</span>: <span class="num">0.87</span>
+  },
+
+  <span class="str">"decision"</span>: {
+    <span class="str">"action_taken"</span>: <span class="str">"auto_route_to_billing_team"</span>,
+    <span class="str">"human_reviewed"</span>: <span class="kw">false</span>,
+    <span class="str">"override_applied"</span>: <span class="kw">false</span>
+  },
+
+  <span class="str">"compliance"</span>: {
+    <span class="str">"data_residency"</span>: <span class="str">"ap-southeast-1"</span>,
+    <span class="str">"retention_until"</span>: <span class="str">"2028-11-15"</span>,         <span class="cm">// 3 năm cho HIPAA</span>
+    <span class="str">"legal_basis"</span>: <span class="str">"legitimate_interest"</span>
+  },
+
+  <span class="str">"integrity"</span>: {
+    <span class="str">"checksum"</span>: <span class="str">"sha256:entry_hash"</span>,
+    <span class="str">"prev_hash"</span>: <span class="str">"sha256:prev_entry"</span>             <span class="cm">// chain-link integrity</span>
+  }
+}</code></pre>
+
+  <h3>Retention Policies theo Framework</h3>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Framework</th><th>Retention tối thiểu</th><th>Ghi chú</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>EU AI Act (High Risk)</td><td>10 năm</td><td>Từ khi AI system ngừng hoạt động</td></tr>
+        <tr><td>HIPAA</td><td>6 năm</td><td>Từ ngày tạo hoặc ngày hiệu lực cuối</td></tr>
+        <tr><td>SOC 2</td><td>1 năm minimum</td><td>Tuỳ scope, thường 2–3 năm theo customer contracts</td></tr>
+        <tr><td>GLBA / SR 11-7</td><td>3–5 năm</td><td>Model validation records</td></tr>
+        <tr><td>GDPR</td><td>Purpose-limited</td><td>Không lưu lâu hơn cần thiết; right to erasure</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Tamper-Evidence</h3>
+  <p>
+    Audit logs phải <strong>không thể bị sửa đổi sau khi tạo</strong>. Các kỹ thuật phổ biến:
+    append-only storage (AWS CloudTrail, WORM S3), cryptographic hash chaining (mỗi entry hash
+    entry trước), Write-Once-Read-Many storage, và separate log infrastructure với access controls
+    riêng không có quyền delete.
+  </p>
+
+  <!-- ─────────────────────────────────────────── 34.10 ─── -->
+  <h2 id="bias-audits">34.10 Bias &amp; Fairness Audits</h2>
+  <p>
+    AI bias không phải lý thuyết — nó xảy ra trong tuyển dụng, tín dụng, hệ thống tư pháp,
+    y tế. Một số vụ kiện và phạt tiền đình đám ở Mỹ liên quan đến AI discriminatory outcomes
+    đã đặt vấn đề fairness audit vào spotlight pháp lý.
+  </p>
+
+  <h3>Các metric fairness quan trọng</h3>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Metric</th><th>Định nghĩa</th><th>Khi dùng</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Demographic Parity</strong></td>
+          <td>Tỷ lệ quyết định tích cực bằng nhau giữa các nhóm: P(ŷ=1|A=a) = P(ŷ=1|A=b)</td>
+          <td>Tuyển dụng, cho vay — khi muốn equal base rates</td>
+        </tr>
+        <tr>
+          <td><strong>Equalized Odds</strong></td>
+          <td>TPR và FPR bằng nhau giữa các nhóm: không có nhóm nào bị "oan" hay bỏ qua nhiều hơn</td>
+          <td>Criminal justice, medical screening</td>
+        </tr>
+        <tr>
+          <td><strong>Equal Opportunity</strong></td>
+          <td>TPR bằng nhau (subset của equalized odds, chỉ quan tâm recall)</td>
+          <td>Khi false negative (bỏ qua người đủ điều kiện) là harm chính</td>
+        </tr>
+        <tr>
+          <td><strong>Calibration</strong></td>
+          <td>Confidence scores phản ánh thực tế cho tất cả nhóm — 80% confidence = 80% đúng</td>
+          <td>Risk assessment tools, credit scoring</td>
+        </tr>
+        <tr>
+          <td><strong>Individual Fairness</strong></td>
+          <td>Similar individuals được treated similarly — tương tự không có nghĩa là giống nhau</td>
+          <td>Recommendation systems, content moderation</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout warn">
+    <div class="icon">!</div>
+    <div>
+      <div class="title">Impossibility Theorem</div>
+      <p>
+        Chouldechova (2017) và Kleinberg et al. (2016) đã chứng minh: khi base rates khác nhau
+        giữa các nhóm, không thể đồng thời đạt demographic parity, equalized odds, VÀ calibration.
+        Bạn phải chọn metric nào quan trọng nhất cho use case — và document lý do quyết định đó.
+      </p>
+    </div>
+  </div>
+
+  <h3>Slice-Based Evaluation</h3>
+  <p>
+    Ngoài overall metrics, hãy luôn đánh giá performance theo <strong>slices</strong> (subgroups)
+    liên quan đến use case của bạn:
+  </p>
+  <ul>
+    <li><strong>Demographic slices</strong>: giới tính, tuổi, địa điểm, ngôn ngữ</li>
+    <li><strong>Domain slices</strong>: loại tài khoản, tenure, plan type</li>
+    <li><strong>Behavioral slices</strong>: first-time users vs returning, mobile vs desktop</li>
+    <li><strong>Edge case slices</strong>: ticket length outliers, rare categories, code-switching</li>
+  </ul>
+  <p>
+    Khi aggregate metrics tốt nhưng một slice cụ thể tệ, đó là signal quan trọng — và thường
+    là nơi harm xảy ra nhiều nhất.
+  </p>
+
+  <h3>Audit Cadence</h3>
+  <ul>
+    <li><strong>Trước deployment</strong>: Full fairness assessment với domain experts review</li>
+    <li><strong>Hàng quý</strong>: Automated slice-based eval trên production data</li>
+    <li><strong>Sau model update</strong>: Regression testing toàn bộ fairness metrics</li>
+    <li><strong>Hàng năm</strong>: Independent third-party audit (nếu High Risk theo EU AI Act)</li>
+  </ul>
+
+  <!-- ─────────────────────────────────────────── 34.11 ─── -->
+  <h2 id="incident-response">34.11 Incident Response cho AI Failures</h2>
+  <p>
+    AI incidents khác biệt so với traditional software incidents theo những cách quan trọng:
+    chúng thường <em>gradual</em> (quality degrades dần, không có "error 500"), khó reproduce
+    (non-deterministic), và có thể có tác động xã hội rộng hơn một service outage thông thường.
+  </p>
+
+  <h3>Taxonomy AI Incidents</h3>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Loại incident</th><th>Ví dụ</th><th>Phát hiện bằng</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Quality regression</td><td>Accuracy drop sau model update, prompt change</td><td>Eval monitoring, user feedback spike</td></tr>
+        <tr><td>Harmful output</td><td>Racist/sexist content, dangerous advice</td><td>Content filters, user reports</td></tr>
+        <tr><td>Privacy leak</td><td>PII của user A xuất hiện trong output cho user B</td><td>Security monitoring, user reports</td></tr>
+        <tr><td>Bias amplification</td><td>Model suddenly more biased on a demographic</td><td>Fairness monitoring alerts</td></tr>
+        <tr><td>Hallucination spike</td><td>Factual accuracy drops, citations invented</td><td>Grounding evals, fact-check sampling</td></tr>
+        <tr><td>Cost/resource abuse</td><td>Prompt injection causing cost spike</td><td>Cost monitoring, anomaly detection</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Notification Timelines</h3>
+  <ul>
+    <li><strong>GDPR (personal data breach)</strong>: Báo cáo cho supervisory authority trong vòng 72 giờ</li>
+    <li><strong>HIPAA (security incident)</strong>: Breach notification trong 60 ngày với HHS; nếu &gt;500 người bị ảnh hưởng, phải notify media</li>
+    <li><strong>EU AI Act (serious incident)</strong>: Notify market surveillance authority trong 15 ngày</li>
+    <li><strong>Internal SLA</strong>: Severity 1 incidents → acknowledge trong 1 giờ, status update mỗi 30 phút</li>
+  </ul>
+
+  <h3>AI Incident Runbook</h3>
+  <ol>
+    <li><strong>Detect</strong>: Alert kích hoạt từ monitoring (quality score, error rate, cost anomaly)</li>
+    <li><strong>Triage</strong>: Xác định severity, scope, affected users; có PII/PHI bị ảnh hưởng không?</li>
+    <li><strong>Contain</strong>: Feature flag off hoặc traffic rollback nếu cần; preserve evidence (logs, outputs)</li>
+    <li><strong>Investigate</strong>: Reproduce issue; identify root cause (model, prompt, data, infra)</li>
+    <li><strong>Notify</strong>: Internal stakeholders, affected users (nếu cần), regulators (nếu bắt buộc)</li>
+    <li><strong>Remediate</strong>: Fix root cause; không patch mà không hiểu why</li>
+    <li><strong>Post-mortem</strong>: Document trong 5 ngày làm việc; add to eval set; update runbook</li>
+  </ol>
+
+  <!-- ─────────────────────────────────────────── 34.12 ─── -->
+  <h2 id="internal-policy">34.12 Internal AI Policies</h2>
+  <p>
+    Governance không chỉ là tuân thủ bên ngoài. Tổ chức cần có internal policies rõ ràng
+    về cách AI được build, deploy, và monitored bên trong.
+  </p>
+
+  <h3>Acceptable Use Policy (AUP) cho AI</h3>
+  <p>
+    Định nghĩa rõ ràng: AI system của chúng tôi <em>có thể</em> dùng cho gì, và <em>không thể</em>
+    dùng cho gì. Ví dụ explicit prohibitions:
+  </p>
+  <ul>
+    <li>Không dùng AI để đưa ra quyết định tài chính/tín dụng mà không có human review</li>
+    <li>Không xử lý PHI qua AI models không có BAA</li>
+    <li>Không dùng AI để generate content giả mạo identities</li>
+    <li>Không train model trên dữ liệu khách hàng mà không có explicit consent</li>
+  </ul>
+
+  <h3>Disclosure to Users</h3>
+  <p>
+    Khi nào và làm thế nào thông báo cho users rằng họ đang tương tác với AI:
+  </p>
+  <ul>
+    <li><strong>Bắt buộc theo EU AI Act</strong>: Chatbots phải tự identify là AI (trừ khi user biết rõ)</li>
+    <li><strong>Best practice</strong>: Disclosure khi AI đưa ra recommendation quan trọng</li>
+    <li><strong>Uncertainty disclosure</strong>: "AI không chắc về thông tin này — vui lòng xác nhận với [human expert]"</li>
+    <li><strong>AI-generated content label</strong>: Khi generate text/image được publish, label rõ ràng</li>
+  </ul>
+
+  <h3>Human Oversight Requirements</h3>
+  <p>
+    Xác định rõ ràng với mỗi AI feature: đây là <em>human-in-the-loop</em> (AI suggest, human decide),
+    <em>human-on-the-loop</em> (AI decides, human monitors và can override), hay
+    <em>fully automated</em>? Policies về khi nào từng mode được phép:
+  </p>
+  <ul>
+    <li>Consequential decisions (fire, hire, deny service): phải có human-in-the-loop</li>
+    <li>High-volume, low-stakes operations (spam filter): fully automated OK nếu có monitoring</li>
+    <li>Medium-stakes, medium-volume: human-on-the-loop với escalation path rõ ràng</li>
+  </ul>
+
+  <!-- ─────────────────────────────────────────── 34.13 ─── -->
+  <h2 id="roadmap">34.13 Roadmap Thực Tế: Startup vs Enterprise</h2>
+
+  <!-- Compliance Checklist SVG / visual -->
+  <svg class="diagram" viewBox="0 0 760 480" role="img" aria-label="Compliance maturity roadmap">
+    <defs>
+      <marker id="arr34c" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#6f7c92"/>
+      </marker>
+    </defs>
+
+    <!-- Stage labels -->
+    <text x="380" y="22" text-anchor="middle" font-weight="700" font-size="15" fill="#ffb86b">Compliance Maturity Roadmap</text>
+
+    <!-- Stage 1: Foundation (0-3 months) -->
+    <rect class="node-accent" x="20" y="35" width="220" height="200" rx="10"/>
+    <text x="130" y="58" text-anchor="middle" font-weight="700" font-size="13">Giai đoạn 1 · Foundation</text>
+    <text x="130" y="73" text-anchor="middle" class="label-sm">0–3 tháng · Mọi org</text>
+
+    <text x="35" y="97" font-size="12" fill="#b4e07a">✓</text><text x="52" y="97" font-size="11">AI inventory — list tất cả AI systems</text>
+    <text x="35" y="116" font-size="12" fill="#b4e07a">✓</text><text x="52" y="116" font-size="11">Internal AUP cho AI use</text>
+    <text x="35" y="135" font-size="12" fill="#b4e07a">✓</text><text x="52" y="135" font-size="11">Data handling agreements với providers</text>
+    <text x="35" y="154" font-size="12" fill="#b4e07a">✓</text><text x="52" y="154" font-size="11">Basic audit logging (what, when, who)</text>
+    <text x="35" y="173" font-size="12" fill="#b4e07a">✓</text><text x="52" y="173" font-size="11">User disclosure cho chatbots/AI features</text>
+    <text x="35" y="192" font-size="12" fill="#b4e07a">✓</text><text x="52" y="192" font-size="11">Incident response owner designated</text>
+    <text x="35" y="211" font-size="12" fill="#b4e07a">✓</text><text x="52" y="211" font-size="11">Model cards cho production models</text>
+
+    <!-- Stage 2: Core Compliance (3-12 months) -->
+    <rect class="node-blue" x="270" y="35" width="220" height="200" rx="10"/>
+    <text x="380" y="58" text-anchor="middle" font-weight="700" font-size="13">Giai đoạn 2 · Core</text>
+    <text x="380" y="73" text-anchor="middle" class="label-sm">3–12 tháng · Startup/Scale-up</text>
+
+    <text x="285" y="97" font-size="12" fill="#7cc4ff">✓</text><text x="302" y="97" font-size="11">EU AI Act risk classification (nếu có EU users)</text>
+    <text x="285" y="116" font-size="12" fill="#7cc4ff">✓</text><text x="302" y="116" font-size="11">NIST AI RMF current profile assessment</text>
+    <text x="285" y="135" font-size="12" fill="#7cc4ff">✓</text><text x="302" y="135" font-size="11">Bias audit cho high-stakes features</text>
+    <text x="285" y="154" font-size="12" fill="#7cc4ff">✓</text><text x="302" y="154" font-size="11">SOC 2 preparation (nếu B2B enterprise)</text>
+    <text x="285" y="173" font-size="12" fill="#7cc4ff">✓</text><text x="302" y="173" font-size="11">Formal incident response procedure</text>
+    <text x="285" y="192" font-size="12" fill="#7cc4ff">✓</text><text x="302" y="192" font-size="11">Industry-specific compliance (HIPAA, etc.)</text>
+    <text x="285" y="211" font-size="12" fill="#7cc4ff">✓</text><text x="302" y="211" font-size="11">Human oversight policies documented</text>
+
+    <!-- Stage 3: Advanced (12+ months) -->
+    <rect class="node-green" x="520" y="35" width="220" height="200" rx="10"/>
+    <text x="630" y="58" text-anchor="middle" font-weight="700" font-size="13">Giai đoạn 3 · Advanced</text>
+    <text x="630" y="73" text-anchor="middle" class="label-sm">12+ tháng · Enterprise</text>
+
+    <text x="535" y="97" font-size="12" fill="#ffb86b">✓</text><text x="552" y="97" font-size="11">ISO/IEC 42001 certification</text>
+    <text x="535" y="116" font-size="12" fill="#ffb86b">✓</text><text x="552" y="116" font-size="11">SOC 2 Type II report</text>
+    <text x="535" y="135" font-size="12" fill="#ffb86b">✓</text><text x="552" y="135" font-size="11">Third-party fairness audits</text>
+    <text x="535" y="154" font-size="12" fill="#ffb86b">✓</text><text x="552" y="154" font-size="11">EU AI Act High-Risk conformity assessment</text>
+    <text x="535" y="173" font-size="12" fill="#ffb86b">✓</text><text x="552" y="173" font-size="11">Board-level AI governance committee</text>
+    <text x="535" y="192" font-size="12" fill="#ffb86b">✓</text><text x="552" y="192" font-size="11">Red-teaming program (internal + external)</text>
+    <text x="535" y="211" font-size="12" fill="#ffb86b">✓</text><text x="552" y="211" font-size="11">Public transparency report</text>
+
+    <!-- Arrows between stages -->
+    <line class="arrow" marker-end="url(#arr34c)" x1="240" y1="135" x2="268" y2="135"/>
+    <line class="arrow" marker-end="url(#arr34c)" x1="490" y1="135" x2="518" y2="135"/>
+
+    <!-- Priority guidance -->
+    <rect class="node-bg" x="20" y="265" width="720" height="195" rx="10"/>
+    <text x="380" y="287" text-anchor="middle" font-weight="700" font-size="13">Ưu tiên theo rủi ro — không phải theo alphabet</text>
+
+    <text x="40" y="314" font-weight="600" font-size="12" fill="#ffb86b">Rủi ro cao → làm trước:</text>
+    <text x="40" y="333" font-size="11">• Bất kỳ AI nào ảnh hưởng đến employment, credit, housing, healthcare = phải xử lý ngay</text>
+    <text x="40" y="351" font-size="11">• AI có người dùng EU = phải check EU AI Act compliance trước khi ship tính năng mới</text>
+    <text x="40" y="369" font-size="11">• AI xử lý PHI/PII nhạy cảm = HIPAA/GDPR không thể để sau</text>
+
+    <text x="40" y="397" font-weight="600" font-size="12" fill="#7cc4ff">Rủi ro thấp → có thể defer:</text>
+    <text x="40" y="416" font-size="11">• ISO 42001 certification — tốn kém, phù hợp khi enterprise sales yêu cầu</text>
+    <text x="40" y="434" font-size="11">• SOC 2 Type II — cần khi khách hàng enterprise hỏi, không phải ngay từ đầu</text>
+    <text x="40" y="452" font-size="11">• Third-party audits — dành cho khi bạn có revenue và team stable</text>
+  </svg>
+
+  <!-- ─────────────────────────────────────────── 34.14 ─── -->
+  <h2 id="old-vs-new">34.14 Cách Cũ vs Cách Hiện Tại</h2>
+
+  <div class="tabs" data-tabs>
+    <div class="tab-buttons">
+      <button class="active">Cách cũ (2018–2022)</button>
+      <button>Cách hiện tại (2025+)</button>
+    </div>
+    <div class="tab-panel active">
+      <h3 style="margin-top:0; color: var(--danger)">Compliance-after-the-fact</h3>
+      <p>
+        Mô hình cũ: build nhanh, ship nhanh, lo compliance sau. Team engineering và legal
+        không nói chuyện với nhau cho đến khi có vấn đề. Documentation được viết <em>sau khi</em>
+        có audit yêu cầu — không phải để giúp team hiểu system.
+      </p>
+      <ul>
+        <li>Model cards không tồn tại — hoặc được viết retroactively để "tick box"</li>
+        <li>Audit logs không được nghĩ đến cho đến khi một customer enterprise yêu cầu</li>
+        <li>Bias chỉ được phát hiện khi có complaint hoặc báo chí đưa tin</li>
+        <li>"Privacy by design" là khẩu hiệu, không phải thực hành</li>
+        <li>Legal/compliance team là gatekeepers được gọi đến để "bless" — không phải partners</li>
+        <li>Không ai trong engineering team biết GDPR hay HIPAA implications của code họ viết</li>
+        <li>EU users được treat như US users — GDPR là chuyện của "legal team"</li>
+      </ul>
+      <div class="callout danger" style="margin-top: 12px;">
+        <div class="icon">✕</div>
+        <div>
+          <p>
+            Kết quả: expensive retrofits, rushed documentation, compliance theater thay vì
+            compliance thực sự. Một số công ty bị phạt không phải vì intentional violations,
+            mà vì không có documentation để chứng minh rằng họ đã cẩn thận.
+          </p>
+        </div>
+      </div>
+    </div>
+    <div class="tab-panel">
+      <h3 style="margin-top:0; color: var(--accent-3)">Compliance-by-design từ prototype</h3>
+      <p>
+        Mô hình hiện tại: governance considerations được tích hợp vào development workflow
+        từ ngày đầu — không phải như bureaucracy, mà như engineering discipline.
+      </p>
+      <ul>
+        <li><strong>Risk classification trước khi code</strong>: Trước khi bắt đầu sprint, AI feature được classify theo EU AI Act tiers và applicable regulations</li>
+        <li><strong>Model cards là living documents</strong>: Tạo skeleton model card khi bắt đầu feature, cập nhật liên tục, không viết retroactively</li>
+        <li><strong>Audit logging là requirement, không phải afterthought</strong>: Nằm trong acceptance criteria của mỗi AI feature</li>
+        <li><strong>Bias testing là part of CI/CD</strong>: Automated fairness checks chạy cùng unit tests trên mỗi PR</li>
+        <li><strong>Privacy engineers embedded trong AI team</strong>: Không phải reviewer cuối cùng</li>
+        <li><strong>Engineering team có AI compliance literacy</strong>: Biết khi nào code của mình có implications</li>
+        <li><strong>Legal/compliance là enablers</strong>: Họ giúp team build things right, không chỉ block things</li>
+      </ul>
+
+      <h4>Workflow ví dụ — Compliance-by-Design</h4>
+      <ol>
+        <li><strong>Feature brief</strong> include: affected user groups, data types, applicable regulations, risk tier</li>
+        <li><strong>Design review</strong>: AI + Privacy + Legal (30 phút, không phải approval ceremony)</li>
+        <li><strong>Implementation</strong>: Audit logging, disclosure UI, human oversight controls built-in</li>
+        <li><strong>Testing</strong>: Bias eval, privacy scan, adversarial testing alongside functional tests</li>
+        <li><strong>Pre-launch</strong>: Compliance sign-off là checklist item, không phải surprise gate</li>
+        <li><strong>Post-launch</strong>: Monitoring includes fairness metrics, incident escalation paths defined</li>
+      </ol>
+
+      <div class="callout tip" style="margin-top: 12px;">
+        <div class="icon">★</div>
+        <div>
+          <p>
+            <strong>Thực tế:</strong> Compliance-by-design không chậm hơn compliance-after-the-fact.
+            Nó <em>nhanh hơn</em> vì tránh được rework, tránh được emergency patches khi regulatory
+            deadline approach, và tránh được costly retrofits. Chi phí thực của compliance là rẻ
+            nhất khi làm từ đầu.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─────────────────────────────────────────── Summary ─── -->
+  <h2 id="tom-tat">Tóm Tắt</h2>
+  <ol>
+    <li>
+      <strong>Governance không phải overhead — đó là risk management.</strong>
+      Bốn lý do: rủi ro pháp lý, thương hiệu, đạo đức, và trách nhiệm pháp nhân. Năm 2026,
+      không còn thị trường lớn nào là "vùng trắng" cho AI.
+    </li>
+    <li>
+      <strong>EU AI Act áp dụng cho bạn nếu có người dùng EU.</strong>
+      Bốn tiers: Unacceptable (cấm), High Risk (obligations nặng), Limited (disclosure), Minimal.
+      Phạt tới €35M hoặc 7% doanh thu toàn cầu. Timeline 2025–2027.
+    </li>
+    <li>
+      <strong>NIST AI RMF 1.0 là baseline tốt nhất để bắt đầu.</strong>
+      Bốn functions: GOVERN → MAP → MEASURE → MANAGE. Tự nguyện ở Mỹ, nhưng được reference
+      trong nhiều quy định và contracts. Download miễn phí.
+    </li>
+    <li>
+      <strong>ISO/IEC 42001:2023 là chứng chỉ AI management system đầu tiên.</strong>
+      Phù hợp cho enterprise B2B. Tương tự ISO 27001 nhưng cho AI. Certification tốn thời gian
+      — plan 12–18 tháng.
+    </li>
+    <li>
+      <strong>Ngành đặc thù có requirements riêng không thể bỏ qua.</strong>
+      Healthcare: HIPAA + FDA. Finance: GLBA + SR 11-7 + fair lending. Education: FERPA + COPPA.
+      Biết mình ở ngành nào trước khi deploy.
+    </li>
+    <li>
+      <strong>Model cards và audit trails là artifact cốt lõi.</strong>
+      Model cards document intended use, performance, limitations, và owners. Audit logs cần
+      immutable, có retention policy, và tamper-evident. Cả hai là yêu cầu của EU AI Act High Risk.
+    </li>
+    <li>
+      <strong>Bias audits phải systematic, không phải reactive.</strong>
+      Dùng slice-based evaluation. Biết impossibility theorem — chọn metric fairness phù hợp
+      với use case và document lý do. Audit trước deploy, quarterly sau deploy.
+    </li>
+    <li>
+      <strong>Compliance-by-design từ prototype, không phải compliance-after-the-fact.</strong>
+      Risk classify trước khi code. Model card là living doc từ ngày đầu. Bias testing trong CI/CD.
+      Chi phí thực của compliance rẻ nhất khi làm sớm.
+    </li>
+    <li>
+      <strong>Roadmap thực tế theo maturity:</strong>
+      Giai đoạn 1 (0–3 tháng): inventory, AUP, logging cơ bản, disclosure.
+      Giai đoạn 2 (3–12 tháng): EU AI Act classification, NIST RMF, bias audit, SOC 2 prep.
+      Giai đoạn 3 (12+ tháng): ISO 42001, SOC 2 Type II, third-party audits, transparency report.
+    </li>
+  </ol>
+
+  <nav class="section-footer">
+    <a href="33-privacy.html" class="prev">
+      <div class="label">← trước</div>
+      <div class="title">33 — Privacy &amp; Data Protection</div>
+    </a>
+    <a href="35-eval-dataset-design.html" class="next">
+      <div class="label">tiếp theo →</div>
+      <div class="title">35 — Eval Dataset Design</div>
+    </a>
+  </nav>
+
+</main>
+
+<script src="../assets/script.js"></script>
+</body>
+</html>

@@ -1,0 +1,819 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>06 · Fine-tuning &amp; Customization — AI Engineering</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<nav class="top-nav">
+  <div class="brand"><span class="dot"></span> AI Engineering</div>
+  <div class="crumbs"><a href="../index.html">Mục lục</a> › Phần 2 · <span>06 — Fine-tuning &amp; Customization</span></div>
+  <div class="nav-actions">
+    <a href="05-model-selection.html">← Model Selection</a>
+    <a href="07-data-pipeline.html">RAG →</a>
+  </div>
+</nav>
+
+<main class="page">
+
+  <section class="hero">
+    <span class="eyebrow">Phần 2 · §06</span>
+    <h1>Fine-tuning &amp; Customization</h1>
+    <p class="lede">
+      Khi nào nên fine-tune, khi nào không — và nếu fine-tune thì dùng phương pháp nào:
+      SFT, LoRA, QLoRA, hay instruction tuning. Cộng với quantization và distillation để
+      deploy hiệu quả.
+    </p>
+    <img class="hero-image" src="../images/06-fine-tuning.png" alt="Hero illustration" onerror="this.style.display='none'">
+  </section>
+
+  <aside class="toc">
+    <div class="toc-title">Trong trang này</div>
+    <ul>
+      <li><a href="#khi-nao">6.1 Prompt vs RAG vs Fine-tune</a></li>
+      <li><a href="#sft">6.2 Supervised Fine-tuning (SFT)</a></li>
+      <li><a href="#lora">6.3 LoRA / QLoRA / PEFT</a></li>
+      <li><a href="#preference">6.4 Instruction vs Preference tuning</a></li>
+      <li><a href="#data-prep">6.5 Data preparation</a></li>
+      <li><a href="#quantization">6.6 Quantization</a></li>
+      <li><a href="#distillation">6.7 Distillation</a></li>
+      <li><a href="#continual">6.8 Continual learning</a></li>
+      <li><a href="#cost-benefit">6.9 Cost/benefit math</a></li>
+      <li><a href="#tooling">6.10 Tooling</a></li>
+      <li><a href="#tom-tat">Tóm tắt</a></li>
+    </ul>
+  </aside>
+
+  <!-- ================================================================
+       6.1 Khi nào fine-tune vs prompt vs RAG
+  ================================================================ -->
+  <h2 id="khi-nao">6.1 Khi nào Fine-tune vs Prompt vs RAG</h2>
+
+  <p>
+    Fine-tuning là tool mạnh nhưng <strong>tốn kém và phức tạp</strong>.
+    Nguyên tắc vàng: <em>chỉ fine-tune khi prompt và RAG không đủ</em>.
+    Decision tree sau giúp bạn chọn đúng approach:
+  </p>
+
+  <svg class="diagram" viewBox="0 0 760 400" role="img" aria-label="Decision tree: Prompt vs RAG vs Fine-tune">
+    <defs>
+      <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#6f7c92"/>
+      </marker>
+    </defs>
+
+    <!-- Start -->
+    <rect class="node-bg" x="280" y="10" width="200" height="50" rx="10"/>
+    <text x="380" y="32" text-anchor="middle" font-weight="700" font-size="14">Bài toán AI mới</text>
+    <text x="380" y="50" text-anchor="middle" font-size="12" fill="#aab4c5">Cần làm gì?</text>
+
+    <!-- Arrow down -->
+    <line class="arrow" x1="380" y1="62" x2="380" y2="92" marker-end="url(#arrowhead)"/>
+
+    <!-- Diamond 1 -->
+    <polygon points="380,95 480,135 380,175 280,135" fill="rgba(255,184,107,0.1)" stroke="#ffb86b" stroke-width="1.5"/>
+    <text x="380" y="130" text-anchor="middle" font-size="12">Prompt đủ tốt?</text>
+    <text x="380" y="148" text-anchor="middle" font-size="11" fill="#aab4c5">(quality &gt; threshold)</text>
+
+    <!-- Yes branch → Prompt -->
+    <line class="arrow" x1="480" y1="135" x2="600" y2="135" marker-end="url(#arrowhead)"/>
+    <text x="520" y="125" font-size="11" fill="#b4e07a">Có</text>
+    <rect class="node-green" x="600" y="108" width="140" height="55" rx="10"/>
+    <text x="670" y="133" text-anchor="middle" font-weight="700" font-size="13">✓ Dùng Prompt</text>
+    <text x="670" y="151" text-anchor="middle" font-size="11" fill="#aab4c5">Rẻ nhất, nhanh nhất</text>
+
+    <!-- No branch → down -->
+    <line class="arrow" x1="380" y1="175" x2="380" y2="210" marker-end="url(#arrowhead)"/>
+    <text x="390" y="197" font-size="11" fill="#ff8a8a">Không</text>
+
+    <!-- Diamond 2 -->
+    <polygon points="380,215 490,255 380,295 270,255" fill="rgba(124,196,255,0.1)" stroke="#7cc4ff" stroke-width="1.5"/>
+    <text x="380" y="250" text-anchor="middle" font-size="12">Vấn đề là</text>
+    <text x="380" y="268" text-anchor="middle" font-size="12">thiếu knowledge?</text>
+
+    <!-- Yes → RAG -->
+    <line class="arrow" x1="490" y1="255" x2="600" y2="255" marker-end="url(#arrowhead)"/>
+    <text x="520" y="245" font-size="11" fill="#b4e07a">Có</text>
+    <rect class="node-blue" x="600" y="228" width="140" height="55" rx="10"/>
+    <text x="670" y="253" text-anchor="middle" font-weight="700" font-size="13">✓ Dùng RAG</text>
+    <text x="670" y="271" text-anchor="middle" font-size="11" fill="#aab4c5">Dynamic knowledge</text>
+
+    <!-- No → down -->
+    <line class="arrow" x1="380" y1="295" x2="380" y2="330" marker-end="url(#arrowhead)"/>
+    <text x="390" y="318" font-size="11" fill="#ff8a8a">Không</text>
+
+    <!-- Fine-tune box -->
+    <rect class="node-accent" x="260" y="335" width="240" height="55" rx="10"/>
+    <text x="380" y="358" text-anchor="middle" font-weight="700" font-size="13">⚡ Fine-tune</text>
+    <text x="380" y="376" text-anchor="middle" font-size="11" fill="#aab4c5">Style, behavior, domain specialization</text>
+  </svg>
+
+  <h3>Khi nào fine-tune thực sự có ích</h3>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Situation</th><th>Approach phù hợp</th><th>Lý do</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Cần format/style nhất quán (tone of voice)</td>
+          <td><span class="tag">Fine-tune</span></td>
+          <td>Prompt không đủ consistent ở scale</td>
+        </tr>
+        <tr>
+          <td>Domain-specific vocabulary/knowledge cố định</td>
+          <td><span class="tag">Fine-tune</span> hoặc <span class="tag blue">RAG</span></td>
+          <td>Tùy knowledge có update thường xuyên không</td>
+        </tr>
+        <tr>
+          <td>Cần giảm latency + cost ở scale lớn</td>
+          <td><span class="tag">Fine-tune small model</span></td>
+          <td>Small fine-tuned model &gt; large general model</td>
+        </tr>
+        <tr>
+          <td>Knowledge thay đổi thường xuyên</td>
+          <td><span class="tag blue">RAG</span></td>
+          <td>Fine-tuning không scalable với dynamic data</td>
+        </tr>
+        <tr>
+          <td>Prompt engineering đủ tốt</td>
+          <td><span class="tag green">Prompt</span></td>
+          <td>Fine-tune là over-engineering</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ================================================================
+       6.2 SFT
+  ================================================================ -->
+  <h2 id="sft">6.2 Supervised Fine-tuning (SFT)</h2>
+
+  <p>
+    <strong>SFT</strong> là phương pháp fine-tuning cơ bản nhất: train model trên tập
+    dữ liệu (input, expected output) đã được label. Model học cách map input → output
+    theo distribution của training data.
+  </p>
+
+  <h3>Quá trình SFT</h3>
+  <ol>
+    <li>
+      <strong>Chuẩn bị dataset:</strong> 500–10,000 examples (instruction, response) pairs.
+      Quality quan trọng hơn quantity.
+    </li>
+    <li>
+      <strong>Chọn base model:</strong> Llama 3, Mistral, Gemma — model mạnh làm base tốt hơn.
+    </li>
+    <li>
+      <strong>Training:</strong> Fine-tune với supervised loss (cross-entropy) trên response tokens.
+      Thường chỉ compute loss trên output, không phải instruction.
+    </li>
+    <li>
+      <strong>Evaluation:</strong> Hold-out eval set + LLM judge để measure improvement.
+    </li>
+  </ol>
+
+  <pre><code><span class="cm"># Cấu trúc training data cho SFT (Alpaca format)</span>
+{
+  <span class="str">"instruction"</span>: <span class="str">"Tóm tắt email sau bằng tiếng Việt, tối đa 2 câu."</span>,
+  <span class="str">"input"</span>: <span class="str">"Subject: Q4 Budget Review\n\nDear team, ..."</span>,
+  <span class="str">"output"</span>: <span class="str">"Email yêu cầu team review ngân sách Q4 trước ngày 30/11. Cần điền form đính kèm và gửi về cho finance team."</span>
+}
+
+<span class="cm"># Hoặc chat format (phổ biến hơn)</span>
+{
+  <span class="str">"messages"</span>: [
+    {<span class="str">"role"</span>: <span class="str">"system"</span>, <span class="str">"content"</span>: <span class="str">"Bạn là trợ lý tóm tắt email chuyên nghiệp."</span>},
+    {<span class="str">"role"</span>: <span class="str">"user"</span>, <span class="str">"content"</span>: <span class="str">"Subject: Q4 Budget Review\n..."</span>},
+    {<span class="str">"role"</span>: <span class="str">"assistant"</span>, <span class="str">"content"</span>: <span class="str">"Email yêu cầu team review ngân sách Q4..."</span>}
+  ]
+}</code></pre>
+
+  <div class="callout note">
+    <div class="icon">≡</div>
+    <div>
+      <div class="title">SFT limitations</div>
+      <p>
+        SFT dạy model <em>cái gì</em> để output, nhưng không dạy model biết <em>cái gì tốt hơn</em>.
+        Nếu cần alignment với human preference → cần preference tuning (DPO/ORPO).
+      </p>
+    </div>
+  </div>
+
+  <!-- ================================================================
+       6.3 LoRA / QLoRA / PEFT
+  ================================================================ -->
+  <h2 id="lora">6.3 LoRA / QLoRA / PEFT</h2>
+
+  <p>
+    Full fine-tuning một model 7B+ tốn hàng chục GB VRAM và hàng giờ training.
+    <strong>Parameter-Efficient Fine-Tuning (PEFT)</strong> giải quyết vấn đề này bằng cách
+    chỉ train một phần nhỏ parameters.
+  </p>
+
+  <svg class="diagram" viewBox="0 0 760 240" role="img" aria-label="LoRA adapter diagram">
+    <defs>
+      <marker id="arrowhead4" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#6f7c92"/>
+      </marker>
+    </defs>
+
+    <!-- Input -->
+    <rect class="node-bg" x="20" y="95" width="100" height="50" rx="8"/>
+    <text x="70" y="118" text-anchor="middle" font-weight="700" font-size="13">Input</text>
+    <text x="70" y="135" text-anchor="middle" font-size="11" fill="#aab4c5">x</text>
+
+    <line class="arrow" x1="122" y1="120" x2="155" y2="120" marker-end="url(#arrowhead4)"/>
+
+    <!-- Frozen weight W -->
+    <rect class="node-blue" x="155" y="75" width="160" height="90" rx="8"/>
+    <text x="235" y="110" text-anchor="middle" font-weight="700" font-size="14">W (frozen)</text>
+    <text x="235" y="130" text-anchor="middle" font-size="12" fill="#7cc4ff">Base model weights</text>
+    <text x="235" y="148" text-anchor="middle" font-size="11" fill="#6f7c92">d × d matrix (huge)</text>
+
+    <!-- LoRA path -->
+    <line class="arrow" x1="122" y1="120" x2="155" y2="55" marker-end="url(#arrowhead4)"/>
+
+    <rect class="node-accent" x="155" y="10" width="75" height="45" rx="8"/>
+    <text x="192" y="30" text-anchor="middle" font-weight="700" font-size="12">A</text>
+    <text x="192" y="46" text-anchor="middle" font-size="10" fill="#aab4c5">d × r (tiny)</text>
+
+    <line class="arrow" x1="232" y1="33" x2="280" y2="33" marker-end="url(#arrowhead4)"/>
+
+    <rect class="node-accent" x="280" y="10" width="75" height="45" rx="8"/>
+    <text x="317" y="30" text-anchor="middle" font-weight="700" font-size="12">B</text>
+    <text x="317" y="46" text-anchor="middle" font-size="10" fill="#aab4c5">r × d (tiny)</text>
+
+    <!-- Merge arrows to output -->
+    <line class="arrow" x1="317" y1="55" x2="430" y2="100" marker-end="url(#arrowhead4)"/>
+    <line class="arrow" x1="317" y1="120" x2="430" y2="120" marker-end="url(#arrowhead4)"/>
+
+    <!-- Plus sign -->
+    <text x="420" y="115" font-size="24" fill="#6f7c92">+</text>
+
+    <!-- Output -->
+    <rect class="node-green" x="450" y="95" width="120" height="50" rx="8"/>
+    <text x="510" y="118" text-anchor="middle" font-weight="700" font-size="13">Output</text>
+    <text x="510" y="135" text-anchor="middle" font-size="11" fill="#aab4c5">Wx + BAx</text>
+
+    <!-- Labels -->
+    <text x="192" y="200" text-anchor="middle" font-size="12" fill="#ffb86b">LoRA: chỉ train A, B</text>
+    <text x="192" y="218" text-anchor="middle" font-size="11" fill="#aab4c5">r = 8 → 16 (rank rất nhỏ)</text>
+
+    <text x="510" y="200" text-anchor="middle" font-size="12" fill="#b4e07a">W fixed, chỉ lưu ΔW = BA</text>
+    <text x="510" y="218" text-anchor="middle" font-size="11" fill="#aab4c5">Adapter size: vài MB vs vài GB</text>
+  </svg>
+
+  <h3>LoRA rank và alpha</h3>
+  <pre><code><span class="cm"># LoRA với Hugging Face PEFT</span>
+<span class="kw">from</span> peft <span class="kw">import</span> LoraConfig, get_peft_model
+
+lora_config = LoraConfig(
+    r=<span class="num">8</span>,              <span class="cm"># rank — 8 thường đủ tốt</span>
+    lora_alpha=<span class="num">32</span>,   <span class="cm"># scaling factor (thường = 2*r)</span>
+    target_modules=[<span class="str">"q_proj"</span>, <span class="str">"v_proj"</span>],  <span class="cm"># attention layers</span>
+    lora_dropout=<span class="num">0.05</span>,
+    bias=<span class="str">"none"</span>,
+    task_type=<span class="str">"CAUSAL_LM"</span>
+)
+
+model = <span class="fn">get_peft_model</span>(base_model, lora_config)
+model.<span class="fn">print_trainable_parameters</span>()
+<span class="cm"># trainable params: 4,194,304 || all params: 6,742,609,920
+# trainable%: 0.0622% — chỉ train 0.06%!</span></code></pre>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Method</th>
+          <th>Params updated</th>
+          <th>VRAM (7B model)</th>
+          <th>Quality vs full FT</th>
+          <th>Khi nào dùng</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Full Fine-tune</strong></td>
+          <td>100%</td>
+          <td>~80–160 GB</td>
+          <td>Baseline (best)</td>
+          <td>Có GPU farm, budget lớn</td>
+        </tr>
+        <tr>
+          <td><strong>LoRA</strong></td>
+          <td>0.1–1%</td>
+          <td>~20–30 GB</td>
+          <td>~90–95% của full FT</td>
+          <td>1–4 GPU, tiêu chuẩn</td>
+        </tr>
+        <tr>
+          <td><strong>QLoRA</strong></td>
+          <td>0.1–1%</td>
+          <td>~8–12 GB</td>
+          <td>~85–92% của full FT</td>
+          <td>Consumer GPU (RTX 3090+)</td>
+        </tr>
+        <tr>
+          <td><strong>IA³</strong></td>
+          <td>&lt;0.01%</td>
+          <td>~6 GB</td>
+          <td>~80–88% của full FT</td>
+          <td>Rất ít data, fast exp</td>
+        </tr>
+        <tr>
+          <td><strong>Prefix Tuning</strong></td>
+          <td>&lt;0.1%</td>
+          <td>~8 GB</td>
+          <td>~85–90% của full FT</td>
+          <td>Task switching nhanh</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout tip">
+    <div class="icon">★</div>
+    <div>
+      <div class="title">QLoRA = LoRA + quantized base</div>
+      <p>
+        QLoRA load base model ở 4-bit (thay vì 16-bit/32-bit), sau đó train LoRA adapters ở 16-bit.
+        Kết quả: fit model 13B trên single RTX 3090 (24GB VRAM). Quality giảm nhẹ, nhưng acceptable cho nhiều use cases.
+      </p>
+    </div>
+  </div>
+
+  <!-- ================================================================
+       6.4 Instruction vs Preference Tuning
+  ================================================================ -->
+  <h2 id="preference">6.4 Instruction Tuning vs Preference Tuning</h2>
+
+  <div class="grid-2">
+    <div class="card">
+      <h4>Instruction Tuning (SFT)</h4>
+      <p>Dạy model <strong>follow instructions</strong> — respond theo cách được mong đợi.</p>
+      <ul>
+        <li>Data format: (instruction, response) pairs</li>
+        <li>Model học: "khi thấy instruction này, output như thế này"</li>
+        <li>Dùng khi: cần model biết format, style cụ thể</li>
+        <li>Tools: HuggingFace TRL SFTTrainer</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>Preference Tuning (DPO/ORPO)</h4>
+      <p>Dạy model <strong>align với preference</strong> của human — biết cái gì tốt hơn cái gì.</p>
+      <ul>
+        <li>Data format: (prompt, chosen_response, rejected_response)</li>
+        <li>Model học: "response A tốt hơn response B vì sao"</li>
+        <li>Dùng khi: cần alignment, reduce harm, improve helpfulness</li>
+        <li>Tools: TRL DPOTrainer, ORPOTrainer</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3>DPO (Direct Preference Optimization)</h3>
+  <p>
+    DPO là phương pháp phổ biến nhất cho preference tuning — đơn giản hơn RLHF
+    (không cần reward model riêng), stable hơn khi training.
+  </p>
+  <pre><code><span class="cm"># Cấu trúc DPO training data</span>
+{
+  <span class="str">"prompt"</span>: <span class="str">"Giải thích machine learning cho người mới bắt đầu"</span>,
+  <span class="str">"chosen"</span>: <span class="str">"Machine learning là cách dạy máy tính học từ ví dụ,
+giống như bạn học nhận biết mèo bằng cách xem nhiều ảnh mèo.
+Thay vì lập trình quy tắc cứng, ML tự tìm pattern trong data..."</span>,
+  <span class="str">"rejected"</span>: <span class="str">"ML là một nhánh của AI sử dụng thuật toán thống kê
+để cho phép hệ thống máy tính cải thiện hiệu suất trên
+một tác vụ cụ thể thông qua kinh nghiệm..."</span>
+}
+<span class="cm"># "chosen" dễ hiểu hơn, dùng analogy
+# "rejected" đúng nhưng quá technical cho người mới</span></code></pre>
+
+  <!-- ================================================================
+       6.5 Data Preparation
+  ================================================================ -->
+  <h2 id="data-prep">6.5 Data Preparation cho Fine-tuning</h2>
+
+  <div class="callout warn">
+    <div class="icon">⚠</div>
+    <div>
+      <div class="title">Quality &gt; Quantity — luôn luôn</div>
+      <p>
+        1000 examples chất lượng cao tốt hơn 100,000 examples kém chất lượng. "Garbage in, garbage out"
+        đặc biệt đúng với fine-tuning — model sẽ học đúng cả những lỗi trong data.
+      </p>
+    </div>
+  </div>
+
+  <h3>Data quality checklist</h3>
+  <ul>
+    <li><strong>Consistency:</strong> format nhất quán — cùng một task phải có cùng cấu trúc response</li>
+    <li><strong>Accuracy:</strong> responses phải đúng về mặt factual — verify bởi domain expert</li>
+    <li><strong>Diversity:</strong> cover nhiều phong cách, edge cases, không chỉ common cases</li>
+    <li><strong>No leakage:</strong> test examples không được xuất hiện trong training set</li>
+    <li><strong>Deduplication:</strong> duplicate examples gây model overfit vào chúng</li>
+    <li><strong>Balanced distribution:</strong> không bias về topic, language, difficulty</li>
+  </ul>
+
+  <h3>Pipeline chuẩn bị data</h3>
+  <pre><code><span class="cm"># Bước 1: Thu thập raw data</span>
+<span class="cm"># Nguồn: logs, expert annotations, synthetic generation</span>
+
+<span class="cm"># Bước 2: Deduplication (MinHash)</span>
+<span class="kw">from</span> datasketch <span class="kw">import</span> MinHash, MinHashLSH
+
+<span class="kw">def</span> <span class="fn">deduplicate_dataset</span>(examples: list[dict]) -> list[dict]:
+    lsh = <span class="fn">MinHashLSH</span>(threshold=<span class="num">0.8</span>, num_perm=<span class="num">128</span>)
+    unique = []
+    <span class="kw">for</span> i, example <span class="kw">in</span> <span class="fn">enumerate</span>(examples):
+        m = <span class="fn">MinHash</span>(num_perm=<span class="num">128</span>)
+        <span class="kw">for</span> word <span class="kw">in</span> example[<span class="str">"output"</span>].<span class="fn">split</span>():
+            m.<span class="fn">update</span>(word.<span class="fn">encode</span>(<span class="str">"utf8"</span>))
+        <span class="kw">if</span> lsh.<span class="fn">query</span>(m) == []:
+            lsh.<span class="fn">insert</span>(<span class="fn">str</span>(i), m)
+            unique.<span class="fn">append</span>(example)
+    <span class="kw">return</span> unique
+
+<span class="cm"># Bước 3: Quality filter (dùng LLM judge)</span>
+<span class="kw">def</span> <span class="fn">filter_quality</span>(example: dict, threshold: float = <span class="num">4.0</span>) -> bool:
+    score = <span class="fn">llm_judge_score</span>(example[<span class="str">"instruction"</span>], example[<span class="str">"output"</span>])
+    <span class="kw">return</span> score >= threshold
+
+<span class="cm"># Bước 4: Train/val/test split (80/10/10)</span></code></pre>
+
+  <div class="callout tip">
+    <div class="icon">★</div>
+    <div>
+      <div class="title">Synthetic data generation</div>
+      <p>
+        Dùng GPT-4 / Claude để <strong>generate training data</strong> cho smaller models là technique phổ biến.
+        Gọi là "distillation via data generation". Cẩn thận: check license — một số provider cấm dùng output để train competing models.
+      </p>
+    </div>
+  </div>
+
+  <!-- ================================================================
+       6.6 Quantization
+  ================================================================ -->
+  <h2 id="quantization">6.6 Quantization</h2>
+
+  <p>
+    Quantization giảm độ chính xác của model weights từ float32 → float16 → int8 → int4,
+    giúp giảm memory footprint và tăng inference speed với quality loss tối thiểu.
+  </p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Format</th>
+          <th>Bits/weight</th>
+          <th>Memory (7B model)</th>
+          <th>Speed</th>
+          <th>Quality loss</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>FP32</strong></td>
+          <td>32 bits</td>
+          <td>~28 GB</td>
+          <td>Baseline</td>
+          <td>None</td>
+        </tr>
+        <tr>
+          <td><strong>BF16/FP16</strong></td>
+          <td>16 bits</td>
+          <td>~14 GB</td>
+          <td>1.5–2×</td>
+          <td>Negligible</td>
+        </tr>
+        <tr>
+          <td><strong>INT8</strong></td>
+          <td>8 bits</td>
+          <td>~7 GB</td>
+          <td>2–3×</td>
+          <td>Rất nhỏ (~1–2%)</td>
+        </tr>
+        <tr>
+          <td><strong>INT4 / GPTQ</strong></td>
+          <td>4 bits</td>
+          <td>~4 GB</td>
+          <td>3–4×</td>
+          <td>Nhỏ (~3–5%)</td>
+        </tr>
+        <tr>
+          <td><strong>AWQ</strong></td>
+          <td>4 bits</td>
+          <td>~4 GB</td>
+          <td>3–4×</td>
+          <td>Tốt hơn GPTQ ~1%</td>
+        </tr>
+        <tr>
+          <td><strong>GGUF Q2</strong></td>
+          <td>2 bits</td>
+          <td>~2 GB</td>
+          <td>4–5×</td>
+          <td>Đáng kể (~10%+)</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>GPTQ vs AWQ</h3>
+  <div class="grid-2">
+    <div class="card">
+      <h4>GPTQ</h4>
+      <ul>
+        <li>Post-training quantization — không cần training data</li>
+        <li>Layer-wise quantization với OBQ algorithm</li>
+        <li>Widely supported (AutoGPTQ, vLLM)</li>
+        <li>Tốt cho GPU inference</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>AWQ (Activation-aware)</h4>
+      <ul>
+        <li>Phân tích activation patterns trước khi quantize</li>
+        <li>Bảo vệ "important" weights khỏi quantization error</li>
+        <li>Quality tốt hơn GPTQ ở cùng bit-width</li>
+        <li>Cần calibration data (small, không phải training data)</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- ================================================================
+       6.7 Distillation
+  ================================================================ -->
+  <h2 id="distillation">6.7 Knowledge Distillation</h2>
+
+  <p>
+    <strong>Distillation</strong> = train model nhỏ (student) học từ model lớn (teacher).
+    Student học không chỉ từ hard labels (đúng/sai) mà từ <em>soft probability distribution</em>
+    của teacher — chứa nhiều information hơn về "why" câu trả lời đúng.
+  </p>
+
+  <pre><code><span class="cm"># Distillation đơn giản nhất: data generation</span>
+<span class="cm"># Bước 1: Dùng teacher (GPT-4) generate responses</span>
+teacher_data = []
+<span class="kw">for</span> prompt <span class="kw">in</span> task_prompts:
+    response = gpt4.<span class="fn">complete</span>(prompt)  <span class="cm"># teacher</span>
+    teacher_data.<span class="fn">append</span>({<span class="str">"input"</span>: prompt, <span class="str">"output"</span>: response})
+
+<span class="cm"># Bước 2: Fine-tune student (Llama 3.2 3B) trên data này</span>
+<span class="fn">sft_train</span>(student_model=<span class="str">"llama-3.2-3b"</span>, dataset=teacher_data)
+
+<span class="cm"># Kết quả: model nhỏ, cheap, fast — gần match teacher quality
+# cho specific task/domain</span></code></pre>
+
+  <div class="callout note">
+    <div class="icon">≡</div>
+    <div>
+      <div class="title">Speculative decoding là distillation application</div>
+      <p>
+        Một ứng dụng distillation trong production: <strong>speculative decoding</strong> dùng
+        small draft model để predict tokens nhanh, sau đó large model verify.
+        Kết quả: 2–4× speedup với quality giữ nguyên.
+      </p>
+    </div>
+  </div>
+
+  <!-- ================================================================
+       6.8 Continual Learning
+  ================================================================ -->
+  <h2 id="continual">6.8 Continual Learning &amp; Catastrophic Forgetting</h2>
+
+  <p>
+    <strong>Catastrophic forgetting</strong>: khi fine-tune model trên task mới, model "quên" đi
+    capabilities cũ. Đây là một trong những thách thức lớn nhất của continual learning.
+  </p>
+
+  <div class="callout danger">
+    <div class="icon">✕</div>
+    <div>
+      <div class="title">Ví dụ về catastrophic forgetting</div>
+      <p>
+        Fine-tune Llama 3 trên legal documents → model giỏi hơn về law, nhưng kém hơn về coding,
+        math, và general knowledge. Không cẩn thận có thể mất đi general capabilities của base model.
+      </p>
+    </div>
+  </div>
+
+  <h3>Strategies để giảm thiểu</h3>
+  <ul>
+    <li>
+      <strong>Mix training data:</strong> trộn task-specific data với general data (10:1 ratio).
+      Model vừa học task mới vừa "ôn lại" capabilities cũ.
+    </li>
+    <li>
+      <strong>LoRA adapters:</strong> base model frozen → không thể forget base capabilities.
+      Adapters chứa task-specific knowledge. Có thể switch adapters per task.
+    </li>
+    <li>
+      <strong>Evaluation suite:</strong> track cả task-specific metrics VÀ general benchmarks
+      (MMLU, HumanEval) trên mỗi checkpoint để detect regression sớm.
+    </li>
+    <li>
+      <strong>Lower learning rate:</strong> train chậm hơn, model adjust less aggressively.
+    </li>
+  </ul>
+
+  <!-- ================================================================
+       6.9 Cost/benefit math
+  ================================================================ -->
+  <h2 id="cost-benefit">6.9 Cost/Benefit Analysis</h2>
+
+  <p>
+    Fine-tuning không chỉ là engineering decision — đây là <strong>financial decision</strong>.
+    Cần tính toán rõ ràng trước khi commit.
+  </p>
+
+  <div class="card">
+    <h4>Framework tính toán</h4>
+    <p><strong>One-time costs (training):</strong></p>
+    <ul>
+      <li>Compute: GPU hours × price (ví dụ: 8× H100 × 4 giờ × $32/giờ = $1,024)</li>
+      <li>Data preparation: engineering time để collect, clean, label</li>
+      <li>Iteration: thường cần 3–10 training runs để đạt target quality</li>
+    </ul>
+    <p><strong>Ongoing costs (inference):</strong></p>
+    <ul>
+      <li>Self-hosted: GPU server cost, engineering to maintain</li>
+      <li>Managed (OpenAI fine-tune API): $0.003/1K tokens (vs $0.01/1K cho GPT-4)</li>
+    </ul>
+    <p><strong>Break-even calculation:</strong></p>
+    <pre><code><span class="cm"># Ví dụ minh hoạ (không phải giá thực tế)</span>
+training_cost = <span class="num">2000</span>  <span class="cm"># USD (one-time)</span>
+cost_per_1k_base = <span class="num">0.010</span>   <span class="cm"># GPT-4o</span>
+cost_per_1k_ft   = <span class="num">0.003</span>   <span class="cm"># fine-tuned smaller model</span>
+savings_per_1k   = cost_per_1k_base - cost_per_1k_ft  <span class="cm"># = $0.007</span>
+
+breakeven_tokens = training_cost / savings_per_1k  <span class="cm"># = 285M tokens</span>
+<span class="cm"># Nếu usage > 285M tokens → fine-tuning tiết kiệm tiền</span>
+<span class="cm"># Nếu usage thấp hơn → không nên fine-tune</span></code></pre>
+  </div>
+
+  <div class="callout warn">
+    <div class="icon">⚠</div>
+    <div>
+      <div class="title">Hidden costs thường bị bỏ qua</div>
+      <p>
+        (1) Engineering time để build training pipeline. (2) Ongoing retraining khi có data mới.
+        (3) Maintenance khi base model update. (4) Monitoring &amp; eval infrastructure.
+        Tổng thực tế thường gấp 3–5× so với pure compute cost.
+      </p>
+    </div>
+  </div>
+
+  <!-- ================================================================
+       6.10 Tooling
+  ================================================================ -->
+  <h2 id="tooling">6.10 Tooling</h2>
+
+  <div class="tabs" data-tabs>
+    <div class="tab-buttons">
+      <button class="active">HuggingFace TRL</button>
+      <button>Unsloth</button>
+      <button>Axolotl</button>
+      <button>MLX (Apple)</button>
+      <button>OpenAI API</button>
+    </div>
+    <div class="tab-panel active">
+      <h4>HuggingFace TRL (Transformer Reinforcement Learning)</h4>
+      <p><span class="tag">Open-source</span> <span class="tag blue">Full-featured</span></p>
+      <ul>
+        <li>SFTTrainer, DPOTrainer, ORPOTrainer, PPOTrainer — tất cả trong một</li>
+        <li>Tích hợp chặt với HuggingFace ecosystem (datasets, transformers, peft)</li>
+        <li>Good documentation, active community</li>
+        <li>Điểm mạnh: full control, tất cả methods, production-ready</li>
+      </ul>
+      <pre><code><span class="kw">from</span> trl <span class="kw">import</span> SFTTrainer
+trainer = <span class="fn">SFTTrainer</span>(
+    model=model,
+    train_dataset=dataset,
+    peft_config=lora_config,
+    dataset_text_field=<span class="str">"text"</span>,
+    max_seq_length=<span class="num">2048</span>,
+    tokenizer=tokenizer,
+    args=training_args,
+)</code></pre>
+    </div>
+    <div class="tab-panel">
+      <h4>Unsloth</h4>
+      <p><span class="tag">Open-source</span> <span class="tag green">Speed-optimized</span></p>
+      <ul>
+        <li>2–5× nhanh hơn standard HuggingFace training</li>
+        <li>70% giảm VRAM usage với custom CUDA kernels</li>
+        <li>Support Llama, Mistral, Gemma, Phi, Qwen</li>
+        <li>Free cho single GPU, paid tier cho multi-GPU</li>
+        <li>Điểm mạnh: nhanh nhất hiện tại cho single-GPU fine-tuning</li>
+      </ul>
+      <pre><code><span class="kw">from</span> unsloth <span class="kw">import</span> FastLanguageModel
+model, tokenizer = FastLanguageModel.<span class="fn">from_pretrained</span>(
+    model_name=<span class="str">"unsloth/llama-3-8b-bnb-4bit"</span>,
+    max_seq_length=<span class="num">2048</span>,
+    load_in_4bit=<span class="kw">True</span>,  <span class="cm"># QLoRA</span>
+)</code></pre>
+    </div>
+    <div class="tab-panel">
+      <h4>Axolotl</h4>
+      <p><span class="tag">Open-source</span> <span class="tag blue">Config-driven</span></p>
+      <ul>
+        <li>Fine-tune với YAML config — không cần viết training code</li>
+        <li>Support rất nhiều architectures và methods</li>
+        <li>Multi-GPU support với DeepSpeed/FSDP built-in</li>
+        <li>Phổ biến trong open-source community</li>
+        <li>Điểm mạnh: dễ experiment, config-as-code</li>
+      </ul>
+      <pre><code><span class="cm"># config.yaml cho Axolotl</span>
+base_model: <span class="str">meta-llama/Meta-Llama-3-8B-Instruct</span>
+model_type: <span class="str">LlamaForCausalLM</span>
+datasets:
+  - path: <span class="str">data/train.jsonl</span>
+    type: <span class="str">alpaca</span>
+adapter: <span class="str">lora</span>
+lora_r: <span class="num">8</span>
+lora_alpha: <span class="num">16</span>
+num_epochs: <span class="num">3</span>
+learning_rate: <span class="num">2e-4</span></code></pre>
+    </div>
+    <div class="tab-panel">
+      <h4>MLX (Apple Silicon)</h4>
+      <p><span class="tag lilac">Apple Silicon</span> <span class="tag">On-device</span></p>
+      <ul>
+        <li>Apple's framework cho ML trên M-series chips</li>
+        <li>Unified memory architecture — CPU và GPU share RAM</li>
+        <li>Fine-tune Llama 3.1 8B trên MacBook Pro M3 Max (128GB)</li>
+        <li>Tốt cho privacy-sensitive use cases (on-device inference)</li>
+        <li>Điểm mạnh: chạy local, không cần cloud GPU</li>
+      </ul>
+      <pre><code><span class="cm"># mlx-lm fine-tuning</span>
+python -m mlx_lm.lora \
+  --model mlx-community/Llama-3.2-3B-Instruct \
+  --train \
+  --data data/ \
+  --iters <span class="num">1000</span></code></pre>
+    </div>
+    <div class="tab-panel">
+      <h4>OpenAI Fine-tune API</h4>
+      <p><span class="tag">Managed</span> <span class="tag blue">Easiest setup</span></p>
+      <ul>
+        <li>Fine-tune GPT-4o-mini, GPT-3.5-turbo qua API</li>
+        <li>Upload JSONL, click button — training managed hoàn toàn</li>
+        <li>Pricing: training $0.008/1K tokens + inference cao hơn base</li>
+        <li>No control over training details, not self-hostable</li>
+        <li>Điểm mạnh: zero DevOps, tốt cho quick prototypes</li>
+      </ul>
+      <pre><code><span class="kw">from</span> openai <span class="kw">import</span> OpenAI
+client = <span class="fn">OpenAI</span>()
+
+<span class="cm"># Upload training file</span>
+file = client.files.<span class="fn">create</span>(
+    file=<span class="fn">open</span>(<span class="str">"training_data.jsonl"</span>, <span class="str">"rb"</span>),
+    purpose=<span class="str">"fine-tune"</span>
+)
+
+<span class="cm"># Start fine-tune job</span>
+job = client.fine_tuning.jobs.<span class="fn">create</span>(
+    training_file=file.id,
+    model=<span class="str">"gpt-4o-mini-2024-07-18"</span>
+)</code></pre>
+    </div>
+  </div>
+
+  <!-- ================================================================
+       Tóm tắt
+  ================================================================ -->
+  <h2 id="tom-tat">Tóm tắt</h2>
+  <ol>
+    <li><strong>Decision tree:</strong> Prompt → RAG → Fine-tune. Chỉ leo lên nếu bước trước không đủ tốt.</li>
+    <li><strong>SFT</strong> dạy behavior; <strong>DPO/ORPO</strong> dạy preference — dùng cả hai cho best results.</li>
+    <li><strong>LoRA/QLoRA</strong> là standard cho hầu hết use cases — 90–95% quality với &lt;1% parameters trained.</li>
+    <li><strong>Data quality &gt; quantity</strong> — 1000 examples tốt đánh bại 100K examples kém.</li>
+    <li><strong>Quantization</strong> (INT8, GPTQ, AWQ) cần thiết cho cost-effective inference — test kỹ quality drop.</li>
+    <li><strong>Distillation</strong>: dùng large model generate data để train small model cho specific task.</li>
+    <li><strong>Catastrophic forgetting</strong>: track general benchmarks sau mỗi fine-tuning run, dùng LoRA để minimize risk.</li>
+    <li><strong>Tính break-even trước</strong> — fine-tuning thường chỉ worth it ở volume lớn hoặc khi quality gap significant.</li>
+    <li><strong>Tooling:</strong> Unsloth (speed), Axolotl (config-driven), TRL (full control), OpenAI API (zero DevOps).</li>
+  </ol>
+
+  <nav class="section-footer">
+    <a href="05-model-selection.html" class="prev">
+      <div class="label">← trước đó</div>
+      <div class="title">05 — Model Selection &amp; Evaluation</div>
+    </a>
+    <a href="07-data-pipeline.html" class="next">
+      <div class="label">tiếp theo →</div>
+      <div class="title">07 — Data Pipeline cho AI</div>
+    </a>
+  </nav>
+
+</main>
+
+<script src="../assets/script.js"></script>
+</body>
+</html>

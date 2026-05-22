@@ -1,0 +1,1208 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>23 · Agent Design Patterns nâng cao — AI Engineering</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<nav class="top-nav">
+  <div class="brand"><span class="dot"></span> AI Engineering</div>
+  <div class="crumbs"><a href="../index.html">Mục lục</a> › Phần 9 · <span>23 — Agent Design Patterns nâng cao</span></div>
+  <div class="nav-actions">
+    <a href="22-future-advanced.html">← Trước</a>
+    <a href="24-agent-harness.html">Tiếp →</a>
+  </div>
+</nav>
+
+<main class="page">
+
+  <section class="hero">
+    <span class="eyebrow">Phần 9 · §23</span>
+    <h1>Agent Design Patterns nâng cao</h1>
+    <p class="lede">
+      Từ single-agent đơn giản đến swarm, Mixture-of-Agents, Critic-Actor và recursive agent-as-tool —
+      catalogue đầy đủ các pattern kiến trúc cho hệ thống agent production 2026 cùng hướng dẫn chọn pattern theo bài toán.
+    </p>
+    <img class="hero-image" src="../images/23-agent-design-patterns.png" alt="Agent Design Patterns illustration" onerror="this.style.display='none'">
+  </section>
+
+  <aside class="toc">
+    <div class="toc-title">Trong trang này</div>
+    <ul>
+      <li><a href="#taxonomy">23.1 Taxonomy patterns</a></li>
+      <li><a href="#tool-composition">23.2 Tool composition</a></li>
+      <li><a href="#sub-agent">23.3 Sub-agent delegation</a></li>
+      <li><a href="#dispatcher">23.4 Dispatcher / Router agent</a></li>
+      <li><a href="#swarm">23.5 Swarm pattern</a></li>
+      <li><a href="#moa">23.6 Mixture-of-Agents (MoA)</a></li>
+      <li><a href="#critic-actor">23.7 Critic-Actor</a></li>
+      <li><a href="#agent-as-tool">23.8 Agent-as-tool</a></li>
+      <li><a href="#reflexive">23.9 Reflexive / self-modifying agent</a></li>
+      <li><a href="#selection">23.10 Pattern selection guide</a></li>
+      <li><a href="#old-vs-new">23.11 Cách cũ vs Cách hiện tại</a></li>
+      <li><a href="#tom-tat">Tóm tắt</a></li>
+    </ul>
+  </aside>
+
+  <!-- ═══════════════════════════════════════════════
+       23.1 Taxonomy
+  ════════════════════════════════════════════════ -->
+  <h2 id="taxonomy">23.1 Taxonomy các Agent Pattern</h2>
+  <p>
+    Trước khi đi vào từng pattern, hãy định vị chúng trong một taxonomy chung.
+    Ba trục phân loại quan trọng nhất là <strong>số lượng LLM tham gia</strong>,
+    <strong>cách điều phối control flow</strong>, và <strong>mức độ tự chủ</strong>.
+  </p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Nhóm</th><th>Pattern đại diện</th><th>Số LLM</th><th>Control flow</th><th>Khi nào dùng</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="tag">Single-agent</span></td>
+          <td>Tool-using ReAct, Plan-and-Execute</td>
+          <td>1</td>
+          <td>LLM tự điều khiển</td>
+          <td>Task tuần tự, không cần parallelism</td>
+        </tr>
+        <tr>
+          <td><span class="tag blue">Multi-agent hierarchical</span></td>
+          <td>Orchestrator-Workers, Sub-agent delegation</td>
+          <td>2–N</td>
+          <td>Orchestrator central</td>
+          <td>Task phức tạp, cần chuyên môn hóa</td>
+        </tr>
+        <tr>
+          <td><span class="tag green">Parallel ensemble</span></td>
+          <td>Swarm, MoA, Debate</td>
+          <td>N đồng thời</td>
+          <td>Phân tán / aggregator</td>
+          <td>Cần độ tin cậy cao, nhiều góc nhìn</td>
+        </tr>
+        <tr>
+          <td><span class="tag lilac">Feedback loop</span></td>
+          <td>Critic-Actor, Reflexive</td>
+          <td>1–2</td>
+          <td>Vòng lặp đánh giá-sửa</td>
+          <td>Chất lượng output quan trọng hơn tốc độ</td>
+        </tr>
+        <tr>
+          <td><span class="tag">Recursive</span></td>
+          <td>Agent-as-tool, nested agents</td>
+          <td>Variable</td>
+          <td>Đệ quy / dynamic</td>
+          <td>Task không biết trước độ sâu phân rã</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Pattern catalog SVG — 6 mini-diagrams in a 3×2 grid -->
+  <svg class="diagram" viewBox="0 0 760 480" role="img" aria-label="Catalog 6 agent patterns">
+    <defs>
+      <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#6f7c92"/>
+      </marker>
+    </defs>
+
+    <!-- === Row 1, Col 1: Single-agent ReAct === -->
+    <rect class="node-bg" x="20" y="20" width="220" height="200" rx="10"/>
+    <text x="130" y="44" text-anchor="middle" font-weight="700" font-size="12" fill="#ffb86b">① Single-Agent</text>
+    <rect class="node-accent" x="70" y="56" width="120" height="30" rx="6"/>
+    <text x="130" y="76" text-anchor="middle" font-size="11">LLM (ReAct)</text>
+    <line class="arrow" x1="130" y1="86" x2="130" y2="106" marker-end="url(#arrowhead)"/>
+    <rect class="node-blue" x="60" y="108" width="140" height="24" rx="5"/>
+    <text x="130" y="124" text-anchor="middle" font-size="11">Tools (t1, t2, t3...)</text>
+    <line class="arrow" x1="130" y1="132" x2="130" y2="152" marker-end="url(#arrowhead)"/>
+    <rect class="node-green" x="70" y="154" width="120" height="24" rx="5"/>
+    <text x="130" y="170" text-anchor="middle" font-size="11">Result</text>
+    <text x="130" y="200" text-anchor="middle" class="label-sm">Một LLM, nhiều tools</text>
+
+    <!-- === Row 1, Col 2: Orchestrator-Workers === -->
+    <rect class="node-bg" x="270" y="20" width="220" height="200" rx="10"/>
+    <text x="380" y="44" text-anchor="middle" font-weight="700" font-size="12" fill="#7cc4ff">② Orchestrator-Workers</text>
+    <rect class="node-accent" x="320" y="56" width="120" height="28" rx="6"/>
+    <text x="380" y="75" text-anchor="middle" font-size="11">Orchestrator</text>
+    <line class="arrow" x1="340" y1="84" x2="310" y2="110" marker-end="url(#arrowhead)"/>
+    <line class="arrow" x1="380" y1="84" x2="380" y2="110" marker-end="url(#arrowhead)"/>
+    <line class="arrow" x1="420" y1="84" x2="450" y2="110" marker-end="url(#arrowhead)"/>
+    <rect class="node-blue" x="280" y="112" width="68" height="24" rx="5"/>
+    <text x="314" y="128" text-anchor="middle" font-size="10">Worker A</text>
+    <rect class="node-blue" x="356" y="112" width="68" height="24" rx="5"/>
+    <text x="390" y="128" text-anchor="middle" font-size="10">Worker B</text>
+    <rect class="node-blue" x="432" y="112" width="68" height="24" rx="5"/>
+    <text x="466" y="128" text-anchor="middle" font-size="10">Worker C</text>
+    <rect class="node-green" x="320" y="160" width="120" height="24" rx="5"/>
+    <text x="380" y="176" text-anchor="middle" font-size="11">Synthesis</text>
+    <text x="380" y="200" text-anchor="middle" class="label-sm">Phân chia chuyên môn</text>
+
+    <!-- === Row 1, Col 3: Dispatcher/Router === -->
+    <rect class="node-bg" x="520" y="20" width="220" height="200" rx="10"/>
+    <text x="630" y="44" text-anchor="middle" font-weight="700" font-size="12" fill="#b4e07a">③ Dispatcher/Router</text>
+    <rect class="node-accent" x="570" y="56" width="120" height="28" rx="6"/>
+    <text x="630" y="75" text-anchor="middle" font-size="11">Router (classifier)</text>
+    <line class="arrow" x1="590" y1="84" x2="560" y2="110" marker-end="url(#arrowhead)"/>
+    <line class="arrow" x1="630" y1="84" x2="630" y2="110" marker-end="url(#arrowhead)"/>
+    <line class="arrow" x1="670" y1="84" x2="700" y2="110" marker-end="url(#arrowhead)"/>
+    <rect class="node-blue" x="530" y="112" width="68" height="24" rx="5"/>
+    <text x="564" y="128" text-anchor="middle" font-size="10">Spec. A</text>
+    <rect class="node-blue" x="606" y="112" width="68" height="24" rx="5"/>
+    <text x="640" y="128" text-anchor="middle" font-size="10">Spec. B</text>
+    <rect class="node-blue" x="682" y="112" width="48" height="24" rx="5"/>
+    <text x="706" y="128" text-anchor="middle" font-size="10">Spec. C</text>
+    <text x="630" y="165" text-anchor="middle" font-size="11" fill="#6f7c92">Intent → Specialist</text>
+    <text x="630" y="200" text-anchor="middle" class="label-sm">Classify rồi forward</text>
+
+    <!-- === Row 2, Col 1: Swarm === -->
+    <rect class="node-bg" x="20" y="250" width="220" height="200" rx="10"/>
+    <text x="130" y="274" text-anchor="middle" font-weight="700" font-size="12" fill="#d3a4ff">④ Swarm (Handoff)</text>
+    <rect class="node-accent" x="50" y="286" width="80" height="24" rx="5"/>
+    <text x="90" y="302" text-anchor="middle" font-size="10">Agent A</text>
+    <line class="arrow" x1="130" y1="298" x2="160" y2="298" marker-end="url(#arrowhead)"/>
+    <rect class="node-blue" x="160" y="286" width="80" height="24" rx="5"/>
+    <text x="200" y="302" text-anchor="middle" font-size="10">Agent B</text>
+    <line class="arrow" x1="200" y1="310" x2="200" y2="340" marker-end="url(#arrowhead)"/>
+    <rect class="node-blue" x="130" y="342" width="80" height="24" rx="5"/>
+    <text x="170" y="358" text-anchor="middle" font-size="10">Agent C</text>
+    <line class="arrow" x1="130" y1="354" x2="100" y2="380" marker-end="url(#arrowhead)"/>
+    <rect class="node-green" x="50" y="382" width="80" height="24" rx="5"/>
+    <text x="90" y="398" text-anchor="middle" font-size="10">Final agent</text>
+    <text x="130" y="432" text-anchor="middle" class="label-sm">Handoff via tool_call</text>
+
+    <!-- === Row 2, Col 2: MoA === -->
+    <rect class="node-bg" x="270" y="250" width="220" height="200" rx="10"/>
+    <text x="380" y="274" text-anchor="middle" font-weight="700" font-size="12" fill="#ffb86b">⑤ Mixture-of-Agents</text>
+    <rect class="node-blue" x="280" y="286" width="68" height="24" rx="5"/>
+    <text x="314" y="302" text-anchor="middle" font-size="10">Proposer 1</text>
+    <rect class="node-blue" x="356" y="286" width="68" height="24" rx="5"/>
+    <text x="390" y="302" text-anchor="middle" font-size="10">Proposer 2</text>
+    <rect class="node-blue" x="432" y="286" width="48" height="24" rx="5"/>
+    <text x="456" y="302" text-anchor="middle" font-size="10">Prop. 3</text>
+    <line class="arrow" x1="314" y1="310" x2="360" y2="346" marker-end="url(#arrowhead)"/>
+    <line class="arrow" x1="390" y1="310" x2="390" y2="346" marker-end="url(#arrowhead)"/>
+    <line class="arrow" x1="456" y1="310" x2="420" y2="346" marker-end="url(#arrowhead)"/>
+    <rect class="node-accent" x="320" y="348" width="120" height="28" rx="6"/>
+    <text x="380" y="367" text-anchor="middle" font-size="11">Aggregator LLM</text>
+    <rect class="node-green" x="330" y="390" width="100" height="24" rx="5"/>
+    <text x="380" y="406" text-anchor="middle" font-size="10">Final answer</text>
+    <text x="380" y="432" text-anchor="middle" class="label-sm">N proposers → aggregator</text>
+
+    <!-- === Row 2, Col 3: Critic-Actor === -->
+    <rect class="node-bg" x="520" y="250" width="220" height="200" rx="10"/>
+    <text x="630" y="274" text-anchor="middle" font-weight="700" font-size="12" fill="#7cc4ff">⑥ Critic-Actor</text>
+    <rect class="node-accent" x="565" y="286" width="130" height="24" rx="6"/>
+    <text x="630" y="302" text-anchor="middle" font-size="11">Actor (generate)</text>
+    <line class="arrow" x1="630" y1="310" x2="630" y2="336" marker-end="url(#arrowhead)"/>
+    <rect class="node-blue" x="565" y="338" width="130" height="24" rx="6"/>
+    <text x="630" y="354" text-anchor="middle" font-size="11">Critic (evaluate)</text>
+    <path class="arrow" d="M 565 350 Q 530 350 530 300 Q 530 295 564 295" fill="none" marker-end="url(#arrowhead)"/>
+    <text x="512" y="330" text-anchor="middle" font-size="10" fill="#ffb86b">revise</text>
+    <line class="arrow" x1="630" y1="362" x2="630" y2="388" marker-end="url(#arrowhead)"/>
+    <rect class="node-green" x="565" y="390" width="130" height="24" rx="5"/>
+    <text x="630" y="406" text-anchor="middle" font-size="10">Approved output</text>
+    <text x="630" y="432" text-anchor="middle" class="label-sm">Generate → critique → revise</text>
+  </svg>
+
+  <div class="callout note">
+    <div class="icon">≡</div>
+    <div>
+      <div class="title">Nguyên tắc vàng</div>
+      <p>
+        Luôn bắt đầu với pattern đơn giản nhất có thể giải quyết bài toán.
+        Complexity không phải miễn phí — mỗi agent thêm vào là thêm latency, cost, và failure modes.
+        Chỉ leo thang lên pattern phức tạp hơn khi bạn đã chứng minh pattern đơn giản không đủ.
+      </p>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════
+       23.2 Tool Composition
+  ════════════════════════════════════════════════ -->
+  <h2 id="tool-composition">23.2 Tool Composition — Atomic → Composite → Derived</h2>
+  <p>
+    Trước khi thiết kế agent architecture, hãy thiết kế tốt <strong>tool library</strong>. Tool được
+    tổ chức thành 3 tầng: <em>atomic</em> (nguyên tử), <em>composite</em> (tổ hợp), và <em>derived</em> (dẫn xuất hay còn gọi là tool-as-skill).
+  </p>
+
+  <div class="grid-2">
+    <div class="card">
+      <h4 style="margin-top:0">Tầng 1 — Atomic tools</h4>
+      <p>Thực hiện đúng một side effect nhỏ, idempotent, không thể chia nhỏ thêm.</p>
+      <ul style="margin:0">
+        <li><code>read_file(path)</code></li>
+        <li><code>http_get(url)</code></li>
+        <li><code>db_query(sql)</code></li>
+        <li><code>send_email(to, subject, body)</code></li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4 style="margin-top:0">Tầng 2 — Composite tools</h4>
+      <p>Kết hợp nhiều atomic tools thành một workflow có tên rõ nghĩa hơn cho LLM.</p>
+      <ul style="margin:0">
+        <li><code>search_and_summarize(query)</code> → web_search + extract + summarize</li>
+        <li><code>fetch_invoice_context(id)</code> → db_query + read_file + format</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="card">
+    <h4 style="margin-top:0">Tầng 3 — Derived tools / Tool-as-skill</h4>
+    <p>
+      Một <em>skill</em> hoàn chỉnh được đóng gói thành tool — bên trong có thể là một agent nhỏ
+      chạy vài bước, nhưng LLM gọi nó như một black box đơn giản.
+    </p>
+    <pre style="margin:0"><code><span class="cm"># Bên ngoài: agent nhìn thấy một tool đơn giản</span>
+tools = [{
+  <span class="str">"name"</span>: <span class="str">"generate_quarterly_report"</span>,
+  <span class="str">"description"</span>: <span class="str">"Generate a full quarterly financial report for a tenant.
+  Internally fetches data, runs analysis, formats PDF. Takes 30–60s."</span>,
+  <span class="str">"input_schema"</span>: {<span class="str">"tenant_id"</span>: <span class="str">"string"</span>, <span class="str">"quarter"</span>: <span class="str">"string"</span>}
+}]
+
+<span class="cm"># Bên trong: là một mini-agent với nhiều steps</span>
+<span class="kw">async def</span> <span class="fn">generate_quarterly_report</span>(tenant_id: str, quarter: str) -> dict:
+
+    data = <span class="kw">await</span> <span class="fn">fetch_financial_data</span>(tenant_id, quarter)
+    analysis = <span class="kw">await</span> llm.<span class="fn">analyze</span>(data)
+    pdf_path = <span class="kw">await</span> <span class="fn">render_pdf</span>(analysis)
+    <span class="kw">return</span> {<span class="str">"status"</span>: <span class="str">"done"</span>, <span class="str">"path"</span>: pdf_path}</code></pre>
+  </div>
+
+  <div class="callout tip">
+    <div class="icon">★</div>
+    <div>
+      <div class="title">Tool-as-skill giúp giảm context bloat</div>
+      <p>
+        Thay vì để orchestrator agent biết tất cả 40 bước của một quy trình phức tạp,
+        gói toàn bộ quy trình đó vào một derived tool. Orchestrator chỉ thấy 1 tool call,
+        context window sạch, prompt ngắn hơn, ít nhầm lẫn hơn.
+      </p>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════
+       23.3 Sub-agent Delegation
+  ════════════════════════════════════════════════ -->
+  <h2 id="sub-agent">23.3 Sub-agent Delegation — Context Handoff &amp; Return Aggregation</h2>
+  <p>
+    Khi một agent "spawn" một sub-agent, ba vấn đề cần giải quyết rõ ràng:
+    <strong>bao nhiêu context truyền xuống</strong>,
+    <strong>sub-agent trả về gì</strong>, và
+    <strong>parent làm gì với nhiều kết quả</strong>.
+  </p>
+
+  <!-- Sub-agent context handoff SVG -->
+  <svg class="diagram" viewBox="0 0 760 340" role="img" aria-label="Sub-agent context handoff flow">
+    <defs>
+      <marker id="arr2" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#6f7c92"/>
+      </marker>
+    </defs>
+
+    <!-- Parent context -->
+    <rect class="node-accent" x="20" y="30" width="200" height="140" rx="10"/>
+    <text x="120" y="54" text-anchor="middle" font-weight="700" font-size="13">Parent Context</text>
+    <text x="30" y="76" font-size="11">• System prompt</text>
+    <text x="30" y="94" font-size="11">• Conversation history</text>
+    <text x="30" y="112" font-size="11">• Task state</text>
+    <text x="30" y="130" font-size="11">• Tool results so far</text>
+    <text x="30" y="148" font-size="11" fill="#6f7c92">Full: ~50k tokens</text>
+
+    <!-- Arrow: parent spawns child -->
+    <line class="arrow" x1="220" y1="100" x2="280" y2="100" marker-end="url(#arr2)"/>
+    <text x="250" y="88" text-anchor="middle" font-size="11" fill="#ffb86b">spawn</text>
+    <text x="250" y="118" text-anchor="middle" class="label-sm">distill</text>
+
+    <!-- Child context -->
+    <rect class="node-blue" x="280" y="30" width="200" height="140" rx="10"/>
+    <text x="380" y="54" text-anchor="middle" font-weight="700" font-size="13">Child Context</text>
+    <text x="290" y="76" font-size="11">• Focused system prompt</text>
+    <text x="290" y="94" font-size="11">• Sub-task description</text>
+    <text x="290" y="112" font-size="11">• Relevant facts only</text>
+    <text x="290" y="130" font-size="11">• Specific tools subset</text>
+    <text x="290" y="148" font-size="11" fill="#6f7c92">Slimmed: ~8k tokens</text>
+
+    <!-- Arrow: child executes -->
+    <line class="arrow" x1="480" y1="100" x2="540" y2="100" marker-end="url(#arr2)"/>
+    <text x="510" y="88" text-anchor="middle" font-size="11" fill="#b4e07a">execute</text>
+
+    <!-- Child execution -->
+    <rect class="node-green" x="540" y="30" width="200" height="140" rx="10"/>
+    <text x="640" y="54" text-anchor="middle" font-weight="700" font-size="13">Child Execution</text>
+    <text x="550" y="76" font-size="11">→ Tool calls</text>
+    <text x="550" y="94" font-size="11">→ Reasoning steps</text>
+    <text x="550" y="112" font-size="11">→ Intermediate results</text>
+    <text x="550" y="130" font-size="11">→ Self-critique (optional)</text>
+    <text x="550" y="148" font-size="11" fill="#6f7c92">May take N iterations</text>
+
+    <!-- Return arrow -->
+    <path class="arrow" d="M 640 170 Q 640 220 380 240 Q 180 240 120 205" fill="none" marker-end="url(#arr2)"/>
+    <text x="400" y="258" text-anchor="middle" font-size="11" fill="#7cc4ff">return: structured result (JSON / markdown)</text>
+    <text x="400" y="276" text-anchor="middle" class="label-sm">NOT raw chat history — compress thành summary</text>
+
+    <!-- Parent aggregation -->
+    <rect class="node-bg" x="20" y="290" width="720" height="36" rx="8"/>
+    <text x="380" y="314" text-anchor="middle" font-size="12">Parent aggregation: collect N child results → synthesize → continue own loop hoặc finalize</text>
+  </svg>
+
+  <h3>Khi nào spawn sub-agent — và khi nào thì không</h3>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Tình huống</th><th>Spawn sub-agent?</th><th>Lý do</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Task có thể parallel, độc lập nhau</td><td><span class="tag green">Có</span></td><td>Tiết kiệm latency đáng kể</td></tr>
+        <tr><td>Sub-task cần specialist prompt khác hẳn</td><td><span class="tag green">Có</span></td><td>Context isolation, tránh "role confusion"</td></tr>
+        <tr><td>Sub-task cần tool set khác (e.g. code runner)</td><td><span class="tag green">Có</span></td><td>Security isolation, least-privilege</td></tr>
+        <tr><td>Sub-task chỉ cần 1-2 tool calls</td><td><span class="tag">Không</span></td><td>Overhead spawn vượt lợi ích</td></tr>
+        <tr><td>Context của parent và child hoàn toàn giống</td><td><span class="tag">Không</span></td><td>Chỉ duplicate cost, không có giá trị</td></tr>
+        <tr><td>Task cần state chia sẻ liên tục giữa steps</td><td><span class="tag">Thận trọng</span></td><td>State sync phức tạp; dễ race condition</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Cost trade-off</h3>
+  <p>
+    Mỗi sub-agent spawn = ít nhất 1 LLM call mới với context riêng. Với 5 sub-agents chạy song song,
+    bạn trả gấp ~5 lần chi phí nhưng latency có thể chỉ tăng ~20–30% so với tuần tự.
+    Đây là trade-off <strong>cost để lấy speed</strong>. Với bài toán latency-sensitive,
+    đáng trả. Với batch job không có SLA latency, cân nhắc kỹ.
+  </p>
+
+  <!-- ═══════════════════════════════════════════════
+       23.4 Dispatcher / Router
+  ════════════════════════════════════════════════ -->
+  <h2 id="dispatcher">23.4 Dispatcher / Router Agent</h2>
+  <p>
+    <strong>Dispatcher</strong> (hay <em>Router</em>) là một agent đặc biệt có nhiệm vụ duy nhất:
+    phân loại intent của request và forward đến đúng specialist agent hoặc pipeline.
+    Đây là pattern backbone của các AI product phức tạp có nhiều chức năng.
+  </p>
+
+  <h3>Hai chiến lược routing</h3>
+  <div class="grid-2">
+    <div class="card">
+      <h4 style="margin-top:0">LLM-based routing</h4>
+      <p>Dùng một LLM call nhỏ (cheap model như Haiku/Flash) để classify intent thành category.</p>
+      <pre style="margin:0"><code>router_prompt = <span class="str">"""
+Classify the user request into one of:
+- BILLING: invoices, payments, subscriptions
+- TECHNICAL: bugs, integrations, APIs
+- GENERAL: product questions, docs
+- ESCALATE: complaints, legal
+
+Reply with ONLY the category name.
+"""</span>
+
+category = cheap_llm.<span class="fn">generate</span>(
+    system=router_prompt, user=request
+)</code></pre>
+    </div>
+    <div class="card">
+      <h4 style="margin-top:0">Structured output routing</h4>
+      <p>Yêu cầu model trả về JSON với field <code>route</code> và <code>confidence</code> — dễ validate và fallback.</p>
+      <pre style="margin:0"><code>result = llm.<span class="fn">generate</span>(
+    system=router_prompt,
+    response_format={
+        <span class="str">"route"</span>: <span class="str">"string"</span>,
+        <span class="str">"confidence"</span>: <span class="str">"number"</span>,
+        <span class="str">"reason"</span>: <span class="str">"string"</span>
+    }
+)
+<span class="kw">if</span> result[<span class="str">"confidence"</span>] < <span class="num">0.7</span>:
+    route = <span class="str">"GENERAL"</span>  <span class="cm"># fallback</span></code></pre>
+    </div>
+  </div>
+
+  <div class="callout warn">
+    <div class="icon">⚠</div>
+    <div>
+      <div class="title">Router là single point of failure</div>
+      <p>
+        Nếu router classify sai, toàn bộ task đi nhầm hướng. Luôn có:
+        (1) fallback route mặc định khi confidence thấp,
+        (2) logging mọi routing decision để phát hiện drift,
+        (3) human-in-the-loop cho các request high-stakes.
+      </p>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════
+       23.5 Swarm Pattern
+  ════════════════════════════════════════════════ -->
+  <h2 id="swarm">23.5 Swarm Pattern — Handoff via Tool Calls</h2>
+  <p>
+    <strong>Swarm</strong> (được Anthropic giới thiệu rộng rãi và OpenAI triển khai trong <em>openai-swarm</em> framework)
+    là pattern trong đó các agents chuyển giao control cho nhau thông qua một cơ chế đặc biệt:
+    <strong>handoff tool call</strong>. Không có orchestrator trung tâm — mỗi agent tự quyết định khi nào nó cần "bàn giao" cho agent khác.
+  </p>
+
+  <h3>Cơ chế Handoff</h3>
+  <pre><code><span class="cm"># Mỗi agent có một tool đặc biệt: transfer_to_X</span>
+billing_agent_tools = [
+    check_invoice_status,
+    generate_invoice,
+    <span class="fn">transfer_to_technical_support</span>,   <span class="cm"># handoff tool</span>
+    <span class="fn">transfer_to_account_manager</span>,     <span class="cm"># handoff tool</span>
+]
+
+<span class="cm"># Khi billing agent gọi transfer_to_technical_support(reason="..."):</span>
+<span class="cm"># → harness dừng billing agent loop</span>
+<span class="cm"># → khởi động technical_support agent với cùng conversation history</span>
+<span class="cm"># → plus context message: "Transferred from billing: {reason}"</span>
+
+<span class="kw">def</span> <span class="fn">run_swarm</span>(initial_agent, messages, context_vars):
+
+    current_agent = initial_agent
+    <span class="kw">while True</span>:
+        response = current_agent.<span class="fn">run</span>(messages, context_vars)
+        <span class="kw">if</span> response.type == <span class="str">"handoff"</span>:
+            current_agent = response.next_agent
+            messages = response.updated_messages
+        <span class="kw">elif</span> response.type == <span class="str">"final"</span>:
+            <span class="kw">return</span> response.output
+        <span class="kw">else</span>:
+            messages.<span class="fn">append</span>(response.message)</code></pre>
+
+  <h3>Swarm vs Orchestrator-Workers</h3>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Chiều</th><th>Swarm</th><th>Orchestrator-Workers</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Control</td><td>Phi tập trung — agent tự chuyển giao</td><td>Tập trung — orchestrator điều phối</td></tr>
+        <tr><td>Context</td><td>Toàn bộ history truyền qua</td><td>Orchestrator tóm tắt, worker nhận distilled context</td></tr>
+        <tr><td>Phù hợp</td><td>Customer journey tuyến tính (support, sales)</td><td>Task song song, decomposable</td></tr>
+        <tr><td>Debugging</td><td>Dễ trace — handoff log rõ ràng</td><td>Phức tạp hơn — phải trace orchestrator decisions</td></tr>
+        <tr><td>Scalability</td><td>Tuyến tính theo độ dài journey</td><td>Có thể parallel, scale tốt hơn</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════
+       23.6 Mixture-of-Agents (MoA)
+  ════════════════════════════════════════════════ -->
+  <h2 id="moa">23.6 Mixture-of-Agents (MoA): N Proposers + Aggregator</h2>
+  <p>
+    <strong>Mixture-of-Agents</strong> (Wang et al., 2024) lấy cảm hứng từ Mixture of Experts trong deep learning:
+    chạy <em>N</em> LLMs độc lập trên cùng một task (proposers), sau đó một LLM thứ N+1 (aggregator)
+    tổng hợp các câu trả lời thành output tốt nhất. Kết quả thường vượt trội hơn từng model đơn lẻ.
+  </p>
+
+  <!-- MoA layered SVG -->
+  <svg class="diagram" viewBox="0 0 760 360" role="img" aria-label="Mixture-of-Agents layered diagram">
+    <defs>
+      <marker id="arr3" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#6f7c92"/>
+      </marker>
+    </defs>
+
+    <!-- Input -->
+    <rect class="node-bg" x="280" y="10" width="200" height="36" rx="8"/>
+    <text x="380" y="33" text-anchor="middle" font-weight="600" font-size="13">Task / Query</text>
+    <line class="arrow" x1="240" y1="46" x2="140" y2="86" marker-end="url(#arr3)"/>
+    <line class="arrow" x1="320" y1="46" x2="290" y2="86" marker-end="url(#arr3)"/>
+    <line class="arrow" x1="380" y1="46" x2="380" y2="86" marker-end="url(#arr3)"/>
+    <line class="arrow" x1="440" y1="46" x2="470" y2="86" marker-end="url(#arr3)"/>
+    <line class="arrow" x1="520" y1="46" x2="620" y2="86" marker-end="url(#arr3)"/>
+
+    <!-- Layer 1: Proposers -->
+    <text x="380" y="82" text-anchor="middle" font-size="11" fill="#6f7c92">Layer 1 — Proposers (chạy song song)</text>
+    <rect class="node-blue" x="50" y="90" width="130" height="56" rx="8"/>
+    <text x="115" y="112" text-anchor="middle" font-weight="600" font-size="12">Claude Opus</text>
+    <text x="115" y="128" text-anchor="middle" class="label-sm">draft A</text>
+
+    <rect class="node-blue" x="210" y="90" width="130" height="56" rx="8"/>
+    <text x="275" y="112" text-anchor="middle" font-weight="600" font-size="12">GPT-4o</text>
+    <text x="275" y="128" text-anchor="middle" class="label-sm">draft B</text>
+
+    <rect class="node-blue" x="315" y="90" width="130" height="56" rx="8"/>
+    <text x="380" y="112" text-anchor="middle" font-weight="600" font-size="12">Gemini 2</text>
+    <text x="380" y="128" text-anchor="middle" class="label-sm">draft C</text>
+
+    <rect class="node-blue" x="420" y="90" width="130" height="56" rx="8"/>
+    <text x="485" y="112" text-anchor="middle" font-weight="600" font-size="12">Llama 3.3</text>
+    <text x="485" y="128" text-anchor="middle" class="label-sm">draft D</text>
+
+    <rect class="node-blue" x="580" y="90" width="130" height="56" rx="8"/>
+    <text x="645" y="112" text-anchor="middle" font-weight="600" font-size="12">Mistral</text>
+    <text x="645" y="128" text-anchor="middle" class="label-sm">draft E</text>
+
+    <!-- Arrows to aggregator -->
+    <line class="arrow" x1="115" y1="146" x2="280" y2="200" marker-end="url(#arr3)"/>
+    <line class="arrow" x1="275" y1="146" x2="320" y2="200" marker-end="url(#arr3)"/>
+    <line class="arrow" x1="380" y1="146" x2="380" y2="200" marker-end="url(#arr3)"/>
+    <line class="arrow" x1="485" y1="146" x2="440" y2="200" marker-end="url(#arr3)"/>
+    <line class="arrow" x1="645" y1="146" x2="480" y2="200" marker-end="url(#arr3)"/>
+
+    <!-- Aggregator -->
+    <rect class="node-accent" x="240" y="202" width="280" height="60" rx="10"/>
+    <text x="380" y="224" text-anchor="middle" font-weight="700" font-size="14">Aggregator LLM</text>
+    <text x="380" y="244" text-anchor="middle" class="label-sm">Synthesize all drafts → best answer</text>
+    <text x="380" y="256" text-anchor="middle" class="label-sm">"You have N responses from different models. Synthesize the best..."</text>
+
+    <!-- Optional: multi-round -->
+    <rect class="node-bg" x="100" y="280" width="560" height="36" rx="8"/>
+    <text x="380" y="304" text-anchor="middle" font-size="12" fill="#6f7c92">Multi-round: output của layer 1 trở thành input cho proposers ở layer 2, sau đó aggregator lần 2...</text>
+
+    <!-- Final output -->
+    <line class="arrow" x1="380" y1="262" x2="380" y2="278" marker-end="url(#arr3)"/>
+    <rect class="node-green" x="300" y="328" width="160" height="28" rx="6"/>
+    <text x="380" y="347" text-anchor="middle" font-weight="600" font-size="12">Final Answer</text>
+  </svg>
+
+  <h3>Khi nào MoA hữu ích</h3>
+  <ul>
+    <li><strong>High-stakes decisions</strong>: Medical, legal, financial — cần nhiều nguồn xác nhận</li>
+    <li><strong>Benchmark-chasing</strong>: MoA thường cho SOTA trên leaderboards mà không fine-tune</li>
+    <li><strong>Kiểm soát bias của từng model</strong>: Mỗi model có bias khác nhau; tổng hợp giảm thiểu</li>
+    <li>
+      <strong>Chú ý cost</strong>: MoA với 5 proposers = ~5–6x cost so với single model call.
+      <span class="tag">Không</span> phù hợp cho latency-sensitive hoặc budget-constrained use cases.
+    </li>
+  </ul>
+
+  <!-- ═══════════════════════════════════════════════
+       23.7 Critic-Actor
+  ════════════════════════════════════════════════ -->
+  <h2 id="critic-actor">23.7 Critic-Actor Pattern — Generate → Critique → Revise</h2>
+  <p>
+    <strong>Critic-Actor</strong> là vòng lặp phản hồi trong đó <em>Actor</em> generate output,
+    <em>Critic</em> evaluate theo rubric cụ thể, và Actor revise dựa trên feedback.
+    Có thể dùng một model cho cả hai vai trò (self-critique) hoặc hai model riêng biệt.
+  </p>
+
+  <!-- Critic-Actor loop SVG -->
+  <svg class="diagram" viewBox="0 0 760 320" role="img" aria-label="Critic-Actor feedback loop">
+    <defs>
+      <marker id="arr4" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#6f7c92"/>
+      </marker>
+    </defs>
+
+    <!-- Task input -->
+    <rect class="node-bg" x="310" y="10" width="140" height="36" rx="8"/>
+    <text x="380" y="33" text-anchor="middle" font-weight="600" font-size="13">Task Input</text>
+    <line class="arrow" x1="380" y1="46" x2="380" y2="76" marker-end="url(#arr4)"/>
+
+    <!-- Actor -->
+    <rect class="node-accent" x="270" y="78" width="220" height="56" rx="10"/>
+    <text x="380" y="100" text-anchor="middle" font-weight="700" font-size="14">Actor</text>
+    <text x="380" y="118" text-anchor="middle" class="label-sm">Generate draft / take action</text>
+    <text x="380" y="130" text-anchor="middle" class="label-sm">(Claude Sonnet, GPT-4o...)</text>
+    <line class="arrow" x1="380" y1="134" x2="380" y2="164" marker-end="url(#arr4)"/>
+
+    <!-- Draft -->
+    <rect class="node-bg" x="290" y="166" width="180" height="36" rx="8"/>
+    <text x="380" y="183" text-anchor="middle" font-size="12">Draft (iteration n)</text>
+    <text x="380" y="197" text-anchor="middle" class="label-sm">score: 6.4 / 10</text>
+    <line class="arrow" x1="380" y1="202" x2="380" y2="232" marker-end="url(#arr4)"/>
+
+    <!-- Critic -->
+    <rect class="node-blue" x="270" y="234" width="220" height="60" rx="10"/>
+    <text x="380" y="256" text-anchor="middle" font-weight="700" font-size="14">Critic</text>
+    <text x="380" y="272" text-anchor="middle" class="label-sm">Evaluate by rubric: accuracy,</text>
+    <text x="380" y="284" text-anchor="middle" class="label-sm">completeness, tone, safety</text>
+
+    <!-- Back loop: Critic → Actor -->
+    <path class="arrow" d="M 270 264 Q 140 264 140 107 Q 140 95 269 95" fill="none" marker-end="url(#arr4)"/>
+    <text x="80" y="190" text-anchor="middle" font-size="12" fill="#ffb86b">Feedback</text>
+    <text x="80" y="206" text-anchor="middle" font-size="12" fill="#ffb86b">+ revise</text>
+    <text x="80" y="222" text-anchor="middle" class="label-sm">if score &lt; threshold</text>
+
+    <!-- Pass threshold -->
+    <line class="arrow" x1="490" y1="264" x2="580" y2="264" marker-end="url(#arr4)"/>
+    <text x="530" y="252" text-anchor="middle" font-size="11" fill="#b4e07a">score ≥ 9.0</text>
+    <rect class="node-green" x="582" y="246" width="150" height="36" rx="8"/>
+    <text x="657" y="269" text-anchor="middle" font-weight="600" font-size="12">Approved Output</text>
+
+    <!-- Iteration counter -->
+    <rect class="node-bg" x="580" y="90" width="150" height="100" rx="8"/>
+    <text x="655" y="110" text-anchor="middle" font-weight="600" font-size="12">Guard rails</text>
+    <text x="595" y="128" font-size="11">max_iter: 3–5</text>
+    <text x="595" y="146" font-size="11">timeout: 30s</text>
+    <text x="595" y="164" font-size="11">cost cap: $0.50</text>
+    <text x="595" y="182" class="label-sm">Nếu vượt → trả</text>
+    <text x="595" y="195" class="label-sm">best draft so far</text>
+  </svg>
+
+  <h3>Thiết kế Critic rubric hiệu quả</h3>
+  <pre><code>critic_prompt = <span class="str">"""
+You are a strict quality reviewer. Evaluate the DRAFT against these criteria:
+
+1. ACCURACY (0–10): Is every factual claim correct?
+2. COMPLETENESS (0–10): Does it address all parts of the task?
+3. TONE (0–10): Is the tone appropriate for the audience?
+4. SAFETY (0–10): Any harmful, biased, or legally risky content?
+
+Output JSON:
+{
+  "scores": {"accuracy": X, "completeness": X, "tone": X, "safety": X},
+  "overall": X,         // weighted average
+  "issues": ["issue1", "issue2"],
+  "suggestions": ["fix1", "fix2"]
+}
+
+If overall >= 9.0, set "approved": true.
+"""</span></code></pre>
+
+  <div class="callout tip">
+    <div class="icon">★</div>
+    <div>
+      <div class="title">Self-critique vs two-model critique</div>
+      <p>
+        <strong>Self-critique</strong> (cùng model đóng vai Critic) rẻ hơn và nhanh hơn.
+        Hiệu quả với tasks sáng tạo (writing, code). Hạn chế: model thường không critique chặt
+        output của chính mình.
+        <strong>Two-model critique</strong> (model khác làm Critic) cho kết quả khách quan hơn,
+        đặc biệt hiệu quả khi Actor và Critic là model khác nhau (e.g., Sonnet generates, Opus critiques).
+      </p>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════
+       23.8 Agent-as-Tool
+  ════════════════════════════════════════════════ -->
+  <h2 id="agent-as-tool">23.8 Agent-as-Tool — Recursive Agent Calls</h2>
+  <p>
+    Trong pattern này, một agent được đóng gói hoàn toàn như một <strong>tool</strong> mà agents khác có thể gọi.
+    Đây là nền tảng của kiến trúc <em>recursive</em> — agent A gọi agent B như tool,
+    agent B có thể gọi agent C, tạo ra cây gọi động.
+  </p>
+
+  <h3>Triển khai Agent-as-Tool</h3>
+  <pre><code><span class="cm"># Bước 1: Định nghĩa specialist agent như một callable</span>
+<span class="kw">class</span> <span class="fn">ResearchAgent</span>:
+    <span class="kw">def</span> <span class="fn">__call__</span>(self, query: str, depth: int = <span class="num">2</span>) -> str:
+
+        <span class="cm"># Agent này có tools riêng: web_search, browse, extract</span>
+        result = <span class="fn">run_agent_loop</span>(
+            system=<span class="str">"You are a research specialist..."</span>,
+            tools=[web_search, browse_url, extract_facts],
+            user=query,
+            max_iterations=<span class="num">10</span>
+        )
+        <span class="kw">return</span> result.summary  <span class="cm"># trả về summary, không phải raw history</span>
+
+<span class="cm"># Bước 2: Wrap thành tool schema cho orchestrator</span>
+research_tool = {
+    <span class="str">"name"</span>: <span class="str">"research_agent"</span>,
+    <span class="str">"description"</span>: <span class="str">"Deep research on any topic. Spawns a specialist agent
+    that searches web, browses sources, and returns a structured summary.
+    Use for tasks requiring 5+ sources or multi-angle research."</span>,
+    <span class="str">"input_schema"</span>: {
+        <span class="str">"query"</span>: {<span class="str">"type"</span>: <span class="str">"string"</span>, <span class="str">"description"</span>: <span class="str">"Research question"</span>},
+        <span class="str">"depth"</span>: {<span class="str">"type"</span>: <span class="str">"integer"</span>, <span class="str">"default"</span>: <span class="num">2</span>}
+    }
+}
+
+<span class="cm"># Bước 3: Orchestrator dùng research_agent như bất kỳ tool nào khác</span>
+orchestrator_tools = [
+    research_tool,     <span class="cm"># ← agent ẩn bên trong</span>
+    write_report,
+    send_email,
+]</code></pre>
+
+  <div class="callout danger">
+    <div class="icon">!</div>
+    <div>
+      <div class="title">Recursive depth limit bắt buộc</div>
+      <p>
+        Agent A gọi Agent B, B gọi C, C lại gọi A — vòng lặp đệ quy vô tận.
+        Luôn truyền và kiểm tra <code>depth</code> parameter, raise exception khi vượt ngưỡng (thường 3–5).
+        Trong production, implement circuit breaker ở cấp harness, không phụ thuộc vào agent tự báo.
+      </p>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════
+       23.9 Reflexive / Self-modifying Agent
+  ════════════════════════════════════════════════ -->
+  <h2 id="reflexive">23.9 Reflexive / Self-modifying Agent</h2>
+  <p>
+    <strong>Reflexive agent</strong> có khả năng nhìn lại kế hoạch của mình và thay đổi nó dựa trên
+    kết quả quan sát. Khác với Critic-Actor (chỉ sửa output), reflexive agent sửa
+    <em>plan / prompt / strategy</em> — tức là "meta-level" tự điều chỉnh.
+  </p>
+
+  <h3>Hai mức độ self-modification</h3>
+  <div class="grid-2">
+    <div class="card">
+      <h4 style="margin-top:0">Mức 1 — Plan rewriting</h4>
+      <p>Agent nhận ra step hiện tại fail hoặc không hiệu quả, tự viết lại plan cho các bước còn lại.</p>
+      <pre style="margin:0"><code><span class="cm"># Sau khi step 3 fail:</span>
+current_plan = [
+  <span class="str">"step1: done"</span>,
+  <span class="str">"step2: done"</span>,
+  <span class="str">"step3: FAILED - API down"</span>,
+  <span class="str">"step4: pending"</span>,
+]
+
+<span class="cm"># Agent tự replan:</span>
+new_plan = planner.<span class="fn">replan</span>(
+    original_task,
+    completed=current_plan[:2],
+    failed=current_plan[2],
+    reason=<span class="str">"external API unavailable"</span>
+)
+<span class="cm"># → step3b: use cached data instead</span></code></pre>
+    </div>
+    <div class="card">
+      <h4 style="margin-top:0">Mức 2 — Prompt rewriting</h4>
+      <p>Agent phát hiện system prompt của mình không phù hợp với task, tự tạo một system prompt mới tốt hơn.</p>
+      <pre style="margin:0"><code><span class="cm"># Agent nhận thấy sau 3 bước:</span>
+<span class="cm"># "Tôi đang viết quá verbose,</span>
+<span class="cm"># user cần bullet points ngắn"</span>
+
+meta_instruction = <span class="fn">f</span><span class="str">"""
+Based on feedback so far:
+{observations}
+
+Rewrite the system prompt to better
+match user's actual needs. Focus on:
+- Output format preference
+- Level of detail required
+- Domain vocabulary used
+"""</span>
+
+new_system_prompt = llm.<span class="fn">generate</span>(
+    meta_instruction, observations
+)</code></pre>
+    </div>
+  </div>
+
+  <div class="callout warn">
+    <div class="icon">⚠</div>
+    <div>
+      <div class="title">Self-modification cần audit trail</div>
+      <p>
+        Mọi lần agent tự sửa plan hoặc prompt, log lại: version cũ, version mới, và lý do.
+        Không có audit trail, hành vi agent trở nên không dự đoán được và rất khó debug.
+        Nhiều team giới hạn self-modification chỉ ở plan-level (mức 1), không cho phép prompt rewriting (mức 2) trong production.
+      </p>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════
+       23.10 Pattern Selection Guide
+  ════════════════════════════════════════════════ -->
+  <h2 id="selection">23.10 Pattern Selection Guide</h2>
+  <p>
+    Dùng bảng quyết định này để chọn pattern phù hợp. Ưu tiên đọc từ trái sang phải —
+    dừng lại ở cột đầu tiên match với đặc điểm bài toán của bạn.
+  </p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Đặc điểm bài toán</th>
+          <th>Pattern khuyến nghị</th>
+          <th>Lý do</th>
+          <th>Cost</th>
+          <th>Complexity</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Task đơn, tuần tự, ít tools (&lt;8)</td>
+          <td><span class="tag">Single-Agent ReAct</span></td>
+          <td>Đơn giản nhất, dễ debug</td>
+          <td>$</td>
+          <td>★☆☆☆☆</td>
+        </tr>
+        <tr>
+          <td>Task phức tạp nhưng chia được thành subtask độc lập</td>
+          <td><span class="tag blue">Orchestrator-Workers</span></td>
+          <td>Parallel execution giảm latency</td>
+          <td>$$</td>
+          <td>★★★☆☆</td>
+        </tr>
+        <tr>
+          <td>Request đa dạng, cần routing đến expert khác nhau</td>
+          <td><span class="tag green">Dispatcher + Specialists</span></td>
+          <td>Tối ưu từng domain, không over-generalize</td>
+          <td>$$</td>
+          <td>★★☆☆☆</td>
+        </tr>
+        <tr>
+          <td>Customer journey tuyến tính, cần handoff theo ngữ cảnh</td>
+          <td><span class="tag lilac">Swarm</span></td>
+          <td>Natural conversation flow, context preserved</td>
+          <td>$$</td>
+          <td>★★☆☆☆</td>
+        </tr>
+        <tr>
+          <td>Cần output chất lượng cao, accuracy quan trọng hơn tốc độ</td>
+          <td><span class="tag">Critic-Actor</span></td>
+          <td>Multiple revision rounds improve quality</td>
+          <td>$$$</td>
+          <td>★★★☆☆</td>
+        </tr>
+        <tr>
+          <td>High-stakes, cần cross-validate từ nhiều nguồn</td>
+          <td><span class="tag blue">MoA</span></td>
+          <td>Ensemble reduces individual model bias</td>
+          <td>$$$$</td>
+          <td>★★★★☆</td>
+        </tr>
+        <tr>
+          <td>Task depth không biết trước, cần dynamic decomposition</td>
+          <td><span class="tag green">Agent-as-Tool (recursive)</span></td>
+          <td>Flexible depth, composable specialists</td>
+          <td>$$$</td>
+          <td>★★★★☆</td>
+        </tr>
+        <tr>
+          <td>Task thay đổi constraint runtime, cần adaptive strategy</td>
+          <td><span class="tag lilac">Reflexive Agent</span></td>
+          <td>Self-correcting plan beats rigid pipeline</td>
+          <td>$$$</td>
+          <td>★★★★★</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout note">
+    <div class="icon">≡</div>
+    <div>
+      <div class="title">Kết hợp patterns</div>
+      <p>
+        Trong thực tế, các pattern thường kết hợp với nhau. Ví dụ điển hình:
+        <strong>Dispatcher → Specialist workers (mỗi worker dùng Critic-Actor internally) → MoA aggregation cho output cuối</strong>.
+        Không có pattern nào là "đúng duy nhất" — bắt đầu đơn giản và thêm layer khi bạn có evidence
+        từ production rằng cần thiết.
+      </p>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════
+       23.11 Cách cũ vs Cách hiện tại
+  ════════════════════════════════════════════════ -->
+  <h2 id="old-vs-new">23.11 Cách cũ vs Cách hiện tại</h2>
+
+  <div class="tabs" data-tabs>
+    <div class="tab-buttons">
+      <button class="active">Single-Agent</button>
+      <button>Multi-Agent</button>
+      <button>Routing</button>
+      <button>Quality Loop</button>
+    </div>
+
+    <!-- Tab 1: Single-Agent evolution -->
+    <div class="tab-panel active">
+      <h4>Single-Agent: Chained Prompts → Tool-Using Loop</h4>
+      <div class="grid-2">
+        <div class="card">
+          <div style="color:var(--danger);font-weight:600;margin-bottom:8px">Cách cũ (GPT-3.5 era)</div>
+          <p>Chuỗi prompt hardcoded — mỗi bước là một prompt riêng, output được nối vào prompt tiếp theo bằng string concatenation.</p>
+          <pre style="margin:0;font-size:12px"><code>step1 = llm.<span class="fn">call</span>(<span class="str">f"Summarize: {doc}"</span>)
+step2 = llm.<span class="fn">call</span>(<span class="str">f"Extract keys: {step1}"</span>)
+step3 = llm.<span class="fn">call</span>(<span class="str">f"Format: {step2}"</span>)
+<span class="cm"># Brittle: thay đổi step2 break toàn chuỗi</span>
+<span class="cm"># Không xử lý được error ở giữa</span>
+<span class="cm"># Không thể replan khi fail</span></code></pre>
+        </div>
+        <div class="card">
+          <div style="color:var(--accent-3);font-weight:600;margin-bottom:8px">Cách hiện tại (Claude 4.x / GPT-5 / Gemini 2)</div>
+          <p>Agent tự điều khiển loop với tool calling — LLM quyết định tool nào cần, retry khi fail, adapt plan theo kết quả.</p>
+          <pre style="margin:0;font-size:12px"><code>result = agent.<span class="fn">run</span>(
+  task=<span class="str">"Analyze and format this doc"</span>,
+  tools=[summarize, extract, format_output],
+  max_iter=<span class="num">10</span>
+)
+<span class="cm"># Agent tự chọn thứ tự tools</span>
+<span class="cm"># Tự retry nếu tool fail</span>
+<span class="cm"># Tự replan nếu approach không work</span></code></pre>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab 2: Multi-Agent evolution -->
+    <div class="tab-panel">
+      <h4>Multi-Agent: Manual Routing → Swarm Handoff</h4>
+      <div class="grid-2">
+        <div class="card">
+          <div style="color:var(--danger);font-weight:600;margin-bottom:8px">Cách cũ</div>
+          <p>Multi-agent bằng if/else hardcoded — developer viết explicit routing logic trong code.</p>
+          <pre style="margin:0;font-size:12px"><code><span class="kw">if</span> <span class="str">"invoice"</span> <span class="kw">in</span> query:
+    result = billing_agent.<span class="fn">handle</span>(query)
+<span class="kw">elif</span> <span class="str">"bug"</span> <span class="kw">in</span> query:
+    result = tech_agent.<span class="fn">handle</span>(query)
+<span class="kw">else</span>:
+    result = general_agent.<span class="fn">handle</span>(query)
+<span class="cm"># Fragile keyword matching</span>
+<span class="cm"># Không handle ambiguous cases</span>
+<span class="cm"># Không có handoff trong mid-conversation</span></code></pre>
+        </div>
+        <div class="card">
+          <div style="color:var(--accent-3);font-weight:600;margin-bottom:8px">Cách hiện tại</div>
+          <p>Swarm với structured handoff tools — agents tự quyết định khi nào chuyển giao và tại sao.</p>
+          <pre style="margin:0;font-size:12px"><code><span class="cm"># Billing agent có thể handoff bất cứ lúc</span>
+tools = [
+  check_invoice,
+  transfer_to_tech(reason: str),
+  transfer_to_manager(reason: str),
+]
+<span class="cm"># Khi billing agent nhận bug report:</span>
+<span class="cm"># → tự gọi transfer_to_tech("User reported</span>
+<span class="cm">#    API error while paying invoice")</span>
+<span class="cm"># → context + reason được truyền theo</span></code></pre>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab 3: Routing evolution -->
+    <div class="tab-panel">
+      <h4>Routing: Keyword Matching → LLM Classifier</h4>
+      <div class="grid-2">
+        <div class="card">
+          <div style="color:var(--danger);font-weight:600;margin-bottom:8px">Cách cũ</div>
+          <p>Regex hoặc keyword matching để detect intent — nhanh nhưng cực kỳ brittle với ngôn ngữ tự nhiên đa dạng.</p>
+          <pre style="margin:0;font-size:12px"><code>keywords = {
+  <span class="str">"BILLING"</span>: [<span class="str">"invoice"</span>, <span class="str">"pay"</span>, <span class="str">"bill"</span>],
+  <span class="str">"TECH"</span>:    [<span class="str">"error"</span>, <span class="str">"bug"</span>, <span class="str">"crash"</span>],
+}
+<span class="cm"># Fails: "I can't access my account"</span>
+<span class="cm"># Fails: Vietnamese typos</span>
+<span class="cm"># Fails: sarcasm, implicit intent</span></code></pre>
+        </div>
+        <div class="card">
+          <div style="color:var(--accent-3);font-weight:600;margin-bottom:8px">Cách hiện tại</div>
+          <p>Cheap LLM (Haiku/Flash) làm classifier với structured output — handle mọi ngôn ngữ, tone, và cách diễn đạt.</p>
+          <pre style="margin:0;font-size:12px"><code>intent = cheap_llm.<span class="fn">classify</span>(
+  text=user_message,
+  categories=[<span class="str">"BILLING"</span>, <span class="str">"TECH"</span>, <span class="str">"GENERAL"</span>],
+  output_format=<span class="str">"json_with_confidence"</span>
+)
+<span class="cm"># Handles: Vietnamese, typos,</span>
+<span class="cm"># implicit requests, multi-intent</span>
+<span class="cm"># Cost: ~$0.0001 per classification</span></code></pre>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab 4: Quality Loop evolution -->
+    <div class="tab-panel">
+      <h4>Quality Loop: Vibe Check → Rubric-based Critic</h4>
+      <div class="grid-2">
+        <div class="card">
+          <div style="color:var(--danger);font-weight:600;margin-bottom:8px">Cách cũ</div>
+          <p>Không có quality loop — generate once, ship. Hoặc có nhưng dùng vague self-evaluation prompt.</p>
+          <pre style="margin:0;font-size:12px"><code>response = llm.<span class="fn">generate</span>(task)
+<span class="cm"># Check bằng: "Is this good? yes/no"</span>
+<span class="cm"># LLM luôn trả lời "yes" về output</span>
+<span class="cm"># của chính mình → vô nghĩa</span></code></pre>
+        </div>
+        <div class="card">
+          <div style="color:var(--accent-3);font-weight:600;margin-bottom:8px">Cách hiện tại</div>
+          <p>Critic với rubric định lượng cụ thể — score từng chiều, issue list, actionable suggestions.</p>
+          <pre style="margin:0;font-size:12px"><code><span class="kw">for</span> _ <span class="kw">in</span> <span class="fn">range</span>(max_iter=<span class="num">3</span>):
+  draft = actor.<span class="fn">generate</span>(task)
+  critique = critic.<span class="fn">evaluate</span>(
+    draft, rubric=QUALITY_RUBRIC
+  )
+  <span class="kw">if</span> critique.overall >= <span class="num">9.0</span>: <span class="kw">break</span>
+  task = <span class="fn">inject_feedback</span>(task, critique)
+<span class="cm"># Measurable, reproducible, debuggable</span></code></pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Code skeletons for all major patterns -->
+  <h3>Code skeleton các pattern chính (Python pseudo)</h3>
+  <div class="tabs" data-tabs>
+    <div class="tab-buttons">
+      <button class="active">Dispatcher</button>
+      <button>Swarm</button>
+      <button>MoA</button>
+      <button>Critic-Actor</button>
+      <button>Agent-as-Tool</button>
+    </div>
+    <div class="tab-panel active">
+      <pre><code><span class="cm"># Dispatcher / Router pattern skeleton</span>
+<span class="kw">class</span> <span class="fn">DispatcherAgent</span>:
+    specialists = {
+        <span class="str">"BILLING"</span>:   BillingAgent(),
+        <span class="str">"TECHNICAL"</span>: TechnicalAgent(),
+        <span class="str">"GENERAL"</span>:   GeneralAgent(),
+    }
+
+    <span class="kw">def</span> <span class="fn">run</span>(self, user_message: str) -> str:
+
+        <span class="cm"># 1. Classify intent (cheap model)</span>
+        intent = cheap_llm.<span class="fn">classify</span>(user_message, <span class="fn">list</span>(self.specialists.keys()))
+
+        <span class="cm"># 2. Fallback nếu confidence thấp</span>
+        route = intent.category <span class="kw">if</span> intent.confidence > <span class="num">0.7</span> <span class="kw">else</span> <span class="str">"GENERAL"</span>
+
+        <span class="cm"># 3. Forward đến specialist</span>
+        specialist = self.specialists[route]
+        <span class="kw">return</span> specialist.<span class="fn">handle</span>(user_message)</code></pre>
+    </div>
+    <div class="tab-panel">
+      <pre><code><span class="cm"># Swarm pattern skeleton</span>
+<span class="kw">def</span> <span class="fn">run_swarm</span>(initial_agent, user_message: str) -> str:
+
+    messages = [{<span class="str">"role"</span>: <span class="str">"user"</span>, <span class="str">"content"</span>: user_message}]
+    current_agent = initial_agent
+    max_handoffs = <span class="num">10</span>  <span class="cm"># guard</span>
+
+    <span class="kw">for</span> _ <span class="kw">in</span> <span class="fn">range</span>(max_handoffs):
+        response = current_agent.<span class="fn">run</span>(messages)
+
+        <span class="kw">if</span> response.type == <span class="str">"handoff"</span>:
+            next_agent = response.next_agent
+            messages.<span class="fn">append</span>({
+                <span class="str">"role"</span>: <span class="str">"system"</span>,
+                <span class="str">"content"</span>: <span class="fn">f</span><span class="str">"Transferred from {current_agent.name}: {response.reason}"</span>
+            })
+            current_agent = next_agent
+
+        <span class="kw">elif</span> response.type == <span class="str">"final"</span>:
+            <span class="kw">return</span> response.content
+
+    <span class="kw">raise</span> RuntimeError(<span class="str">"Max handoffs exceeded"</span>)</code></pre>
+    </div>
+    <div class="tab-panel">
+      <pre><code><span class="cm"># Mixture-of-Agents skeleton</span>
+<span class="kw">import</span> asyncio
+
+proposer_models = [
+    <span class="str">"claude-opus-4-5"</span>, <span class="str">"gpt-4o"</span>,
+    <span class="str">"gemini-2.0-flash"</span>, <span class="str">"llama-3.3-70b"</span>,
+]
+
+<span class="kw">async def</span> <span class="fn">run_moa</span>(task: str) -> str:
+
+    <span class="cm"># Layer 1: run all proposers in parallel</span>
+    drafts = <span class="kw">await</span> asyncio.<span class="fn">gather</span>(*[
+        llm_call(model, task) <span class="kw">for</span> model <span class="kw">in</span> proposer_models
+    ])
+
+    <span class="cm"># Layer 2: aggregator synthesizes</span>
+    aggregator_prompt = <span class="fn">f</span><span class="str">"""
+You have {len(drafts)} independent responses to the same task.
+Synthesize the best final answer, incorporating the strongest
+points from each while resolving any contradictions.
+
+Task: {task}
+
+Responses:
+{chr(10).join(f"Model {i+1}: {d}" for i, d in enumerate(drafts))}
+"""</span>
+    <span class="kw">return await</span> <span class="fn">llm_call</span>(<span class="str">"claude-opus-4-5"</span>, aggregator_prompt)</code></pre>
+    </div>
+    <div class="tab-panel">
+      <pre><code><span class="cm"># Critic-Actor pattern skeleton</span>
+<span class="kw">def</span> <span class="fn">run_critic_actor</span>(task: str, max_iterations: int = <span class="num">3</span>) -> str:
+
+    best_draft = <span class="kw">None</span>
+    best_score = <span class="num">0.0</span>
+
+    <span class="kw">for</span> iteration <span class="kw">in</span> <span class="fn">range</span>(max_iterations):
+        <span class="cm"># Actor generates</span>
+        draft = actor_llm.<span class="fn">generate</span>(task)
+
+        <span class="cm"># Critic evaluates with rubric</span>
+        critique = critic_llm.<span class="fn">evaluate</span>(
+            task=task, draft=draft,
+            rubric=RUBRIC  <span class="cm"># accuracy, completeness, tone, safety</span>
+        )
+
+        <span class="kw">if</span> critique.overall > best_score:
+            best_score, best_draft = critique.overall, draft
+
+        <span class="kw">if</span> critique.overall >= <span class="num">9.0</span>:
+            <span class="kw">break</span>
+
+        <span class="cm"># Inject feedback for next iteration</span>
+        task = <span class="fn">f</span><span class="str">"{original_task}\n\nPrev draft issues:\n{critique.issues}"</span>
+
+    <span class="kw">return</span> best_draft</code></pre>
+    </div>
+    <div class="tab-panel">
+      <pre><code><span class="cm"># Agent-as-Tool (recursive) skeleton</span>
+<span class="kw">def</span> <span class="fn">make_agent_tool</span>(agent_class, name: str, description: str, max_depth: int = <span class="num">3</span>):
+
+    <span class="kw">def</span> <span class="fn">agent_tool</span>(query: str, _depth: int = <span class="num">0</span>) -> str:
+
+        <span class="kw">if</span> _depth >= max_depth:
+            <span class="kw">raise</span> RecursionError(<span class="fn">f</span><span class="str">"Agent depth limit {max_depth} reached"</span>)
+
+        agent = <span class="fn">agent_class</span>(depth=_depth + <span class="num">1</span>)
+        result = agent.<span class="fn">run</span>(query)
+        <span class="kw">return</span> result.summary  <span class="cm"># compress, không trả raw history</span>
+
+    agent_tool.__name__ = name
+    agent_tool.__doc__ = description
+    <span class="kw">return</span> agent_tool
+
+<span class="cm"># Usage</span>
+research_tool = <span class="fn">make_agent_tool</span>(
+    ResearchAgent,
+    name=<span class="str">"research_agent"</span>,
+    description=<span class="str">"Deep research on any topic. Returns structured summary."</span>
+)
+orchestrator_tools = [research_tool, write_report, send_notification]</code></pre>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════
+       Summary
+  ════════════════════════════════════════════════ -->
+  <h2 id="tom-tat">Tóm tắt</h2>
+
+  <div class="callout note">
+    <div class="icon">≡</div>
+    <div>
+      <div class="title">9 pattern — một câu mỗi pattern</div>
+      <p>
+        <strong>① Single-Agent ReAct:</strong> Một LLM, nhiều tools, loop tự chủ — điểm khởi đầu cho mọi agent.<br>
+        <strong>② Tool Composition:</strong> Atomic → Composite → Derived (tool-as-skill) giúp giảm context bloat và giấu complexity.<br>
+        <strong>③ Sub-agent Delegation:</strong> Spawn khi tasks độc lập và parallel; truyền context distilled, nhận summary ngắn gọn — không phải raw history.<br>
+        <strong>④ Dispatcher/Router:</strong> LLM classifier giá rẻ phân loại intent và forward đến specialist — backbone của AI product đa năng.<br>
+        <strong>⑤ Swarm:</strong> Agents chuyển giao cho nhau qua handoff tool call, không có orchestrator trung tâm — phù hợp customer journey tuyến tính.<br>
+        <strong>⑥ MoA:</strong> N proposers chạy song song, aggregator tổng hợp — ensemble vượt trội từng model đơn, nhưng cost nhân N.<br>
+        <strong>⑦ Critic-Actor:</strong> Generate → evaluate bằng rubric cụ thể → revise — cần max_iterations để tránh infinite loop.<br>
+        <strong>⑧ Agent-as-Tool:</strong> Đóng gói agent như black box callable, cho phép orchestrators dùng mà không cần biết nội tại — cần depth guard bắt buộc.<br>
+        <strong>⑨ Reflexive:</strong> Agent tự sửa plan hoặc prompt dựa trên observation — mạnh nhất nhưng cần audit trail đầy đủ.
+      </p>
+    </div>
+  </div>
+
+  <ol>
+    <li>Bắt đầu với <strong>Single-Agent + tool composition tốt</strong>. Hầu hết bài toán giải quyết được ở đây.</li>
+    <li>Thêm <strong>Dispatcher</strong> khi có nhiều intent domain khác nhau rõ ràng.</li>
+    <li>Dùng <strong>Orchestrator-Workers hoặc Swarm</strong> khi task cần parallel execution hoặc handoff tự nhiên.</li>
+    <li><strong>Critic-Actor</strong> khi quality quan trọng hơn latency và cost — giới hạn max 3–5 iterations.</li>
+    <li><strong>MoA</strong> chỉ khi accuracy critical và budget cho phép — không dùng cho production real-time.</li>
+    <li><strong>Agent-as-Tool và Reflexive</strong> là advanced patterns — chỉ khi simpler patterns đã proven không đủ.</li>
+    <li>Mọi pattern đều cần: max_iterations, session timeout, cost cap, và observability tracing.</li>
+  </ol>
+
+  <nav class="section-footer">
+    <a href="22-future-advanced.html" class="prev">
+      <div class="label">← trước</div>
+      <div class="title">22 — Tương lai &amp; nâng cao</div>
+    </a>
+    <a href="24-agent-harness.html" class="next">
+      <div class="label">tiếp theo →</div>
+      <div class="title">24 — Agent Harness</div>
+    </a>
+  </nav>
+
+</main>
+
+<script src="../assets/script.js"></script>
+</body>
+</html>

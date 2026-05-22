@@ -1,0 +1,1213 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>35 · Eval Dataset Design — AI Engineering</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<nav class="top-nav">
+  <div class="brand"><span class="dot"></span> AI Engineering</div>
+  <div class="crumbs"><a href="../index.html">Mục lục</a> › Phần 11 · <span>35 — Eval Dataset Design</span></div>
+  <div class="nav-actions">
+    <a href="34-compliance.html">← Compliance</a>
+    <a href="36-reward-modeling.html">Reward Modeling →</a>
+  </div>
+</nav>
+
+<main class="page">
+
+  <section class="hero">
+    <span class="eyebrow">Phần 11 · §35</span>
+    <h1>Eval Dataset Design</h1>
+    <p class="lede">
+      Chất lượng eval dataset thường quyết định chất lượng sản phẩm AI nhiều hơn cả lựa chọn model —
+      hướng dẫn đầy đủ từ thu thập, gán nhãn, thống kê, versioning đến vận hành eval như một living artifact.
+    </p>
+    <img class="hero-image" src="../images/35-eval-dataset-design.png" alt="Hero illustration" onerror="this.style.display='none'">
+  </section>
+
+  <aside class="toc">
+    <div class="toc-title">Trong trang này</div>
+    <ul>
+      <li><a href="#quality-matters">35.1 Tại sao chất lượng dataset quan trọng hơn model</a></li>
+      <li><a href="#sources">35.2 Nguồn dữ liệu eval</a></li>
+      <li><a href="#sampling">35.3 Chiến lược sampling</a></li>
+      <li><a href="#size-power">35.4 Kích thước &amp; statistical power</a></li>
+      <li><a href="#labeling-formats">35.5 Định dạng gán nhãn</a></li>
+      <li><a href="#iaa">35.6 Inter-annotator agreement (IAA)</a></li>
+      <li><a href="#leakage">35.7 Ngăn chặn data leakage</a></li>
+      <li><a href="#versioning">35.8 Versioning &amp; evolution</a></li>
+      <li><a href="#synthetic">35.9 Tạo eval tổng hợp bằng LLM</a></li>
+      <li><a href="#vibe-vs-measurable">35.10 "Vibe check" vs eval đo được</a></li>
+      <li><a href="#set-types">35.11 Golden / Regression / Smoke / Canary</a></li>
+      <li><a href="#living-artifact">35.12 Eval set như living artifact</a></li>
+      <li><a href="#cu-vs-moi">35.13 Cách cũ vs Cách hiện tại</a></li>
+      <li><a href="#tom-tat">Tóm tắt</a></li>
+    </ul>
+  </aside>
+
+  <!-- ================================================================
+       35.1 Tại sao chất lượng dataset quan trọng hơn model
+  ================================================================ -->
+  <h2 id="quality-matters">35.1 Tại sao chất lượng eval dataset quan trọng hơn lựa chọn model</h2>
+
+  <p>
+    Khi team AI tranh luận về việc nâng cấp từ GPT-4o-mini lên GPT-4o, họ thường bỏ qua câu hỏi quan trọng hơn:
+    <em>"Chúng ta đang đo bằng gì?"</em> Nếu eval dataset kém — ít mẫu, không đại diện, nhãn sai — bạn sẽ
+    <strong>không thể biết model nào thực sự tốt hơn</strong> cho use case của mình.
+  </p>
+
+  <div class="callout warn">
+    <div class="icon">⚠</div>
+    <div>
+      <div class="title">Quy tắc thực tế</div>
+      <p>
+        Trong nhiều dự án thực tế tại 2025–2026: chuyển từ eval dataset chất lượng thấp (50 ví dụ, tự tạo, thiên lệch)
+        sang eval dataset chất lượng cao (500 ví dụ thực, phân tầng, nhất quán) cải thiện khả năng phát hiện regression
+        nhiều hơn là việc nâng cấp model. <strong>Dataset → Signal; Model → Lever.</strong>
+        Nếu signal sai, kéo lever nào cũng không có ý nghĩa.
+      </p>
+    </div>
+  </div>
+
+  <p>
+    Ba lý do cốt lõi khiến eval dataset trở thành yếu tố chi phối:
+  </p>
+
+  <div class="grid-2">
+    <div class="card">
+      <h4>① Dataset xác định "thành công" là gì</h4>
+      <p>
+        Model không biết business của bạn. Chỉ có eval dataset — thông qua examples và criteria —
+        mới encode định nghĩa "output tốt". Một dataset nghèo nàn khiến mọi metric đều vô nghĩa.
+      </p>
+    </div>
+    <div class="card">
+      <h4>② Dataset khuếch đại hoặc triệt tiêu tín hiệu</h4>
+      <p>
+        Dataset nhỏ, phân phối skewed → variance cao → không phân biệt được model thực sự tốt hơn
+        hay chỉ "may" trên sample nhỏ. Cải thiện 3% accuracy với N=50 là noise; với N=500 là tín hiệu thật.
+      </p>
+    </div>
+    <div class="card">
+      <h4>③ Dataset tốt phát hiện regression sớm</h4>
+      <p>
+        Khi prompt thay đổi, model upgrade, hay context thay đổi — dataset chất lượng cao sẽ
+        phát hiện regression trước khi user phàn nàn. Dataset kém sẽ "im lặng" với những lỗi quan trọng.
+      </p>
+    </div>
+    <div class="card">
+      <h4>④ Dataset là "hợp đồng" với stakeholder</h4>
+      <p>
+        Khi PM hỏi "AI của chúng ta đang ở mức nào?", eval dataset chính là nền tảng để trả lời.
+        Không có dataset → không có câu trả lời có căn cứ → quyết định dựa trên gut feeling.
+      </p>
+    </div>
+  </div>
+
+  <!-- ================================================================
+       35.2 Nguồn dữ liệu eval
+  ================================================================ -->
+  <h2 id="sources">35.2 Nguồn dữ liệu eval: Giá trị từ cao đến thấp</h2>
+
+  <p>
+    Không phải tất cả dữ liệu eval có giá trị như nhau. Thứ tự ưu tiên sau đây phản ánh
+    mức độ <strong>đại diện cho production behavior</strong> thực tế:
+  </p>
+
+  <svg class="diagram" viewBox="0 0 760 310" role="img" aria-label="Eval data sources pyramid — từ cao đến thấp giá trị">
+    <defs>
+      <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#6f7c92"/>
+      </marker>
+    </defs>
+
+    <!-- Tier 1: Production traffic -->
+    <polygon points="380,18 220,90 540,90" fill="rgba(255,184,107,0.20)" stroke="#ffb86b" stroke-width="2"/>
+    <text x="380" y="55" text-anchor="middle" font-weight="700" font-size="13" fill="#ffb86b">① Production Traffic</text>
+    <text x="380" y="73" text-anchor="middle" font-size="11" fill="#aab4c5">Real user queries, logged &amp; labeled</text>
+
+    <!-- Tier 2: Expert curated -->
+    <polygon points="220,96 100,168 540,96 660,168" fill="rgba(124,196,255,0.15)" stroke="#7cc4ff" stroke-width="1.5"/>
+    <text x="380" y="128" text-anchor="middle" font-weight="700" font-size="13" fill="#7cc4ff">② Expert Curated</text>
+    <text x="380" y="146" text-anchor="middle" font-size="11" fill="#aab4c5">Domain experts xây dựng có chủ đích</text>
+
+    <!-- Tier 3: Synthetic -->
+    <polygon points="100,174 20,246 660,174 740,246" fill="rgba(180,224,122,0.12)" stroke="#b4e07a" stroke-width="1.5"/>
+    <text x="380" y="206" text-anchor="middle" font-weight="700" font-size="13" fill="#b4e07a">③ Synthetic (LLM-generated)</text>
+    <text x="380" y="224" text-anchor="middle" font-size="11" fill="#aab4c5">Tạo nhanh nhưng cần validation kỹ</text>
+
+    <!-- Tier 4: Public benchmarks -->
+    <rect x="20" y="252" width="720" height="46" rx="8" fill="rgba(211,164,255,0.10)" stroke="#d3a4ff" stroke-width="1.5"/>
+    <text x="380" y="272" text-anchor="middle" font-weight="700" font-size="13" fill="#d3a4ff">④ Public Benchmarks (MMLU, HumanEval…)</text>
+    <text x="380" y="288" text-anchor="middle" font-size="11" fill="#aab4c5">Baseline so sánh — không thay thế custom eval</text>
+
+    <!-- Value label -->
+    <text x="738" y="55" text-anchor="end" font-size="11" fill="#ffb86b">Giá trị cao nhất</text>
+    <text x="738" y="288" text-anchor="end" font-size="11" fill="#d3a4ff">Giá trị thấp nhất</text>
+  </svg>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Nguồn</th>
+          <th>Ưu điểm</th>
+          <th>Nhược điểm</th>
+          <th>Khi nào dùng</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Production traffic</strong></td>
+          <td>Đại diện thực tế nhất, bắt edge cases thực</td>
+          <td>Cần gán nhãn tốn công, privacy concerns</td>
+          <td>Luôn dùng khi đã có production data</td>
+        </tr>
+        <tr>
+          <td><strong>Expert curated</strong></td>
+          <td>Kiểm soát quality, bao phủ tình huống quan trọng</td>
+          <td>Đắt, slow, có thể thiếu "surprises" của user thực</td>
+          <td>Khi cần bao phủ domain-specific cases</td>
+        </tr>
+        <tr>
+          <td><strong>Synthetic (LLM)</strong></td>
+          <td>Rẻ, nhanh, dễ scale, tạo được edge cases</td>
+          <td>Có thể contaminate nếu dùng cùng model được eval; distribution shift</td>
+          <td>Prototyping, tăng coverage cho rare cases</td>
+        </tr>
+        <tr>
+          <td><strong>Public benchmarks</strong></td>
+          <td>Reproducible, so sánh với community</td>
+          <td>Contamination, không phản ánh use case thực</td>
+          <td>Baseline, không làm primary eval</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout tip">
+    <div class="icon">★</div>
+    <div>
+      <div class="title">Mix sources theo tỷ lệ hợp lý</div>
+      <p>
+        Eval dataset lý tưởng thường là mix: <strong>~60% production traffic</strong> (với label từ humans hoặc LLM-judge được validate),
+        <strong>~25% expert curated</strong> (bao phủ cases quan trọng nhưng hiếm),
+        <strong>~15% synthetic</strong> (edge cases, adversarial). Public benchmarks không nằm trong eval set chính — chỉ dùng để so sánh externally.
+      </p>
+    </div>
+  </div>
+
+  <!-- ================================================================
+       35.3 Chiến lược sampling
+  ================================================================ -->
+  <h2 id="sampling">35.3 Chiến lược Sampling</h2>
+
+  <p>
+    Chọn ngẫu nhiên từ production log là <em>cần nhưng chưa đủ</em>. Cần chiến lược sampling có chủ đích
+    để đảm bảo dataset bao phủ đúng các phân khúc quan trọng.
+  </p>
+
+  <h3>Stratified sampling theo user segment và task type</h3>
+  <p>
+    Nếu 80% user là "beginner" và chỉ 20% là "power user", random sampling sẽ underrepresent power users —
+    nhưng power users thường có queries phức tạp hơn và ảnh hưởng churn nhiều hơn.
+  </p>
+
+  <pre><code><span class="cm"># Ví dụ: Stratified sampling giữ tỷ lệ cân bằng hơn random</span>
+<span class="kw">from</span> collections <span class="kw">import</span> defaultdict
+
+<span class="kw">def</span> <span class="fn">stratified_sample</span>(logs: list[dict], strata_key: str, n_per_stratum: int) -> list[dict]:
+
+    buckets = defaultdict(list)
+    <span class="kw">for</span> log <span class="kw">in</span> logs:
+        buckets[log[strata_key]].append(log)
+
+    sampled = []
+    <span class="kw">for</span> stratum, items <span class="kw">in</span> buckets.items():
+        <span class="cm"># Lấy tối đa n_per_stratum từ mỗi nhóm</span>
+        sampled.extend(items[:n_per_stratum])
+
+    <span class="kw">return</span> sampled
+
+<span class="cm"># Phân tầng theo cả task_type VÀ user_tier</span>
+samples = <span class="fn">stratified_sample</span>(
+    production_logs,
+    strata_key=<span class="str">"task_type"</span>,  <span class="cm"># "summarize", "classify", "qa", "generate"</span>
+    n_per_stratum=<span class="num">50</span>
+)</code></pre>
+
+  <h3>Hard-case mining</h3>
+  <p>
+    <strong>Hard cases</strong> là những examples model đang xử lý tệ nhất — highest uncertainty, lowest confidence score,
+    hoặc cases đã gây ra user complaint. Đây là "gold mine" để cải thiện performance.
+  </p>
+
+  <pre><code><span class="cm"># Tìm hard cases từ production logs (ví dụ với LLM confidence)</span>
+hard_cases = [
+    log <span class="kw">for</span> log <span class="kw">in</span> production_logs
+    <span class="kw">if</span> log.get(<span class="str">"confidence_score"</span>, <span class="num">1.0</span>) < <span class="num">0.6</span>          <span class="cm"># model uncertain</span>
+    <span class="kw">or</span> log.get(<span class="str">"user_thumbs_down"</span>, <span class="kw">False</span>)                 <span class="cm"># user rejected</span>
+    <span class="kw">or</span> log.get(<span class="str">"retry_count"</span>, <span class="num">0</span>) > <span class="num">1</span>                      <span class="cm"># user retried</span>
+]</code></pre>
+
+  <h3>Edge cases và regression set</h3>
+  <ul>
+    <li><strong>Edge cases:</strong> input cực ngắn, cực dài, multilingual, typos, adversarial injections, code mixing</li>
+    <li><strong>Regression set:</strong> mọi bug đã sửa → thêm example vào eval để không tái phát</li>
+    <li><strong>Boundary cases:</strong> ví dụ nằm ở ranh giới giữa các category — model hay nhầm nhất</li>
+  </ul>
+
+  <div class="callout note">
+    <div class="icon">≡</div>
+    <div>
+      <div class="title">Nguyên tắc: "Capture bugs, don't just count them"</div>
+      <p>
+        Mỗi khi phát hiện lỗi trong production, đừng chỉ fix và bỏ qua.
+        Thêm example đó vào eval set (với expected behavior đúng) để lỗi này trở thành
+        <em>mãi mãi là một test case</em>. Đây là cách eval set tự nhiên mở rộng theo thời gian.
+      </p>
+    </div>
+  </div>
+
+  <!-- ================================================================
+       35.4 Kích thước & statistical power
+  ================================================================ -->
+  <h2 id="size-power">35.4 Kích thước &amp; Statistical Power</h2>
+
+  <p>
+    Câu hỏi "cần bao nhiêu samples?" có câu trả lời định lượng dựa trên <strong>power analysis</strong>.
+    Ý tưởng cốt lõi: để phát hiện cải thiện X% với độ tin cậy nhất định, cần ít nhất N samples.
+  </p>
+
+  <h3>Công thức power analysis cho binary metric (pass/fail, accuracy)</h3>
+  <p>
+    Với <em>two-proportion z-test</em>, minimum sample size N (mỗi nhóm) để phát hiện hiệu ứng với
+    power <strong>80%</strong> và significance level <strong>α = 0.05</strong>:
+  </p>
+
+  <div class="card">
+    <p style="text-align:center; font-family: var(--font-mono); font-size: 15px; color: var(--accent);">
+      N ≈ (z<sub>α/2</sub> + z<sub>β</sub>)² × [p₁(1−p₁) + p₂(1−p₂)] / (p₁ − p₂)²
+    </p>
+    <p style="text-align:center; color: var(--text-soft); font-size: 13px; margin-top: 6px;">
+      z<sub>0.025</sub> = 1.96 (α=0.05, two-tailed) · z<sub>0.20</sub> = 0.84 (80% power)
+    </p>
+  </div>
+
+  <h3>Bảng tra cứu nhanh: minimum N để phát hiện cải thiện</h3>
+  <p>
+    Giả sử baseline accuracy <strong>p₁ = 0.80</strong> (80%), muốn phát hiện cải thiện lên p₂:
+  </p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Cải thiện cần phát hiện</th>
+          <th>p₂ (mục tiêu)</th>
+          <th>N tối thiểu (80% power, α=0.05)</th>
+          <th>N tối thiểu (90% power, α=0.05)</th>
+          <th>Thực tế cần (×1.5 buffer)</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>+1%</td>
+          <td>81%</td>
+          <td>~6,278</td>
+          <td>~8,406</td>
+          <td>~9,400 – 12,600</td>
+        </tr>
+        <tr>
+          <td>+3%</td>
+          <td>83%</td>
+          <td>~703</td>
+          <td>~942</td>
+          <td>~1,050 – 1,400</td>
+        </tr>
+        <tr>
+          <td>+5%</td>
+          <td>85%</td>
+          <td>~255</td>
+          <td>~341</td>
+          <td>~380 – 510</td>
+        </tr>
+        <tr>
+          <td>+10%</td>
+          <td>90%</td>
+          <td>~65</td>
+          <td>~87</td>
+          <td>~100 – 130</td>
+        </tr>
+        <tr>
+          <td>+15%</td>
+          <td>95%</td>
+          <td>~29</td>
+          <td>~39</td>
+          <td>~45 – 60</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout warn">
+    <div class="icon">⚠</div>
+    <div>
+      <div class="title">Đừng eval với N=50 và tuyên bố cải thiện 2%</div>
+      <p>
+        Với N=50, cải thiện nhỏ hơn ~10% hoàn toàn có thể là noise. Đây là lỗi phổ biến nhất trong các team AI engineering.
+        Luôn tính power analysis <em>trước</em> khi quyết định kích thước eval set.
+        Nếu budget không cho phép N đủ lớn, hãy thành thật: "chúng ta chưa đủ power để phát hiện cải thiện nhỏ".
+      </p>
+    </div>
+  </div>
+
+  <h3>Ví dụ tính toán cụ thể</h3>
+  <pre><code><span class="kw">from</span> scipy.stats <span class="kw">import</span> norm
+<span class="kw">import</span> math
+
+<span class="kw">def</span> <span class="fn">min_sample_size</span>(p1: float, p2: float, alpha: float = <span class="num">0.05</span>, power: float = <span class="num">0.80</span>) -> int:
+
+    z_alpha = <span class="fn">norm.ppf</span>(<span class="num">1</span> - alpha / <span class="num">2</span>)   <span class="cm"># 1.96 cho alpha=0.05</span>
+    z_beta  = <span class="fn">norm.ppf</span>(power)            <span class="cm"># 0.84 cho power=0.80</span>
+
+    pooled_var = p1 * (<span class="num">1</span> - p1) + p2 * (<span class="num">1</span> - p2)
+    effect     = (p1 - p2) ** <span class="num">2</span>
+
+    n = ((z_alpha + z_beta) ** <span class="num">2</span>) * pooled_var / effect
+    <span class="kw">return</span> math.<span class="fn">ceil</span>(n)
+
+<span class="cm"># Muốn phát hiện cải thiện từ 80% → 85% với 80% power</span>
+n = <span class="fn">min_sample_size</span>(p1=<span class="num">0.80</span>, p2=<span class="num">0.85</span>)
+<span class="fn">print</span>(<span class="fn">f</span><span class="str">"Cần ít nhất {n} samples để phát hiện +5% cải thiện"</span>)
+<span class="cm"># Output: Cần ít nhất 255 samples để phát hiện +5% cải thiện</span></code></pre>
+
+  <!-- ================================================================
+       35.5 Định dạng gán nhãn
+  ================================================================ -->
+  <h2 id="labeling-formats">35.5 Định dạng gán nhãn: Pairs, Scalars, Rubrics, Binary</h2>
+
+  <p>
+    Lựa chọn định dạng gán nhãn ảnh hưởng trực tiếp đến khả năng phân tích sau này và
+    mức độ đồng thuận giữa các annotator.
+  </p>
+
+  <div class="tabs" data-tabs>
+    <div class="tab-buttons">
+      <button class="active">Pairwise (A vs B)</button>
+      <button>Scalar Likert (1–5)</button>
+      <button>Rubric đa chiều</button>
+      <button>Binary pass/fail</button>
+    </div>
+    <div class="tab-panel active">
+      <h4>Pairwise comparison</h4>
+      <p>Annotator xem hai outputs (A và B) và chọn cái nào tốt hơn (hoặc tie).</p>
+      <div class="grid-2">
+        <div>
+          <p style="color:var(--accent-3); font-weight:600;">Ưu điểm</p>
+          <ul>
+            <li>Dễ hơn cho annotator — so sánh trực tiếp dễ hơn đánh giá tuyệt đối</li>
+            <li>Inter-annotator agreement thường cao hơn scalar</li>
+            <li>Tự nhiên map sang ELO ranking, dùng được cho RLHF/DPO</li>
+            <li>Reduce scale bias (mỗi người có "chuẩn" khác nhau về số điểm)</li>
+          </ul>
+        </div>
+        <div>
+          <p style="color:var(--danger); font-weight:600;">Nhược điểm</p>
+          <ul>
+            <li>Không cho biết output có tốt theo tiêu chuẩn tuyệt đối không</li>
+            <li>Tốn 2× data để tạo ra pairs</li>
+            <li>Positional bias: thường thích option đầu tiên được đọc</li>
+            <li>Không scale tốt: cần O(n²) comparisons cho n candidates</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="tab-panel">
+      <h4>Scalar Likert (1–5)</h4>
+      <p>Annotator rate output trên thang điểm số (thường 1–5 hoặc 1–7) theo từng dimension.</p>
+      <div class="grid-2">
+        <div>
+          <p style="color:var(--accent-3); font-weight:600;">Ưu điểm</p>
+          <ul>
+            <li>Dễ aggregate (mean, std), dễ track theo thời gian</li>
+            <li>Phát hiện được mức độ cải thiện một cách liên tục</li>
+            <li>Không cần pairs — evaluate mỗi output độc lập</li>
+          </ul>
+        </div>
+        <div>
+          <p style="color:var(--danger); font-weight:600;">Nhược điểm</p>
+          <ul>
+            <li>Scale bias cao: người này "3" có thể tương đương người kia "4"</li>
+            <li>Ceiling/floor effect: nhiều người tránh dùng điểm cực</li>
+            <li>IAA thấp hơn pairwise cho open-ended tasks</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="tab-panel">
+      <h4>Rubric đa chiều (multi-dimensional)</h4>
+      <p>Đánh giá output theo nhiều tiêu chí độc lập — mỗi tiêu chí có mô tả rõ ràng từng mức điểm.</p>
+      <div class="grid-2">
+        <div>
+          <p style="color:var(--accent-3); font-weight:600;">Ưu điểm</p>
+          <ul>
+            <li>Diagnostic: biết <em>tại sao</em> output kém, không chỉ <em>kém bao nhiêu</em></li>
+            <li>IAA cao hơn khi mỗi dimension có rubric cụ thể</li>
+            <li>Cho phép optimize từng dimension riêng lẻ</li>
+          </ul>
+        </div>
+        <div>
+          <p style="color:var(--danger); font-weight:600;">Nhược điểm</p>
+          <ul>
+            <li>Annotation tốn thời gian hơn (nhiều dimension)</li>
+            <li>Phải giữ rubric đồng bộ khi requirements thay đổi</li>
+            <li>Aggregation phức tạp hơn (weighted sum?)</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="tab-panel">
+      <h4>Binary pass/fail</h4>
+      <p>Đơn giản nhất: output có đạt tiêu chuẩn tối thiểu không? Thường dùng cho safety checks, format checks.</p>
+      <div class="grid-2">
+        <div>
+          <p style="color:var(--accent-3); font-weight:600;">Ưu điểm</p>
+          <ul>
+            <li>IAA rất cao — dễ đồng thuận về binary decision</li>
+            <li>Dễ automate (regex, function calling validation)</li>
+            <li>Phù hợp cho CI/CD gate: "deploy only if pass rate ≥ 95%"</li>
+          </ul>
+        </div>
+        <div>
+          <p style="color:var(--danger); font-weight:600;">Nhược điểm</p>
+          <ul>
+            <li>Mất thông tin về mức độ — không phân biệt "okay" với "excellent"</li>
+            <li>Threshold setting là art: quá strict → nhiều false fails; quá lax → miss real issues</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="callout tip">
+    <div class="icon">★</div>
+    <div>
+      <div class="title">Kết hợp formats theo tầng</div>
+      <p>
+        Best practice: dùng <strong>binary</strong> cho safety/format (automated, không cần human),
+        <strong>rubric đa chiều</strong> cho quality evaluation (human hoặc LLM-judge),
+        <strong>pairwise</strong> khi so sánh hai phiên bản model/prompt.
+        Không cần chọn một format duy nhất cho tất cả.
+      </p>
+    </div>
+  </div>
+
+  <!-- ================================================================
+       35.6 Inter-annotator agreement (IAA)
+  ================================================================ -->
+  <h2 id="iaa">35.6 Inter-annotator Agreement (IAA)</h2>
+
+  <p>
+    IAA đo lường mức độ đồng thuận giữa các annotator độc lập khi đánh giá cùng một example.
+    IAA thấp = nhãn không đáng tin cậy, dù N lớn đến đâu cũng vô dụng.
+  </p>
+
+  <h3>Cohen's Kappa (κ) — cho 2 annotators, categorical labels</h3>
+  <p>
+    Kappa hiệu chỉnh cho chance agreement — nếu hai annotator chỉ đoán ngẫu nhiên, agreement by chance
+    sẽ cao nếu categories không cân bằng. Kappa trừ đi phần chance đó.
+  </p>
+
+  <div class="card">
+    <p style="text-align:center; font-family: var(--font-mono); font-size: 14px; color: var(--accent);">
+      κ = (P<sub>o</sub> − P<sub>e</sub>) / (1 − P<sub>e</sub>)
+    </p>
+    <p style="color:var(--text-soft); font-size: 13px; margin-top: 6px;">
+      P<sub>o</sub> = observed agreement (tỷ lệ thực tế đồng thuận)
+      · P<sub>e</sub> = expected agreement by chance
+    </p>
+  </div>
+
+  <h3>Ví dụ tính Cohen's Kappa</h3>
+  <pre><code><span class="cm"># 50 examples được 2 annotators label (positive / negative)</span>
+<span class="cm"># Confusion matrix:</span>
+<span class="cm">#             Annotator B</span>
+<span class="cm">#             Pos   Neg</span>
+<span class="cm"># Annotator A  Pos  20     5   → 25</span>
+<span class="cm">#              Neg   3    22   → 25</span>
+<span class="cm">#                   23    27   → 50</span>
+
+P_o = (<span class="num">20</span> + <span class="num">22</span>) / <span class="num">50</span>   <span class="cm"># = 0.84  (observed agreement)</span>
+
+<span class="cm"># Expected agreement by chance:</span>
+P_pos = (<span class="num">25</span> / <span class="num">50</span>) * (<span class="num">23</span> / <span class="num">50</span>)  <span class="cm"># = 0.23</span>
+P_neg = (<span class="num">25</span> / <span class="num">50</span>) * (<span class="num">27</span> / <span class="num">50</span>)  <span class="cm"># = 0.27</span>
+P_e   = P_pos + P_neg            <span class="cm"># = 0.50</span>
+
+kappa = (P_o - P_e) / (<span class="num">1</span> - P_e)  <span class="cm"># = (0.84 - 0.50) / 0.50 = 0.68</span>
+<span class="fn">print</span>(<span class="fn">f</span><span class="str">"Cohen's κ = {kappa:.2f}"</span>)   <span class="cm"># κ = 0.68 → Substantial agreement</span></code></pre>
+
+  <h3>Thang diễn giải κ (Landis &amp; Koch, 1977)</h3>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Kappa (κ)</th>
+          <th>Mức độ đồng thuận</th>
+          <th>Thực tế</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>&lt; 0.20</td>
+          <td>Slight</td>
+          <td>Không đáng tin — cần redesign task hoặc guidelines</td>
+        </tr>
+        <tr>
+          <td>0.21 – 0.40</td>
+          <td>Fair</td>
+          <td>Yếu — cần cải thiện rubric đáng kể</td>
+        </tr>
+        <tr>
+          <td>0.41 – 0.60</td>
+          <td>Moderate</td>
+          <td>Chấp nhận được cho subjective tasks (tone, style)</td>
+        </tr>
+        <tr>
+          <td>0.61 – 0.80</td>
+          <td><strong>Substantial</strong></td>
+          <td>Tốt — đủ để dùng trong production eval</td>
+        </tr>
+        <tr>
+          <td>0.81 – 1.00</td>
+          <td>Almost Perfect</td>
+          <td>Rất tốt — thường đạt được với binary, clearly-defined criteria</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Krippendorff's Alpha (α) — cho nhiều annotators, nhiều scale types</h3>
+  <p>
+    Khi có &gt;2 annotators hoặc dùng ordinal scale (Likert), dùng Krippendorff's Alpha.
+    Alpha generalize tốt hơn: xử lý missing data, nhiều scale types (nominal, ordinal, interval, ratio).
+  </p>
+
+  <pre><code><span class="kw">import</span> krippendorff  <span class="cm"># pip install krippendorff</span>
+<span class="kw">import</span> numpy <span class="kw">as</span> np
+
+<span class="cm"># 3 annotators, 10 examples, Likert 1-5</span>
+<span class="cm"># Mỗi hàng = 1 annotator, mỗi cột = 1 example</span>
+<span class="cm"># np.nan = chưa label</span>
+data = np.<span class="fn">array</span>([
+    [<span class="num">4</span>, <span class="num">3</span>, <span class="num">5</span>, <span class="num">2</span>, <span class="num">4</span>, <span class="num">3</span>, <span class="num">5</span>, <span class="num">4</span>, <span class="num">3</span>, np.nan],
+    [<span class="num">4</span>, <span class="num">3</span>, <span class="num">4</span>, <span class="num">2</span>, <span class="num">5</span>, <span class="num">3</span>, <span class="num">4</span>, <span class="num">4</span>, <span class="num">3</span>, <span class="num">4</span>],
+    [<span class="num">3</span>, <span class="num">4</span>, <span class="num">5</span>, <span class="num">2</span>, <span class="num">4</span>, <span class="num">2</span>, <span class="num">5</span>, np.nan, <span class="num">3</span>, <span class="num">4</span>],
+])
+
+alpha = krippendorff.<span class="fn">alpha</span>(data, level_of_measurement=<span class="str">"ordinal"</span>)
+<span class="fn">print</span>(<span class="fn">f</span><span class="str">"Krippendorff's α = {alpha:.3f}"</span>)
+<span class="cm"># α ≥ 0.667 là acceptable; α ≥ 0.8 là tốt</span></code></pre>
+
+  <div class="callout note">
+    <div class="icon">≡</div>
+    <div>
+      <div class="title">IAA thấp không phải lỗi của annotator</div>
+      <p>
+        IAA thấp thường báo hiệu <strong>task design kém</strong>: criteria không rõ, rubric mơ hồ, hoặc task
+        quá chủ quan. Trước khi gán nhãn toàn bộ dataset, luôn pilot với 20–50 examples và đo IAA.
+        Nếu κ &lt; 0.4 → dừng lại, redesign rubric, re-pilot trước khi tiếp tục.
+      </p>
+    </div>
+  </div>
+
+  <!-- ================================================================
+       35.7 Ngăn chặn data leakage
+  ================================================================ -->
+  <h2 id="leakage">35.7 Data Leakage Prevention</h2>
+
+  <p>
+    Data leakage trong eval context nghĩa là eval examples đã xuất hiện trong training data của model
+    (hoặc của fine-tuned variant) — khiến scores inflate và không phản ánh generalization thực sự.
+  </p>
+
+  <h3>Ba dạng leakage phổ biến</h3>
+
+  <div class="grid-2">
+    <div class="card">
+      <h4>① Exact overlap</h4>
+      <p>Eval example giống hệt training example. Dễ detect bằng hash matching.</p>
+      <pre><code><span class="cm"># Detect exact overlap bằng hash</span>
+train_hashes = {<span class="fn">hash</span>(e[<span class="str">"input"</span>]) <span class="kw">for</span> e <span class="kw">in</span> train_data}
+eval_clean = [
+    e <span class="kw">for</span> e <span class="kw">in</span> eval_data
+    <span class="kw">if</span> <span class="fn">hash</span>(e[<span class="str">"input"</span>]) <span class="kw">not in</span> train_hashes
+]</code></pre>
+    </div>
+    <div class="card">
+      <h4>② Near-duplicate (semantic)</h4>
+      <p>Eval example khác vài từ so với training example. Cần embedding similarity check.</p>
+      <pre><code><span class="cm"># Near-dup detection với cosine similarity</span>
+<span class="kw">def</span> <span class="fn">is_near_dup</span>(eval_emb, train_embs, threshold=<span class="num">0.95</span>) -> bool:
+
+    similarities = cosine_similarity(
+        [eval_emb], train_embs
+    )[<span class="num">0</span>]
+    <span class="kw">return</span> <span class="fn">max</span>(similarities) > threshold</code></pre>
+    </div>
+    <div class="card">
+      <h4>③ Temporal leakage</h4>
+      <p>
+        Eval data có timestamp <em>trước</em> training data cutoff. Model đã "thấy" distribution này.
+        Dùng time-based split.
+      </p>
+    </div>
+    <div class="card">
+      <h4>④ Contamination từ synthetic eval</h4>
+      <p>
+        Dùng cùng model để generate eval data VÀ evaluate — model sẽ "tự chấm điểm".
+        Luôn dùng model khác (stronger/different family) để judge.
+      </p>
+    </div>
+  </div>
+
+  <h3>Time-based split</h3>
+  <pre><code><span class="cm"># Luôn dùng timestamp để split — không dùng random split cho production data</span>
+<span class="kw">from</span> datetime <span class="kw">import</span> datetime, timedelta
+
+cutoff = datetime(<span class="num">2025</span>, <span class="num">10</span>, <span class="num">1</span>)  <span class="cm"># training data cutoff</span>
+
+train_data = [e <span class="kw">for</span> e <span class="kw">in</span> all_data <span class="kw">if</span> e[<span class="str">"timestamp"</span>] < cutoff]
+eval_data  = [e <span class="kw">for</span> e <span class="kw">in</span> all_data <span class="kw">if</span> e[<span class="str">"timestamp"</span>] >= cutoff]
+
+<span class="cm"># Thêm buffer 2 tuần để tránh near-temporal leak</span>
+buffer = cutoff + timedelta(weeks=<span class="num">2</span>)
+eval_safe = [e <span class="kw">for</span> e <span class="kw">in</span> eval_data <span class="kw">if</span> e[<span class="str">"timestamp"</span>] > buffer]</code></pre>
+
+  <!-- ================================================================
+       35.8 Versioning & evolution
+  ================================================================ -->
+  <h2 id="versioning">35.8 Versioning &amp; Evolution của Eval Set</h2>
+
+  <p>
+    Eval dataset không phải artifact tĩnh. Nó cần evolve theo sản phẩm, nhưng phải evolve có kiểm soát
+    để không mất tính so sánh lịch sử.
+  </p>
+
+  <h3>Cấu trúc version đề xuất</h3>
+  <pre><code><span class="cm"># eval-dataset/</span>
+<span class="cm">#   v1.0/</span>
+<span class="cm">#     examples.jsonl      # 200 examples, locked</span>
+<span class="cm">#     metadata.json       # sources, label schema, IAA scores</span>
+<span class="cm">#     CHANGELOG.md        # tại sao tạo v1.0</span>
+<span class="cm">#   v2.0/</span>
+<span class="cm">#     examples.jsonl      # 450 examples</span>
+<span class="cm">#     metadata.json</span>
+<span class="cm">#     CHANGELOG.md        # thêm 250 examples: hard cases từ Q1 2026</span>
+<span class="cm">#   latest -> v2.0/       # symlink hoặc pointer file</span>
+
+<span class="cm"># metadata.json schema</span>
+{
+  <span class="str">"version"</span>: <span class="str">"2.0"</span>,
+  <span class="str">"created_at"</span>: <span class="str">"2026-03-15"</span>,
+  <span class="str">"n_examples"</span>: <span class="num">450</span>,
+  <span class="str">"label_schema"</span>: <span class="str">"rubric_v3"</span>,
+  <span class="str">"iaa_kappa"</span>: <span class="num">0.72</span>,
+  <span class="str">"sources"</span>: {<span class="str">"production"</span>: <span class="num">270</span>, <span class="str">"expert"</span>: <span class="num">120</span>, <span class="str">"synthetic"</span>: <span class="num">60</span>},
+  <span class="str">"deprecates"</span>: <span class="str">"v1.0"</span>
+}</code></pre>
+
+  <h3>Khi nào tạo version mới vs chỉ thêm examples</h3>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Hành động</th>
+          <th>Khi nào</th>
+          <th>Tác động lịch sử</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Thêm examples vào version hiện tại</td>
+          <td>Examples mới cùng schema, cùng task distribution</td>
+          <td>So sánh backward compatible</td>
+        </tr>
+        <tr>
+          <td>Tạo minor version (v1.0 → v1.1)</td>
+          <td>Thêm nhiều examples (&gt;10% so với v1.0)</td>
+          <td>Chạy lại toàn bộ history trên v1.1 nếu cần</td>
+        </tr>
+        <tr>
+          <td>Tạo major version (v1.x → v2.0)</td>
+          <td>Đổi schema nhãn, đổi task definition, thêm/bỏ dimension</td>
+          <td>Break historical comparison — cần dual-track period</td>
+        </tr>
+        <tr>
+          <td>Retire version</td>
+          <td>Version cũ không còn đại diện cho sản phẩm hiện tại</td>
+          <td>Archive, không xóa, ghi rõ ngày retire và lý do</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout tip">
+    <div class="icon">★</div>
+    <div>
+      <div class="title">Dual-track period khi major version</div>
+      <p>
+        Khi tạo major version mới (v1.x → v2.0), chạy <em>cả hai</em> version song song trong ít nhất 4–8 tuần.
+        Điều này cho phép: (1) validate v2.0 không có bugs, (2) thiết lập baseline mới,
+        (3) so sánh model changes dựa trên cả hai eval set. Sau đó mới retire v1.x.
+      </p>
+    </div>
+  </div>
+
+  <!-- ================================================================
+       35.9 Tạo eval tổng hợp bằng LLM
+  ================================================================ -->
+  <h2 id="synthetic">35.9 Tạo Eval Tổng Hợp bằng LLM</h2>
+
+  <p>
+    <strong>Self-Instruct</strong> và <strong>Evol-Instruct</strong> là hai kỹ thuật phổ biến để generate
+    eval examples tổng hợp. Chúng rất mạnh để tạo nhanh coverage, nhưng đi kèm với rủi ro nghiêm trọng.
+  </p>
+
+  <h3>Self-Instruct pattern</h3>
+  <pre><code><span class="cm"># Prompt để generate diverse eval examples</span>
+self_instruct_prompt = <span class="str">"""You are creating evaluation examples for a customer support AI.
+
+Seed examples (for reference style only):
+{seed_examples}
+
+Generate 5 NEW and DIVERSE customer questions about billing.
+Requirements:
+- Each question must be clearly different in topic and phrasing
+- Include 1 easy, 2 medium, 1 hard, 1 edge case
+- For each: provide the question AND the expected high-quality answer
+
+Output as JSON array: [{{"question": "...", "expected_answer": "...", "difficulty": "easy|medium|hard|edge"}}]
+"""</span>
+
+<span class="cm"># Quan trọng: dùng model KHÁC với model sẽ được evaluated</span>
+generator = <span class="str">"claude-opus-4-5"</span>
+evaluator = <span class="str">"gpt-4o-mini"</span>  <span class="cm"># model cần test</span></code></pre>
+
+  <h3>Evol-Instruct: tạo progressive difficulty</h3>
+  <pre><code><span class="cm"># Evol-Instruct: biến đổi existing question thành complex hơn</span>
+evol_prompt = <span class="str">"""Make this question MORE COMPLEX in exactly one way:
+
+Original: "{original_question}"
+
+Complexity type: {complexity_type}
+Options: "add_constraints", "multi_step_reasoning", "add_ambiguity", "domain_specific_jargon"
+
+Return only the evolved question, no explanation."""</span></code></pre>
+
+  <div class="callout danger">
+    <div class="icon">!</div>
+    <div>
+      <div class="title">Ba rủi ro lớn của synthetic eval</div>
+      <p>
+        <strong>① Contamination:</strong> Nếu eval examples được generate bởi GPT-4 và bạn đang evaluate GPT-4,
+        model sẽ score cao không phải vì nó tốt mà vì eval được viết "theo style" của nó.
+        <br><strong>→ Fix:</strong> Dùng generator và evaluator từ hai model families khác nhau.
+      </p>
+      <p>
+        <strong>② Distribution mismatch:</strong> LLM generated examples thường quá "clean" — không có typos,
+        không có context switching, không có user frustration tone. Eval tốt với synthetic nhưng kém với real users.
+        <br><strong>→ Fix:</strong> Validate synthetic examples bằng cách so sánh embedding distribution với real data.
+      </p>
+      <p>
+        <strong>③ Systematic blind spots:</strong> LLM không biết những gì nó không biết — sẽ không generate
+        examples về failure modes của chính nó.
+        <br><strong>→ Fix:</strong> Luôn augment synthetic eval với ít nhất 30% real production examples.
+      </p>
+    </div>
+  </div>
+
+  <!-- ================================================================
+       35.10 Vibe check vs eval đo được
+  ================================================================ -->
+  <h2 id="vibe-vs-measurable">35.10 "Vibe Check" vs Eval Đo Được</h2>
+
+  <p>
+    Không phải mọi tình huống đều cần eval đo được một cách formal. "Vibe check" — nhìn lướt qua
+    outputs để cảm nhận quality — có giá trị thực sự khi được dùng đúng chỗ.
+  </p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Tình huống</th>
+          <th>Phương pháp phù hợp</th>
+          <th>Lý do</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Prototype / proof of concept</td>
+          <td><span class="tag">Vibe check</span></td>
+          <td>Cần biết "có vẻ work không?" nhanh — không cần thống kê</td>
+        </tr>
+        <tr>
+          <td>Exploratory prompt iteration</td>
+          <td><span class="tag">Vibe check</span></td>
+          <td>Feedback loop nhanh hơn khi đang tìm hướng prompt</td>
+        </tr>
+        <tr>
+          <td>Trước khi deploy tính năng mới</td>
+          <td><span class="tag blue">Measurable eval</span></td>
+          <td>Cần số liệu để justify go/no-go decision</td>
+        </tr>
+        <tr>
+          <td>Model upgrade / A/B test</td>
+          <td><span class="tag blue">Measurable eval + statistical test</span></td>
+          <td>Cần phân biệt real improvement khỏi noise</td>
+        </tr>
+        <tr>
+          <td>Debug lỗi cụ thể</td>
+          <td><span class="tag">Vibe check</span> + <span class="tag blue">targeted eval</span></td>
+          <td>Vibe check để locate vấn đề, targeted eval để verify fix</td>
+        </tr>
+        <tr>
+          <td>Production monitoring liên tục</td>
+          <td><span class="tag blue">Automated measurable eval</span></td>
+          <td>Cần alert khi regression xảy ra — không thể dùng tay</td>
+        </tr>
+        <tr>
+          <td>Safety review</td>
+          <td><span class="tag blue">Measurable eval</span> + <span class="tag">Human review</span></td>
+          <td>High stakes — cần cả coverage (automated) và depth (human)</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout note">
+    <div class="icon">≡</div>
+    <div>
+      <div class="title">Vibe check là điểm khởi đầu, không phải điểm dừng</div>
+      <p>
+        Kỹ sư giỏi dùng vibe check để <em>hướng dẫn</em> việc xây dựng measurable eval, không phải để thay thế nó.
+        Vibe check trả lời "có vấn đề không?". Measurable eval trả lời "vấn đề nghiêm trọng đến mức nào?".
+        Cả hai đều cần thiết, ở những thời điểm khác nhau.
+      </p>
+    </div>
+  </div>
+
+  <!-- ================================================================
+       35.11 Golden / Regression / Smoke / Canary
+  ================================================================ -->
+  <h2 id="set-types">35.11 Phân loại: Golden / Regression / Smoke / Canary Set</h2>
+
+  <p>
+    Không phải tất cả eval examples có vai trò như nhau. Tổ chức dataset thành các tầng
+    với mục đích khác nhau giúp team chạy đúng eval ở đúng thời điểm.
+  </p>
+
+  <svg class="diagram" viewBox="0 0 760 300" role="img" aria-label="Phân loại eval sets: golden, regression, smoke, canary">
+    <defs>
+      <marker id="arrowhead2" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#6f7c92"/>
+      </marker>
+    </defs>
+
+    <!-- Golden Set -->
+    <rect class="node-accent" x="20" y="20" width="340" height="115" rx="12"/>
+    <text x="40" y="46" font-weight="700" font-size="14" fill="#ffb86b">Golden Set</text>
+    <text x="40" y="65" font-size="12" fill="#e7ecf3">Curated tay, high quality, covers all key scenarios</text>
+    <text x="40" y="82" font-size="12" fill="#aab4c5">~100–300 examples · Human labeled · Stable</text>
+    <text x="40" y="99" font-size="12" fill="#aab4c5">Dùng cho: comprehensive quality gate trước release</text>
+    <text x="40" y="116" font-size="11" fill="#6f7c92">Tần suất: mỗi sprint / major change</text>
+
+    <!-- Regression Set -->
+    <rect class="node-blue" x="400" y="20" width="340" height="115" rx="12"/>
+    <text x="420" y="46" font-weight="700" font-size="14" fill="#7cc4ff">Regression Set</text>
+    <text x="420" y="65" font-size="12" fill="#e7ecf3">Mọi bug đã từng fix — đảm bảo không tái phát</text>
+    <text x="420" y="82" font-size="12" fill="#aab4c5">~50–500 examples · Tự động tăng theo thời gian</text>
+    <text x="420" y="99" font-size="12" fill="#aab4c5">Dùng cho: CI/CD — mọi commit đều chạy</text>
+    <text x="420" y="116" font-size="11" fill="#6f7c92">Tần suất: mỗi commit / PR</text>
+
+    <!-- Smoke Set -->
+    <rect class="node-green" x="20" y="160" width="340" height="115" rx="12"/>
+    <text x="40" y="186" font-weight="700" font-size="14" fill="#b4e07a">Smoke Set</text>
+    <text x="40" y="205" font-size="12" fill="#e7ecf3">Subset nhỏ nhất — verify "không bị vỡ hoàn toàn"</text>
+    <text x="40" y="222" font-size="12" fill="#aab4c5">~10–30 examples · Chạy trong &lt;30 giây</text>
+    <text x="40" y="239" font-size="12" fill="#aab4c5">Dùng cho: pre-commit hook, rapid sanity check</text>
+    <text x="40" y="256" font-size="11" fill="#6f7c92">Tần suất: realtime / continuous</text>
+
+    <!-- Canary Set -->
+    <rect class="node-bg" x="400" y="160" width="340" height="115" rx="12"/>
+    <text x="420" y="186" font-weight="700" font-size="14" fill="#d3a4ff">Canary Set</text>
+    <text x="420" y="205" font-size="12" fill="#e7ecf3">Examples thử thách — tricky, ambiguous, adversarial</text>
+    <text x="420" y="222" font-size="12" fill="#aab4c5">~50–100 examples · Không expect pass 100%</text>
+    <text x="420" y="239" font-size="12" fill="#aab4c5">Dùng cho: đo "stretch goal" và track capability</text>
+    <text x="420" y="256" font-size="11" fill="#6f7c92">Tần suất: weekly / model upgrade</text>
+  </svg>
+
+  <div class="card">
+    <h4>Chiến lược chạy eval theo context</h4>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Context</th>
+            <th>Set cần chạy</th>
+            <th>Mục tiêu</th>
+            <th>Budget thời gian</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Mỗi commit</td>
+            <td>Smoke + Regression</td>
+            <td>"Không break anything"</td>
+            <td>&lt;2 phút</td>
+          </tr>
+          <tr>
+            <td>Mỗi PR</td>
+            <td>Smoke + Regression + Golden (partial)</td>
+            <td>"Đủ để review"</td>
+            <td>&lt;10 phút</td>
+          </tr>
+          <tr>
+            <td>Pre-release</td>
+            <td>Full Golden + Regression + Canary</td>
+            <td>"Production ready"</td>
+            <td>&lt;60 phút</td>
+          </tr>
+          <tr>
+            <td>Model upgrade</td>
+            <td>Tất cả 4 sets</td>
+            <td>"Regression + improvement analysis"</td>
+            <td>Không giới hạn</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ================================================================
+       35.12 Eval set như living artifact
+  ================================================================ -->
+  <h2 id="living-artifact">35.12 Eval Set Như Living Artifact — PR Process</h2>
+
+  <p>
+    Eval dataset chỉ có giá trị lâu dài nếu được treat như codebase — có review process, versioning,
+    và ownership rõ ràng. Không có process → dataset stale, inaccurate, và dần trở nên vô dụng.
+  </p>
+
+  <h3>PR process để thêm eval cases</h3>
+  <pre><code><span class="cm"># Mỗi eval example mới cần đi qua PR với checklist sau:</span>
+
+<span class="cm">## Eval PR Checklist</span>
+<span class="cm"># [ ] Input representative của real user behavior (không synthetic nếu có thể)</span>
+<span class="cm"># [ ] Expected output được review bởi ít nhất 1 người khác (IAA check)</span>
+<span class="cm"># [ ] Metadata đầy đủ: source, difficulty, category, created_at</span>
+<span class="cm"># [ ] Không overlap với existing examples (&gt;0.9 cosine similarity)</span>
+<span class="cm"># [ ] Ghi rõ tại sao thêm: bug fix, new capability, coverage gap?</span>
+
+<span class="cm"># example.jsonl format chuẩn:</span>
+{
+  <span class="str">"id"</span>: <span class="str">"eval_20260301_042"</span>,
+  <span class="str">"input"</span>: { <span class="str">"query"</span>: <span class="str">"..."</span>, <span class="str">"context"</span>: <span class="str">"..."</span> },
+  <span class="str">"expected_output"</span>: <span class="str">"..."</span>,
+  <span class="str">"label_criteria"</span>: <span class="str">"rubric_v3"</span>,
+  <span class="str">"metadata"</span>: {
+    <span class="str">"source"</span>: <span class="str">"production_log_2026-02-28"</span>,
+    <span class="str">"difficulty"</span>: <span class="str">"hard"</span>,
+    <span class="str">"category"</span>: <span class="str">"billing_dispute"</span>,
+    <span class="str">"added_reason"</span>: <span class="str">"regression: WBS-8912"</span>,
+    <span class="str">"added_by"</span>: <span class="str">"cong.hoang@workbuddy.com"</span>,
+    <span class="str">"added_at"</span>: <span class="str">"2026-03-01"</span>
+  }
+}</code></pre>
+
+  <h3>Ownership và governance</h3>
+  <ul>
+    <li><strong>Eval owner:</strong> mỗi eval set cần một người chịu trách nhiệm — không phải "mọi người"</li>
+    <li><strong>Quarterly review:</strong> xem lại xem examples còn relevant không; retire outdated cases</li>
+    <li><strong>Contribution incentive:</strong> track ai đã contribute eval examples — make it visible</li>
+    <li><strong>Breaking change alert:</strong> khi schema thay đổi, notify tất cả team đang dùng eval set đó</li>
+  </ul>
+
+  <!-- ================================================================
+       35.13 Cách cũ vs Cách hiện tại
+  ================================================================ -->
+  <h2 id="cu-vs-moi">35.13 Cách Cũ vs Cách Hiện Tại</h2>
+
+  <div class="tabs" data-tabs>
+    <div class="tab-buttons">
+      <button class="active">Cách cũ (trước ~2023)</button>
+      <button>Cách hiện tại (2025–2026)</button>
+    </div>
+    <div class="tab-panel active">
+      <h4>Eval bằng spreadsheet anecdotal</h4>
+      <ul>
+        <li>PM hoặc kỹ sư tự tạo ~20–30 examples "từ đầu" — không từ production</li>
+        <li>Không có labeling process — một người tự label, không check IAA</li>
+        <li>Eval chạy tay trước mỗi demo — không automated, không CI</li>
+        <li>"Cải thiện" được xác định bằng gut feeling: "nhìn có vẻ tốt hơn"</li>
+        <li>Không versioning — eval set thay đổi tùy tiện giữa các lần chạy</li>
+        <li>Quyết định model upgrade dựa trên vendor's benchmark — không custom eval</li>
+        <li>Regression chỉ phát hiện khi user complaint — sau khi đã deploy</li>
+      </ul>
+      <div class="callout danger">
+        <div class="icon">!</div>
+        <div>
+          <div class="title">Hậu quả thực tế</div>
+          <p>
+            Team tốn nhiều tuần "cải thiện" prompt mà không biết mình có thực sự cải thiện hay không.
+            Deploy xong thì nhận complaints từ user về bugs đã có từ version cũ.
+            Không thể justify resource allocation vì không có data.
+          </p>
+        </div>
+      </div>
+    </div>
+    <div class="tab-panel">
+      <h4>Eval-first product development</h4>
+      <ul>
+        <li><strong>Production traffic-first:</strong> eval examples đến từ real user queries, với time-based split</li>
+        <li><strong>IAA-gated labeling:</strong> pilot 20 examples, đo κ; chỉ proceed khi κ ≥ 0.6</li>
+        <li><strong>Power analysis:</strong> xác định N trước khi build eval set — biết mình có thể phát hiện cải thiện bao nhiêu %</li>
+        <li><strong>Stratified sampling:</strong> đảm bảo coverage theo user segment, task type, difficulty</li>
+        <li><strong>Automated CI/CD:</strong> smoke + regression chạy mỗi PR; golden chạy mỗi release</li>
+        <li><strong>Versioned with changelog:</strong> mọi thay đổi eval set đều có PR, review, và metadata</li>
+        <li><strong>Living regression set:</strong> mọi bug fix → thêm example → không tái phát</li>
+        <li><strong>Statistical rigor:</strong> improvement chỉ được công nhận khi p &lt; 0.05 với effect size đủ lớn</li>
+      </ul>
+      <div class="callout tip">
+        <div class="icon">★</div>
+        <div>
+          <div class="title">Kết quả thực tế</div>
+          <p>
+            Team biết chính xác "cải thiện 3.2% trên golden set v2.1 với p=0.03".
+            Regression rate giảm 60% sau 6 tháng implement living regression set.
+            PM có thể track AI quality trend qua quarterly reports — không phải "cảm giác".
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <h3>Code: Scoring rubric YAML — ví dụ thực tế</h3>
+  <p>
+    Rubric chuẩn hóa tiêu chí đánh giá cho cả human annotator và LLM-judge.
+    Đây là nền tảng để đạt IAA cao và đảm bảo eval có ý nghĩa.
+  </p>
+
+  <pre><code><span class="cm"># rubric_v3.yaml — Customer support response rubric</span>
+<span class="kw">rubric_id</span>: <span class="str">"customer_support_v3"</span>
+<span class="kw">version</span>: <span class="str">"3.0"</span>
+<span class="kw">last_updated</span>: <span class="str">"2026-01-15"</span>
+
+<span class="kw">dimensions</span>:
+  - <span class="kw">name</span>: <span class="str">"accuracy"</span>
+    <span class="kw">weight</span>: <span class="num">0.4</span>
+    <span class="kw">scale</span>: <span class="num">1</span>-<span class="num">5</span>
+    <span class="kw">anchors</span>:
+      <span class="num">1</span>: <span class="str">"Thông tin sai rõ ràng hoặc mâu thuẫn với context"</span>
+      <span class="num">3</span>: <span class="str">"Thông tin đúng nhưng thiếu chi tiết quan trọng"</span>
+      <span class="num">5</span>: <span class="str">"Thông tin hoàn toàn chính xác, đầy đủ, có thể verify"</span>
+
+  - <span class="kw">name</span>: <span class="str">"helpfulness"</span>
+    <span class="kw">weight</span>: <span class="num">0.35</span>
+    <span class="kw">scale</span>: <span class="num">1</span>-<span class="num">5</span>
+    <span class="kw">anchors</span>:
+      <span class="num">1</span>: <span class="str">"Không giải quyết vấn đề của user"</span>
+      <span class="num">3</span>: <span class="str">"Giải quyết một phần, user cần follow up"</span>
+      <span class="num">5</span>: <span class="str">"Giải quyết hoàn toàn, không cần follow up"</span>
+
+  - <span class="kw">name</span>: <span class="str">"tone"</span>
+    <span class="kw">weight</span>: <span class="num">0.15</span>
+    <span class="kw">scale</span>: <span class="num">1</span>-<span class="num">5</span>
+    <span class="kw">anchors</span>:
+      <span class="num">1</span>: <span class="str">"Lạnh lùng, thiếu empathy hoặc quá formal/informal"</span>
+      <span class="num">3</span>: <span class="str">"Trung lập, không gây khó chịu"</span>
+      <span class="num">5</span>: <span class="str">"Warm, professional, đúng tone với tình huống"</span>
+
+  - <span class="kw">name</span>: <span class="str">"conciseness"</span>
+    <span class="kw">weight</span>: <span class="num">0.10</span>
+    <span class="kw">scale</span>: <span class="num">1</span>-<span class="num">5</span>
+    <span class="kw">anchors</span>:
+      <span class="num">1</span>: <span class="str">"Quá dài (>2x cần thiết) hoặc quá ngắn (thiếu context)"</span>
+      <span class="num">3</span>: <span class="str">"Độ dài chấp nhận được, một vài chỗ có thể trim"</span>
+      <span class="num">5</span>: <span class="str">"Đúng độ dài, mỗi câu đều có giá trị"</span>
+
+<span class="kw">aggregate</span>: <span class="str">"weighted_average"</span>  <span class="cm"># hoặc "minimum" nếu muốn strict</span>
+<span class="kw">pass_threshold</span>: <span class="num">3.5</span>             <span class="cm"># score tổng ≥ 3.5 để pass</span></code></pre>
+
+  <!-- ================================================================
+       Tóm tắt
+  ================================================================ -->
+  <h2 id="tom-tat">Tóm tắt</h2>
+
+  <ol>
+    <li>
+      <strong>Eval dataset &gt; model choice:</strong> Chất lượng eval dataset thường là yếu tố chi phối
+      chất lượng sản phẩm AI. Dataset kém → signal sai → mọi optimization đều vô hướng.
+    </li>
+    <li>
+      <strong>Ưu tiên nguồn dữ liệu theo thứ tự:</strong> production traffic (cao nhất) → expert curated
+      → synthetic → public benchmarks (thấp nhất). Mix theo tỷ lệ 60/25/15.
+    </li>
+    <li>
+      <strong>Stratified sampling + hard-case mining:</strong> Random sampling chưa đủ — phân tầng theo
+      user segment, task type, và chủ động thu thập hard cases từ production failures.
+    </li>
+    <li>
+      <strong>Power analysis trước khi build:</strong> Dùng công thức two-proportion z-test để xác định N
+      tối thiểu. Với N=50, không thể kết luận về cải thiện &lt;10%.
+    </li>
+    <li>
+      <strong>Chọn labeling format phù hợp:</strong> Binary cho safety/format (automated),
+      rubric đa chiều cho quality (diagnostic), pairwise khi so sánh variants.
+    </li>
+    <li>
+      <strong>Đo IAA trước khi scale:</strong> Pilot 20–50 examples, tính Cohen's κ. Nếu κ &lt; 0.4 →
+      dừng, redesign rubric. Target κ ≥ 0.6 cho production eval.
+    </li>
+    <li>
+      <strong>Ngăn chặn leakage:</strong> Hash check cho exact overlap, embedding similarity cho near-dup,
+      time-based split cho production data. Không dùng cùng model để generate và judge eval.
+    </li>
+    <li>
+      <strong>Version có changelog:</strong> Treat eval set như codebase — PR process, review, metadata.
+      Major version change → dual-track period 4–8 tuần.
+    </li>
+    <li>
+      <strong>Bốn loại set với mục đích khác nhau:</strong>
+      Golden (comprehensive, pre-release) · Regression (CI/CD, anti-recurrence) ·
+      Smoke (30s sanity check) · Canary (stretch goals, adversarial).
+    </li>
+    <li>
+      <strong>Eval-first product development:</strong>
+      Mỗi bug → regression test. Mỗi PR → automated eval. Mỗi release → golden set pass.
+      Đây là chuyển dịch cốt lõi từ "anecdotal spreadsheet" sang "measurable AI engineering".
+    </li>
+  </ol>
+
+  <nav class="section-footer">
+    <a href="34-compliance.html" class="prev">
+      <div class="label">← trước đó</div>
+      <div class="title">34 — Compliance &amp; Governance</div>
+    </a>
+    <a href="36-reward-modeling.html" class="next">
+      <div class="label">tiếp theo →</div>
+      <div class="title">36 — Reward Modeling</div>
+    </a>
+  </nav>
+
+</main>
+
+<script src="../assets/script.js"></script>
+</body>
+</html>

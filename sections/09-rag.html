@@ -1,0 +1,1033 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>09 · RAG (Retrieval-Augmented Generation) — AI Engineering</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<nav class="top-nav">
+  <div class="brand"><span class="dot"></span> AI Engineering</div>
+  <div class="crumbs"><a href="../index.html">Mục lục</a> › Phần 4 · <span>09 — RAG</span></div>
+  <div class="nav-actions">
+    <a href="08-vector-search.html">← Trước</a>
+    <a href="10-agents.html">Tiếp →</a>
+  </div>
+</nav>
+
+<main class="page">
+
+  <section class="hero">
+    <span class="eyebrow">Phần 4 · §09</span>
+    <h1>RAG — Retrieval-Augmented Generation</h1>
+    <p class="lede">
+      Kiến trúc cho phép LLM truy xuất kiến thức ngoài training data: từ chunking và embedding đến hybrid search, reranking, và advanced patterns như HyDE, multi-hop, GraphRAG.
+    </p>
+    <img class="hero-image" src="../images/09-rag.png" alt="RAG pipeline illustration" onerror="this.style.display='none'">
+  </section>
+
+  <aside class="toc">
+    <div class="toc-title">Trong trang này</div>
+    <ul>
+      <li><a href="#rag-la-gi">7.1 RAG là gì, tại sao cần</a></li>
+      <li><a href="#kien-truc">7.2 Kiến trúc cơ bản</a></li>
+      <li><a href="#chunking">7.3 Chunking strategies</a></li>
+      <li><a href="#embedding">7.4 Embedding models</a></li>
+      <li><a href="#vector-db">7.5 Vector databases</a></li>
+      <li><a href="#search">7.6 Search & Reranking</a></li>
+      <li><a href="#metadata">7.7 Metadata & Multitenancy</a></li>
+      <li><a href="#advanced">7.8 Advanced RAG</a></li>
+      <li><a href="#graphrag">7.9 GraphRAG</a></li>
+      <li><a href="#eval">7.10 RAG Evaluation</a></li>
+      <li><a href="#traps">7.11 Production traps</a></li>
+      <li><a href="#tom-tat">Tóm tắt</a></li>
+    </ul>
+  </aside>
+
+  <!-- ═══════════════════════════════════════════════
+       7.1 RAG là gì
+  ════════════════════════════════════════════════ -->
+  <h2 id="rag-la-gi">7.1 RAG là gì, tại sao cần</h2>
+  <p>
+    <strong>RAG (Retrieval-Augmented Generation)</strong> là kỹ thuật bổ sung thông tin bên ngoài vào
+    context của LLM ngay tại thời điểm inference, thay vì bake kiến thức đó vào weights thông qua training.
+    Kết quả là model có thể trả lời dựa trên dữ liệu mới nhất, dữ liệu nội bộ, hoặc dữ liệu chuyên ngành
+    mà nó chưa từng thấy trong quá trình train.
+  </p>
+
+  <div class="callout note">
+    <div class="icon">≡</div>
+    <div>
+      <div class="title">Công thức cốt lõi</div>
+      <p><strong>RAG = Retrieval System + LLM Generator</strong> — tách biệt "nơi lưu kiến thức" (vector store) khỏi "nơi reasoning" (LLM).</p>
+    </div>
+  </div>
+
+  <h3>Ba vấn đề RAG giải quyết</h3>
+  <ul>
+    <li><strong>Knowledge cutoff:</strong> LLM không biết sự kiện sau ngày training. RAG cho phép dùng dữ liệu real-time.</li>
+    <li><strong>Private/internal data:</strong> Tài liệu nội bộ, codebase, wiki doanh nghiệp không có trong training data.</li>
+    <li><strong>Citable answers:</strong> Câu trả lời có thể dẫn nguồn cụ thể, giúp người dùng verify và tăng trust.</li>
+  </ul>
+
+  <h3>RAG vs Fine-tuning vs Long context</h3>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Phương pháp</th><th>Khi nào phù hợp</th><th>Hạn chế</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><strong>RAG</strong></td><td>Dữ liệu thay đổi liên tục, cần citation, corpus lớn</td><td>Retrieval có thể miss; latency cao hơn</td></tr>
+        <tr><td>Fine-tuning</td><td>Style/format cố định, domain behavior, không cần citation</td><td>Không update được real-time; expensive</td></tr>
+        <tr><td>Long context</td><td>Toàn bộ tài liệu vừa trong 1 prompt (&lt;200k tokens)</td><td>Cost cao; "lost-in-the-middle" problem</td></tr>
+        <tr><td>Kết hợp</td><td>Corpus rất lớn + domain style cụ thể</td><td>Phức tạp nhất, chi phí cao nhất</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════
+       7.2 Kiến trúc cơ bản
+  ════════════════════════════════════════════════ -->
+  <h2 id="kien-truc">7.2 Kiến trúc cơ bản</h2>
+  <p>
+    RAG gồm hai pipeline chính chạy độc lập: <strong>Ingestion pipeline</strong> (chạy offline, chuẩn bị dữ liệu)
+    và <strong>Query pipeline</strong> (chạy online, xử lý mỗi request).
+  </p>
+
+  <!-- BIG Architecture Diagram -->
+  <svg class="diagram" viewBox="0 0 800 520" role="img" aria-label="RAG pipeline đầy đủ: Ingestion và Query">
+    <defs>
+      <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#6f7c92"/>
+      </marker>
+    </defs>
+
+    <!-- ── INGESTION PIPELINE ─────────────────── -->
+    <text x="20" y="28" font-weight="700" font-size="14" fill="#ffb86b">INGESTION PIPELINE (offline)</text>
+
+    <!-- Load Documents -->
+    <rect class="node-accent" x="20" y="44" width="130" height="54" rx="8"/>
+    <text x="85" y="67" text-anchor="middle" font-weight="600" font-size="13">① Load</text>
+    <text x="85" y="85" text-anchor="middle" class="label-sm">PDF, HTML, DB, API</text>
+
+    <!-- Arrow -->
+    <line class="arrow" x1="151" y1="71" x2="183" y2="71" marker-end="url(#arrowhead)"/>
+
+    <!-- Chunk -->
+    <rect class="node-blue" x="184" y="44" width="130" height="54" rx="8"/>
+    <text x="249" y="67" text-anchor="middle" font-weight="600" font-size="13">② Chunk</text>
+    <text x="249" y="85" text-anchor="middle" class="label-sm">split strategy</text>
+
+    <!-- Arrow -->
+    <line class="arrow" x1="315" y1="71" x2="347" y2="71" marker-end="url(#arrowhead)"/>
+
+    <!-- Embed -->
+    <rect class="node-green" x="348" y="44" width="130" height="54" rx="8"/>
+    <text x="413" y="67" text-anchor="middle" font-weight="600" font-size="13">③ Embed</text>
+    <text x="413" y="85" text-anchor="middle" class="label-sm">embedding model</text>
+
+    <!-- Arrow -->
+    <line class="arrow" x1="479" y1="71" x2="511" y2="71" marker-end="url(#arrowhead)"/>
+
+    <!-- Index -->
+    <rect class="node-accent" x="512" y="44" width="130" height="54" rx="8"/>
+    <text x="577" y="67" text-anchor="middle" font-weight="600" font-size="13">④ Index</text>
+    <text x="577" y="85" text-anchor="middle" class="label-sm">vector DB + metadata</text>
+
+    <!-- ── QUERY PIPELINE ─────────────────────── -->
+    <text x="20" y="150" font-weight="700" font-size="14" fill="#7cc4ff">QUERY PIPELINE (online)</text>
+
+    <!-- User Query -->
+    <rect class="node-bg" x="20" y="166" width="120" height="54" rx="8"/>
+    <text x="80" y="189" text-anchor="middle" font-weight="600" font-size="13">User Query</text>
+    <text x="80" y="207" text-anchor="middle" class="label-sm">natural language</text>
+
+    <!-- Arrow -->
+    <line class="arrow" x1="141" y1="193" x2="165" y2="193" marker-end="url(#arrowhead)"/>
+
+    <!-- Query Embed -->
+    <rect class="node-blue" x="166" y="166" width="115" height="54" rx="8"/>
+    <text x="223" y="189" text-anchor="middle" font-weight="600" font-size="13">Embed Query</text>
+    <text x="223" y="207" text-anchor="middle" class="label-sm">same model</text>
+
+    <!-- Arrow -->
+    <line class="arrow" x1="282" y1="193" x2="306" y2="193" marker-end="url(#arrowhead)"/>
+
+    <!-- Retrieve -->
+    <rect class="node-green" x="307" y="166" width="115" height="54" rx="8"/>
+    <text x="364" y="189" text-anchor="middle" font-weight="600" font-size="13">Retrieve</text>
+    <text x="364" y="207" text-anchor="middle" class="label-sm">top-K chunks</text>
+
+    <!-- Arrow -->
+    <line class="arrow" x1="423" y1="193" x2="447" y2="193" marker-end="url(#arrowhead)"/>
+
+    <!-- Rerank -->
+    <rect class="node-accent" x="448" y="166" width="115" height="54" rx="8"/>
+    <text x="505" y="189" text-anchor="middle" font-weight="600" font-size="13">Rerank</text>
+    <text x="505" y="207" text-anchor="middle" class="label-sm">cross-encoder</text>
+
+    <!-- Arrow -->
+    <line class="arrow" x1="564" y1="193" x2="588" y2="193" marker-end="url(#arrowhead)"/>
+
+    <!-- Generate -->
+    <rect class="node-blue" x="589" y="166" width="115" height="54" rx="8"/>
+    <text x="646" y="189" text-anchor="middle" font-weight="600" font-size="13">Generate</text>
+    <text x="646" y="207" text-anchor="middle" class="label-sm">LLM + context</text>
+
+    <!-- Arrow to output -->
+    <line class="arrow" x1="705" y1="193" x2="745" y2="193" marker-end="url(#arrowhead)"/>
+    <rect class="node-green" x="746" y="166" width="38" height="54" rx="8"/>
+    <text x="765" y="198" text-anchor="middle" font-size="12">Out</text>
+
+    <!-- ── VECTOR DB shared resource ───────────── -->
+    <rect class="node-bg" x="460" y="280" width="160" height="56" rx="8"/>
+    <text x="540" y="303" text-anchor="middle" font-weight="600" font-size="13">Vector Database</text>
+    <text x="540" y="321" text-anchor="middle" class="label-sm">embeddings + metadata</text>
+
+    <!-- Ingestion → Vector DB -->
+    <line class="arrow" x1="577" y1="98" x2="540" y2="279" marker-end="url(#arrowhead)"/>
+    <!-- Retrieve ← Vector DB -->
+    <line class="arrow" x1="500" y1="280" x2="400" y2="220" marker-end="url(#arrowhead)"/>
+
+    <!-- ── PROMPT TEMPLATE ───────────────────── -->
+    <rect class="node-bg" x="240" y="280" width="190" height="76" rx="8"/>
+    <text x="335" y="303" text-anchor="middle" font-weight="600" font-size="13">Prompt Template</text>
+    <text x="335" y="321" text-anchor="middle" class="label-sm">System + Context chunks</text>
+    <text x="335" y="337" text-anchor="middle" class="label-sm">+ User question</text>
+
+    <!-- Chunks → Prompt -->
+    <line class="arrow" x1="364" y1="220" x2="335" y2="279" marker-end="url(#arrowhead)"/>
+    <!-- Prompt → Generate -->
+    <line class="arrow" x1="430" y1="318" x2="620" y2="220" marker-end="url(#arrowhead)"/>
+
+    <!-- ── OPTIONAL: Query Rewriting ─────────── -->
+    <rect class="node-bg" x="40" y="280" width="175" height="56" rx="8"/>
+    <text x="127" y="303" text-anchor="middle" font-weight="600" font-size="13">Query Rewriting</text>
+    <text x="127" y="321" text-anchor="middle" class="label-sm">(optional, advanced)</text>
+
+    <!-- User → Query Rewrite -->
+    <line class="arrow" x1="80" y1="220" x2="90" y2="279" marker-end="url(#arrowhead)"/>
+    <!-- Query Rewrite → Embed -->
+    <line class="arrow" x1="175" y1="308" x2="200" y2="220" marker-end="url(#arrowhead)"/>
+
+    <!-- ── Chunking detail ─────────────────── -->
+    <text x="20" y="400" font-size="12" fill="#6f7c92">* Chunk size, overlap và strategy ảnh hưởng trực tiếp đến chất lượng retrieval — xem §7.3</text>
+    <text x="20" y="420" font-size="12" fill="#6f7c92">* Embedding model phải GIỐNG NHAU ở cả ingestion và query — xem §7.4</text>
+    <text x="20" y="440" font-size="12" fill="#6f7c92">* Reranker là optional nhưng tăng precision đáng kể với chi phí nhỏ — xem §7.6</text>
+  </svg>
+
+  <h3>Ingestion Pipeline chi tiết</h3>
+  <ol>
+    <li><strong>Load:</strong> Đọc tài liệu từ nhiều nguồn (PDF, DOCX, HTML, Markdown, database, API). Tools: LangChain loaders, LlamaIndex readers, Unstructured.io.</li>
+    <li><strong>Chunk:</strong> Chia tài liệu thành các đoạn nhỏ để embedding model có thể xử lý và để retrieval chính xác hơn.</li>
+    <li><strong>Embed:</strong> Chuyển mỗi chunk thành vector số thực (dense vector) bằng embedding model.</li>
+    <li><strong>Index:</strong> Lưu vectors vào vector database cùng metadata (source, page, timestamp, tenant_id, ...).</li>
+  </ol>
+
+  <h3>Query Pipeline chi tiết</h3>
+  <ol>
+    <li><strong>Embed query:</strong> Dùng cùng embedding model với ingestion để chuyển câu hỏi thành vector.</li>
+    <li><strong>Retrieve:</strong> Tìm top-K chunks gần nhất (cosine similarity / dot product / Euclidean).</li>
+    <li><strong>Rerank (optional):</strong> Sắp xếp lại top-K bằng cross-encoder chính xác hơn.</li>
+    <li><strong>Generate:</strong> Đưa chunks vào prompt template cùng câu hỏi, gọi LLM để tổng hợp câu trả lời.</li>
+  </ol>
+
+  <!-- ═══════════════════════════════════════════════
+       7.3 Chunking
+  ════════════════════════════════════════════════ -->
+  <h2 id="chunking">7.3 Chunking Strategies</h2>
+  <p>
+    Chunking là bước có ảnh hưởng lớn nhất đến chất lượng retrieval, nhưng thường bị underestimate.
+    Chunk quá lớn → nhiều noise, tốn token. Chunk quá nhỏ → mất context, câu trả lời thiếu coherent.
+  </p>
+
+  <!-- Chunking SVG -->
+  <svg class="diagram" viewBox="0 0 800 300" role="img" aria-label="Các chunking strategy so sánh">
+    <defs>
+      <marker id="arrowhead2" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#6f7c92"/>
+      </marker>
+    </defs>
+
+    <!-- Fixed-size -->
+    <text x="20" y="20" font-weight="700" font-size="12" fill="#ffb86b">Fixed-size</text>
+    <rect class="node-accent" x="20" y="28" width="80" height="28" rx="4"/>
+    <rect class="node-accent" x="106" y="28" width="80" height="28" rx="4"/>
+    <rect class="node-accent" x="192" y="28" width="80" height="28" rx="4"/>
+    <rect class="node-accent" x="278" y="28" width="40" height="28" rx="4"/>
+    <text x="60" y="46" text-anchor="middle" font-size="11">512 tok</text>
+    <text x="146" y="46" text-anchor="middle" font-size="11">512 tok</text>
+    <text x="232" y="46" text-anchor="middle" font-size="11">512 tok</text>
+    <text x="298" y="46" text-anchor="middle" font-size="11">...</text>
+    <text x="20" y="72" font-size="11" fill="#6f7c92">Simple but cuts mid-sentence. Use overlap (e.g. 50 tok).</text>
+
+    <!-- Sentence-based -->
+    <text x="20" y="100" font-weight="700" font-size="12" fill="#7cc4ff">Sentence-based</text>
+    <rect class="node-blue" x="20" y="108" width="110" height="28" rx="4"/>
+    <rect class="node-blue" x="136" y="108" width="130" height="28" rx="4"/>
+    <rect class="node-blue" x="272" y="108" width="95" height="28" rx="4"/>
+    <text x="75" y="126" text-anchor="middle" font-size="11">Câu 1–3</text>
+    <text x="201" y="126" text-anchor="middle" font-size="11">Câu 4–6</text>
+    <text x="319" y="126" text-anchor="middle" font-size="11">Câu 7–9</text>
+    <text x="20" y="152" font-size="11" fill="#6f7c92">Preserves sentence boundaries. Better than fixed for prose.</text>
+
+    <!-- Semantic / recursive -->
+    <text x="20" y="178" font-weight="700" font-size="12" fill="#b4e07a">Semantic / Recursive</text>
+    <rect class="node-green" x="20" y="186" width="160" height="28" rx="4"/>
+    <rect class="node-green" x="186" y="186" width="100" height="28" rx="4"/>
+    <rect class="node-green" x="292" y="186" width="130" height="28" rx="4"/>
+    <text x="100" y="204" text-anchor="middle" font-size="11">Đoạn A (1 topic)</text>
+    <text x="236" y="204" text-anchor="middle" font-size="11">Đoạn B</text>
+    <text x="357" y="204" text-anchor="middle" font-size="11">Đoạn C (1 topic)</text>
+    <text x="20" y="230" font-size="11" fill="#6f7c92">Split on semantic shifts. Needs embeddings for boundary detection.</text>
+
+    <!-- Parent-child -->
+    <text x="20" y="258" font-weight="700" font-size="12" fill="#d3a4ff">Parent-Child</text>
+    <rect class="node-bg" x="20" y="266" width="360" height="22" rx="4"/>
+    <text x="200" y="281" text-anchor="middle" font-size="11" fill="#d3a4ff">Parent chunk (stored, large context)</text>
+    <rect class="node-bg" x="20" y="266" width="80" height="22" rx="4" style="fill:rgba(211,164,255,0.12);stroke:#d3a4ff"/>
+    <rect class="node-bg" x="105" y="266" width="80" height="22" rx="4" style="fill:rgba(211,164,255,0.12);stroke:#d3a4ff"/>
+    <rect class="node-bg" x="190" y="266" width="80" height="22" rx="4" style="fill:rgba(211,164,255,0.12);stroke:#d3a4ff"/>
+    <text x="60" y="281" text-anchor="middle" font-size="10">Child 1</text>
+    <text x="145" y="281" text-anchor="middle" font-size="10">Child 2</text>
+    <text x="230" y="281" text-anchor="middle" font-size="10">Child 3</text>
+  </svg>
+
+  <div class="tabs" data-tabs>
+    <div class="tab-buttons">
+      <button class="active">Fixed-size</button>
+      <button>Sentence</button>
+      <button>Semantic</button>
+      <button>Recursive</button>
+      <button>Parent-Child</button>
+      <button>Late Chunking</button>
+    </div>
+    <div class="tab-panel active">
+      <h4>Fixed-size Chunking</h4>
+      <p>Chia theo số token cố định (thường 256–1024 tokens) với overlap (thường 10–20% chunk size).</p>
+      <pre><code><span class="cm"># LangChain style pseudo-code</span>
+<span class="fn">splitter</span> = RecursiveCharacterTextSplitter(
+    chunk_size=<span class="num">512</span>,
+    chunk_overlap=<span class="num">50</span>,
+    length_function=<span class="fn">token_count</span>,
+)
+chunks = splitter.<span class="fn">split_text</span>(document)</code></pre>
+      <p><strong>Pro:</strong> Đơn giản, dễ implement, consistent chunk size.<br>
+      <strong>Con:</strong> Cắt giữa câu/paragraph, mất semantic boundary.</p>
+    </div>
+    <div class="tab-panel">
+      <h4>Sentence-based Chunking</h4>
+      <p>Dùng NLP sentence tokenizer (spaCy, NLTK, punkt) để chia theo ranh giới câu, sau đó group N câu thành 1 chunk.</p>
+      <pre><code><span class="fn">sentences</span> = nlp.<span class="fn">sentencize</span>(text)
+chunks = []
+<span class="kw">for</span> i <span class="kw">in</span> <span class="fn">range</span>(<span class="num">0</span>, <span class="fn">len</span>(sentences), <span class="num">3</span>):  <span class="cm"># 3 sentences/chunk</span>
+    window = sentences[i:i+<span class="num">4</span>]  <span class="cm"># overlap 1 sentence</span>
+    chunks.<span class="fn">append</span>(<span class="str">' '</span>.<span class="fn">join</span>(window))</code></pre>
+      <p><strong>Pro:</strong> Giữ nguyên ranh giới câu, tốt cho prose.<br>
+      <strong>Con:</strong> Chunk size không đồng đều; câu dài có thể vượt token limit.</p>
+    </div>
+    <div class="tab-panel">
+      <h4>Semantic Chunking</h4>
+      <p>Embed từng câu, phát hiện "topic shift" khi cosine distance giữa câu liên tiếp vượt ngưỡng.</p>
+      <pre><code><span class="fn">embeddings</span> = <span class="fn">embed</span>(sentences)  <span class="cm"># embed all sentences</span>
+boundaries = []
+<span class="kw">for</span> i <span class="kw">in</span> <span class="fn">range</span>(<span class="num">1</span>, <span class="fn">len</span>(embeddings)):
+    sim = <span class="fn">cosine_sim</span>(embeddings[i-<span class="num">1</span>], embeddings[i])
+    <span class="kw">if</span> sim &lt; THRESHOLD:  <span class="cm"># e.g. 0.7</span>
+        boundaries.<span class="fn">append</span>(i)</code></pre>
+      <p><strong>Pro:</strong> Mỗi chunk là 1 topic cohesive, retrieval chính xác hơn.<br>
+      <strong>Con:</strong> Cần embed toàn bộ document trước (2x cost); chunk size vary mạnh.</p>
+    </div>
+    <div class="tab-panel">
+      <h4>Recursive Character Splitter</h4>
+      <p>Thử chia theo priority hierarchy: paragraph (<code>\n\n</code>) → sentence (<code>\n</code>) → word (<code> </code>) → character. Dừng khi chunk nhỏ hơn limit.</p>
+      <pre><code>separators = [<span class="str">"\n\n"</span>, <span class="str">"\n"</span>, <span class="str">". "</span>, <span class="str">" "</span>, <span class="str">""</span>]
+<span class="cm"># LangChain RecursiveCharacterTextSplitter sử dụng logic này</span>
+<span class="cm"># Đây là default chunker được recommend nhất cho general use</span></code></pre>
+      <p><strong>Pro:</strong> Tôn trọng document structure; dễ config.<br>
+      <strong>Con:</strong> Không biết semantic boundary thực sự.</p>
+    </div>
+    <div class="tab-panel">
+      <h4>Parent-Child (Small-to-Big) Retrieval</h4>
+      <p>Index <em>child chunks</em> nhỏ (64–128 tokens) để retrieval chính xác. Nhưng khi đưa vào LLM, fetch <em>parent chunk</em> lớn hơn (512–1024 tokens) để context đầy đủ.</p>
+      <pre><code><span class="cm"># Index phase: store child chunks</span>
+<span class="kw">for</span> parent <span class="kw">in</span> parent_chunks:
+    <span class="kw">for</span> child <span class="kw">in</span> <span class="fn">split</span>(parent, size=<span class="num">128</span>):
+        child.metadata[<span class="str">'parent_id'</span>] = parent.id
+        vector_db.<span class="fn">insert</span>(child)
+
+<span class="cm"># Query phase: retrieve child, return parent</span>
+child_results = vector_db.<span class="fn">search</span>(query_vec, top_k=<span class="num">5</span>)
+contexts = [<span class="fn">get_parent</span>(c.metadata.parent_id) <span class="kw">for</span> c <span class="kw">in</span> child_results]</code></pre>
+      <p><strong>Pro:</strong> Best of both worlds — precision retrieval + rich context.<br>
+      <strong>Con:</strong> Phức tạp hơn; cần lưu cả parent và child.</p>
+    </div>
+    <div class="tab-panel">
+      <h4>Late Chunking</h4>
+      <p>
+        Embed toàn bộ document trước (để model biết full context), sau đó mới chia thành chunks và pool embeddings.
+        Technique mới từ JinaAI (2024) cho long-context embedding models.
+      </p>
+      <pre><code><span class="cm"># Embed full document first → get token embeddings</span>
+token_embeddings = <span class="fn">embed_full_doc</span>(document)  <span class="cm"># shape: [seq_len, dim]</span>
+<span class="cm"># Chunk boundaries from sentence tokenizer</span>
+<span class="kw">for</span> start, end <span class="kw">in</span> chunk_boundaries:
+    chunk_vec = <span class="fn">mean_pool</span>(token_embeddings[start:end])
+    vector_db.<span class="fn">insert</span>(chunk_vec)</code></pre>
+      <p><strong>Pro:</strong> Chunk vectors giữ full document context → coherence tốt hơn.<br>
+      <strong>Con:</strong> Cần long-context embedding model (Jina, nomic); không phổ biến.</p>
+    </div>
+  </div>
+
+  <div class="callout tip">
+    <div class="icon">★</div>
+    <div>
+      <div class="title">Practical recommendation</div>
+      <p>Bắt đầu với <strong>Recursive splitter, 512 tokens, 50 token overlap</strong>. Nếu chất lượng không đủ, thử Parent-Child. Semantic chunking chỉ đáng đầu tư khi corpus có nhiều topic distinct trong cùng một document.</p>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════
+       7.4 Embedding Models
+  ════════════════════════════════════════════════ -->
+  <h2 id="embedding">7.4 Embedding Models</h2>
+  <p>
+    Embedding model chuyển text thành dense vector trong không gian high-dimensional. Chất lượng model
+    ảnh hưởng trực tiếp đến retrieval quality — đây là single biggest lever sau chunking.
+  </p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Model</th><th>Provider</th><th>Dimensions</th><th>Max tokens</th><th>Multilingual</th><th>Ghi chú</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>text-embedding-3-large</code></td>
+          <td>OpenAI</td>
+          <td>3072 (flexible)</td>
+          <td>8191</td>
+          <td>Tốt</td>
+          <td>Best OpenAI; support dimension reduction</td>
+        </tr>
+        <tr>
+          <td><code>text-embedding-3-small</code></td>
+          <td>OpenAI</td>
+          <td>1536</td>
+          <td>8191</td>
+          <td>Tốt</td>
+          <td>Cheaper; 80% quality của large</td>
+        </tr>
+        <tr>
+          <td><code>voyage-3-large</code></td>
+          <td>Voyage AI</td>
+          <td>1024–2048</td>
+          <td>32000</td>
+          <td>Tốt</td>
+          <td>Top MTEB; Anthropic recommend</td>
+        </tr>
+        <tr>
+          <td><code>bge-m3</code></td>
+          <td>BAAI (OSS)</td>
+          <td>1024</td>
+          <td>8192</td>
+          <td>Xuất sắc (100+ ngôn ngữ)</td>
+          <td>Dense + sparse + colbert cùng lúc</td>
+        </tr>
+        <tr>
+          <td><code>nomic-embed-text-v1.5</code></td>
+          <td>Nomic (OSS)</td>
+          <td>768</td>
+          <td>8192</td>
+          <td>Tốt</td>
+          <td>Open-source; self-host được; Matryoshka</td>
+        </tr>
+        <tr>
+          <td><code>e5-mistral-7b</code></td>
+          <td>Microsoft (OSS)</td>
+          <td>4096</td>
+          <td>32768</td>
+          <td>Tốt</td>
+          <td>Mạnh nhất OSS; cần GPU</td>
+        </tr>
+        <tr>
+          <td><code>multilingual-e5-large</code></td>
+          <td>Microsoft (OSS)</td>
+          <td>1024</td>
+          <td>514</td>
+          <td>Xuất sắc</td>
+          <td>Tiếng Việt tốt; lightweight</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Matryoshka Representation Learning (MRL)</h3>
+  <p>
+    Một số model (text-embedding-3-*, nomic) hỗ trợ <strong>dimension truncation</strong>:
+    bạn có thể dùng 256 dimensions thay vì 1536 mà không cần re-embed. Tiết kiệm storage và
+    tăng search speed đáng kể với quality loss nhỏ.
+  </p>
+
+  <div class="callout warn">
+    <div class="icon">⚠</div>
+    <div>
+      <div class="title">Critical rule</div>
+      <p>
+        <strong>Embedding model phải giống nhau</strong> ở ingestion và query time.
+        Thay đổi model = phải re-embed toàn bộ corpus. Chọn model cẩn thận trước khi production.
+      </p>
+    </div>
+  </div>
+
+  <h3>Benchmark: MTEB</h3>
+  <p>
+    <strong>MTEB (Massive Text Embedding Benchmark)</strong> là benchmark chuẩn để so sánh embedding models
+    qua 58 datasets, 8 tasks (retrieval, clustering, classification, ...).
+    Luôn kiểm tra MTEB leaderboard trước khi chọn model: <em>huggingface.co/spaces/mteb/leaderboard</em>
+  </p>
+
+  <!-- ═══════════════════════════════════════════════
+       7.5 Vector Databases
+  ════════════════════════════════════════════════ -->
+  <h2 id="vector-db">7.5 Vector Databases</h2>
+  <p>
+    Vector database lưu trữ embeddings và cho phép ANN (Approximate Nearest Neighbor) search
+    với tốc độ cao. Chọn sai database có thể gây vấn đề về latency, cost, hoặc multitenancy ở scale.
+  </p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Database</th><th>Type</th><th>ANN Algorithm</th><th>Managed</th><th>Filter</th><th>Multitenancy</th><th>Best for</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Qdrant</strong></td>
+          <td>Purpose-built</td>
+          <td>HNSW</td>
+          <td>Cloud + Self-host</td>
+          <td>Mạnh (payload filter)</td>
+          <td>Collections / namespaces</td>
+          <td>Production RAG, high performance</td>
+        </tr>
+        <tr>
+          <td><strong>Pinecone</strong></td>
+          <td>Purpose-built</td>
+          <td>Proprietary</td>
+          <td>Fully managed</td>
+          <td>Metadata filter</td>
+          <td>Namespaces</td>
+          <td>Serverless, fast setup, no ops</td>
+        </tr>
+        <tr>
+          <td><strong>pgvector</strong></td>
+          <td>PostgreSQL ext.</td>
+          <td>HNSW / IVFFlat</td>
+          <td>RDS, Supabase, etc.</td>
+          <td>Full SQL</td>
+          <td>Schema / row-level</td>
+          <td>Existing Postgres, simple setup</td>
+        </tr>
+        <tr>
+          <td><strong>Weaviate</strong></td>
+          <td>Purpose-built</td>
+          <td>HNSW</td>
+          <td>Cloud + Self-host</td>
+          <td>GraphQL filter</td>
+          <td>Classes (tenants)</td>
+          <td>Hybrid search, knowledge graph</td>
+        </tr>
+        <tr>
+          <td><strong>Chroma</strong></td>
+          <td>Purpose-built</td>
+          <td>HNSW (hnswlib)</td>
+          <td>Self-host</td>
+          <td>Metadata filter</td>
+          <td>Collections</td>
+          <td>Local dev, prototyping</td>
+        </tr>
+        <tr>
+          <td><strong>Milvus</strong></td>
+          <td>Purpose-built</td>
+          <td>HNSW, IVF, FLAT</td>
+          <td>Zilliz Cloud</td>
+          <td>Scalar filter</td>
+          <td>Partitions</td>
+          <td>Billion-scale, high throughput</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>HNSW — Hierarchical Navigable Small World</h3>
+  <p>
+    Thuật toán ANN phổ biến nhất. Build <strong>multi-layer graph</strong>: layer cao = long-range connections,
+    layer thấp = short-range connections. Search: bắt đầu từ entry point ở layer cao nhất,
+    greedy navigate xuống → O(log n) search time. Trade-off: <code>ef_construction</code>
+    (build quality) và <code>m</code> (connections per node) ảnh hưởng memory và recall.
+  </p>
+
+  <div class="callout note">
+    <div class="icon">≡</div>
+    <div>
+      <div class="title">Khi nào dùng pgvector vs purpose-built?</div>
+      <p>
+        <strong>pgvector:</strong> Đã có PostgreSQL, &lt;10M vectors, cần SQL joins với metadata.
+        <strong>Qdrant/Pinecone:</strong> Cần dedicated performance, &gt;10M vectors, hoặc multitenancy phức tạp.
+      </p>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════
+       7.6 Search & Reranking
+  ════════════════════════════════════════════════ -->
+  <h2 id="search">7.6 Search Methods và Reranking</h2>
+
+  <h3>Dense Vector Search</h3>
+  <p>
+    Tính cosine similarity (hoặc dot product) giữa query vector và tất cả document vectors.
+    <strong>Ưu điểm:</strong> Hiểu semantic — "xe hơi" và "ô tô" có vector gần nhau.
+    <strong>Nhược điểm:</strong> Miss exact keyword match; không tốt với rare terms, codes, IDs.
+  </p>
+
+  <h3>BM25 — Keyword Search</h3>
+  <p>
+    Thuật toán TF-IDF cải tiến. Tính score dựa trên term frequency và inverse document frequency.
+    <strong>Ưu điểm:</strong> Exact match tốt; không cần GPU; xử lý rare terms, tên riêng, codes tốt hơn.
+    <strong>Nhược điểm:</strong> Không hiểu semantic; miss synonyms.
+  </p>
+
+  <pre><code><span class="cm"># BM25 score formula</span>
+score(q, d) = Σ IDF(qᵢ) × <span class="fn">tf</span>(qᵢ, d) × (k1 + <span class="num">1</span>) / (<span class="fn">tf</span>(qᵢ, d) + k1 × (<span class="num">1</span> - b + b × |d|/avgdl))
+<span class="cm"># k1 ≈ 1.2-2.0 (term saturation), b ≈ 0.75 (length normalization)</span></code></pre>
+
+  <h3>Hybrid Search</h3>
+  <p>
+    Kết hợp dense vector search và BM25, sau đó fuse scores.
+    <strong>RRF (Reciprocal Rank Fusion)</strong> là cách phổ biến nhất:
+  </p>
+  <pre><code><span class="cm"># Reciprocal Rank Fusion</span>
+<span class="kw">def</span> <span class="fn">rrf_score</span>(ranks, k=<span class="num">60</span>):
+    <span class="kw">return</span> sum(<span class="num">1</span> / (k + r) <span class="kw">for</span> r <span class="kw">in</span> ranks)
+
+<span class="cm"># Combine dense and sparse results</span>
+fused = {}
+<span class="kw">for</span> rank, doc <span class="kw">in</span> <span class="fn">enumerate</span>(dense_results):
+    fused[doc.id] = fused.<span class="fn">get</span>(doc.id, <span class="num">0</span>) + <span class="num">1</span>/(k + rank)
+<span class="kw">for</span> rank, doc <span class="kw">in</span> <span class="fn">enumerate</span>(sparse_results):
+    fused[doc.id] = fused.<span class="fn">get</span>(doc.id, <span class="num">0</span>) + <span class="num">1</span>/(k + rank)</code></pre>
+
+  <h3>Reranking</h3>
+  <p>
+    Sau khi retrieve top-K (e.g. 20 chunks), reranker sắp xếp lại và lấy top-N (e.g. 5).
+    Reranker dùng <strong>cross-encoder</strong>: nhận cả query VÀ document cùng lúc → chính xác hơn
+    bi-encoder (embedding) nhưng không thể scale đến toàn bộ corpus.
+  </p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Reranker</th><th>Provider</th><th>Approach</th><th>Latency</th><th>Best for</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>rerank-english-v3.0</code></td><td>Cohere</td><td>Cross-encoder</td><td>~200ms</td><td>English, production</td></tr>
+        <tr><td><code>rerank-multilingual-v3</code></td><td>Cohere</td><td>Cross-encoder</td><td>~250ms</td><td>Multilingual including Vietnamese</td></tr>
+        <tr><td><code>bge-reranker-v2-m3</code></td><td>BAAI (OSS)</td><td>Cross-encoder</td><td>variable</td><td>Self-host, multilingual</td></tr>
+        <tr><td>ColBERT v2</td><td>Stanford (OSS)</td><td>Late interaction</td><td>~50ms</td><td>Fast + accurate; PLAID index</td></tr>
+        <tr><td>LLM rerank</td><td>Any LLM</td><td>Prompt-based</td><td>1–5s</td><td>Highest accuracy; expensive</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout tip">
+    <div class="icon">★</div>
+    <div>
+      <div class="title">Recommended stack</div>
+      <p>
+        <strong>Hybrid search (dense + BM25) + Cohere reranker</strong> là setup đạt production quality
+        nhanh nhất. Dense-only với no reranker thường underperform đáng kể trên real-world queries.
+      </p>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════
+       7.7 Metadata & Multitenancy
+  ════════════════════════════════════════════════ -->
+  <h2 id="metadata">7.7 Metadata Filtering và Multitenancy</h2>
+
+  <h3>Metadata Filtering</h3>
+  <p>
+    Gắn metadata vào mỗi chunk khi index, sau đó filter trước/sau retrieval.
+    Điều này thu hẹp search space và tăng precision đáng kể.
+  </p>
+  <pre><code><span class="cm"># Metadata schema ví dụ</span>
+{
+  <span class="str">"text"</span>: <span class="str">"...chunk content..."</span>,
+  <span class="str">"embedding"</span>: [...],
+  <span class="str">"metadata"</span>: {
+    <span class="str">"source"</span>: <span class="str">"handbook-v2.pdf"</span>,
+    <span class="str">"page"</span>: <span class="num">42</span>,
+    <span class="str">"section"</span>: <span class="str">"HR Policies"</span>,
+    <span class="str">"tenant_id"</span>: <span class="str">"acme-corp"</span>,
+    <span class="str">"created_at"</span>: <span class="str">"2024-01-15"</span>,
+    <span class="str">"doc_type"</span>: <span class="str">"policy"</span>,
+    <span class="str">"language"</span>: <span class="str">"vi"</span>
+  }
+}</code></pre>
+  <pre><code><span class="cm"># Qdrant filtered search</span>
+results = qdrant.<span class="fn">search</span>(
+    collection_name=<span class="str">"documents"</span>,
+    query_vector=query_embedding,
+    query_filter={<span class="str">"must"</span>: [{<span class="str">"key"</span>: <span class="str">"tenant_id"</span>, <span class="str">"match"</span>: {<span class="str">"value"</span>: current_tenant}}]},
+    limit=<span class="num">10</span>
+)</code></pre>
+
+  <h3>Multitenancy Patterns</h3>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Pattern</th><th>Mô tả</th><th>Pros</th><th>Cons</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Collection per tenant</strong></td>
+          <td>Mỗi tenant có collection riêng</td>
+          <td>Isolation tuyệt đối; dễ xóa tenant</td>
+          <td>Tốn memory (mỗi collection load HNSW index); khó query cross-tenant</td>
+        </tr>
+        <tr>
+          <td><strong>Namespace / partition</strong></td>
+          <td>Một collection, filter by tenant_id</td>
+          <td>Shared HNSW; ít overhead</td>
+          <td>Tenant data lẫn lộn; xóa tenant cần bulk delete</td>
+        </tr>
+        <tr>
+          <td><strong>Hybrid</strong></td>
+          <td>Shared collection nhưng có partition key</td>
+          <td>Balance giữa isolation và performance</td>
+          <td>Phức tạp nhất</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout warn">
+    <div class="icon">⚠</div>
+    <div>
+      <div class="title">Tenant data leakage là critical bug</div>
+      <p>
+        LUÔN LUÔN filter by <code>tenant_id</code> ở tầng retrieval — không tin vào LLM để tự filter.
+        Một query không có tenant filter có thể expose dữ liệu của tenant khác.
+      </p>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════
+       7.8 Advanced RAG
+  ════════════════════════════════════════════════ -->
+  <h2 id="advanced">7.8 Advanced RAG Techniques</h2>
+  <p>
+    Naive RAG (embed → retrieve → generate) thường đủ cho demo nhưng fail trong production
+    khi queries phức tạp, corpus lớn, hoặc multi-hop reasoning cần thiết.
+  </p>
+
+  <div class="tabs" data-tabs>
+    <div class="tab-buttons">
+      <button class="active">Query Rewriting</button>
+      <button>HyDE</button>
+      <button>Multi-hop</button>
+      <button>Self-Query</button>
+      <button>Query Routing</button>
+    </div>
+    <div class="tab-panel active">
+      <h4>Query Rewriting / Expansion</h4>
+      <p>
+        LLM viết lại câu hỏi của user để tối ưu cho retrieval. Có thể tạo nhiều query variant
+        rồi retrieve với tất cả, sau đó deduplicate.
+      </p>
+      <pre><code>SYSTEM: Rewrite the query into 3 search-optimized variants.
+Focus on different aspects. Return as JSON array.
+
+USER: <span class="str">"tại sao performance chậm sau khi deploy?"</span>
+
+RESPONSE: [
+  <span class="str">"performance degradation after deployment causes"</span>,
+  <span class="str">"application slow response production environment"</span>,
+  <span class="str">"deploy tăng latency debug investigation"</span>
+]</code></pre>
+      <p><strong>Multi-query retrieval:</strong> chạy retrieve cho cả 3, RRF fuse, lấy top-K unique.</p>
+    </div>
+    <div class="tab-panel">
+      <h4>HyDE — Hypothetical Document Embeddings</h4>
+      <p>
+        Thay vì embed câu hỏi, dùng LLM để tạo <em>hypothetical answer</em> trước, sau đó embed answer đó.
+        Lý thuyết: embedding của answer gần với embedding của document thật hơn embedding của question.
+      </p>
+      <pre><code><span class="cm"># Step 1: Generate hypothetical document</span>
+hyde_prompt = <span class="fn">f</span><span class="str">"Write a passage that would answer: {user_query}"</span>
+hypothetical_doc = llm.<span class="fn">complete</span>(hyde_prompt)
+
+<span class="cm"># Step 2: Embed the hypothetical doc, use for retrieval</span>
+hyde_embedding = embedding_model.<span class="fn">embed</span>(hypothetical_doc)
+results = vector_db.<span class="fn">search</span>(hyde_embedding, top_k=<span class="num">5</span>)</code></pre>
+      <p><strong>Khi nào dùng:</strong> Queries ngắn, abstract; documents dài, detailed. HyDE thường giúp khi có semantic gap lớn giữa question style và document style.</p>
+    </div>
+    <div class="tab-panel">
+      <h4>Multi-hop Retrieval</h4>
+      <p>
+        Với câu hỏi cần nhiều bước reasoning ("Ai là CEO của công ty mua lại startup mà John làm?"),
+        RAG đơn lẻ không đủ. Multi-hop: retrieve → partial answer → form new query → retrieve lại.
+      </p>
+      <pre><code><span class="kw">def</span> <span class="fn">multi_hop_rag</span>(question, max_hops=<span class="num">3</span>):
+    context = []
+    current_q = question
+
+    <span class="kw">for</span> hop <span class="kw">in</span> <span class="fn">range</span>(max_hops):
+        chunks = <span class="fn">retrieve</span>(current_q)
+        context.<span class="fn">extend</span>(chunks)
+        <span class="cm"># Ask LLM: do we have enough? if not, what to look for next?</span>
+        next_q = <span class="fn">generate_followup_query</span>(question, context)
+        <span class="kw">if</span> next_q <span class="kw">is None</span>:
+            <span class="kw">break</span>
+        current_q = next_q
+
+    <span class="kw">return</span> <span class="fn">generate_answer</span>(question, context)</code></pre>
+      <p><strong>Frameworks:</strong> IRCoT, FLARE, RAG-Fusion. Thêm latency đáng kể — chỉ dùng khi cần.</p>
+    </div>
+    <div class="tab-panel">
+      <h4>Self-Query Retriever</h4>
+      <p>
+        LLM phân tích câu hỏi và tự generate <em>cả semantic query lẫn metadata filters</em>.
+        Ví dụ: "chính sách nghỉ phép năm 2024" → LLM extract <code>{"doc_type": "policy", "year": 2024}</code>.
+      </p>
+      <pre><code>SYSTEM: Extract search query and metadata filters from the question.
+Return JSON: {"query": "...", "filters": {...}}
+
+USER: <span class="str">"chính sách nghỉ phép của bộ phận HR năm 2024"</span>
+
+RESPONSE: {
+  <span class="str">"query"</span>: <span class="str">"leave policy vacation days"</span>,
+  <span class="str">"filters"</span>: {
+    <span class="str">"department"</span>: <span class="str">"HR"</span>,
+    <span class="str">"year"</span>: <span class="num">2024</span>,
+    <span class="str">"doc_type"</span>: <span class="str">"policy"</span>
+  }
+}</code></pre>
+    </div>
+    <div class="tab-panel">
+      <h4>Query Routing</h4>
+      <p>
+        Với nhiều knowledge source (vector DB cho docs, SQL cho structured data, API cho real-time),
+        router quyết định gửi query đến đâu — hoặc cả nhiều nơi đồng thời.
+      </p>
+      <pre><code><span class="kw">def</span> <span class="fn">route_query</span>(query):
+    route = llm.<span class="fn">classify</span>(query, options=[
+        <span class="str">"vector_db"</span>,   <span class="cm"># company documents</span>
+        <span class="str">"sql_db"</span>,      <span class="cm"># structured business data</span>
+        <span class="str">"web_search"</span>,  <span class="cm"># real-time information</span>
+        <span class="str">"calculator"</span>,  <span class="cm"># math / computations</span>
+    ])
+    <span class="kw">return</span> ROUTER_MAP[route].<span class="fn">retrieve</span>(query)</code></pre>
+      <p><strong>LLM Selector</strong> (LangChain) hoặc <strong>semantic router</strong> (encode query và classify) đều là approaches hợp lệ.</p>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════
+       7.9 GraphRAG
+  ════════════════════════════════════════════════ -->
+  <h2 id="graphrag">7.9 GraphRAG</h2>
+  <p>
+    <strong>GraphRAG</strong> (Microsoft, 2024) kết hợp <em>knowledge graph</em> với RAG truyền thống.
+    Thay vì chỉ chunk và embed, GraphRAG extract <strong>entities và relationships</strong> từ corpus
+    và build một knowledge graph, sau đó traverse graph để retrieve thông tin liên quan.
+  </p>
+
+  <h3>Khi nào GraphRAG vượt trội</h3>
+  <ul>
+    <li><strong>Global summarization:</strong> "Những themes chính trong toàn bộ tài liệu là gì?" — query RAG truyền thống không trả lời được vì nó chỉ retrieve local chunks.</li>
+    <li><strong>Multi-hop semantic:</strong> Tìm kết nối gián tiếp giữa các entities xa nhau trong corpus.</li>
+    <li><strong>Complex relationship queries:</strong> Ai làm việc với ai, cái gì ảnh hưởng cái gì.</li>
+  </ul>
+
+  <h3>GraphRAG Pipeline (tổng quát)</h3>
+  <ol>
+    <li><strong>Entity extraction:</strong> LLM extract entities (người, tổ chức, khái niệm) và relationships từ mỗi chunk.</li>
+    <li><strong>Community detection:</strong> Cluster entities thành communities (Leiden algorithm).</li>
+    <li><strong>Summarize communities:</strong> LLM viết summary cho mỗi community.</li>
+    <li><strong>Query với map-reduce:</strong> Map query đến các community summaries, reduce lại thành global answer.</li>
+  </ol>
+
+  <div class="callout warn">
+    <div class="icon">⚠</div>
+    <div>
+      <div class="title">GraphRAG rất đắt về indexing cost</div>
+      <p>
+        Build GraphRAG index tốn nhiều LLM calls hơn naive RAG đến 10–50x vì phải extract entities
+        từ mọi chunk. Chỉ đáng đầu tư khi use case cần global reasoning hoặc complex relationship queries.
+      </p>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════
+       7.10 RAG Evaluation
+  ════════════════════════════════════════════════ -->
+  <h2 id="eval">7.10 RAG Evaluation — RAGAS và các metrics</h2>
+  <p>
+    RAG evaluation phức tạp hơn truyền thống vì cần đánh giá cả <em>retrieval quality</em>
+    và <em>generation quality</em> cùng lúc.
+  </p>
+
+  <h3>4 metrics cốt lõi của RAGAS</h3>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Metric</th><th>Đo gì</th><th>Cần gì để tính</th><th>Range</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Faithfulness</strong></td>
+          <td>Answer có được support bởi retrieved context không? (không hallucinate)</td>
+          <td>Answer + Retrieved context</td>
+          <td>0–1 (cao = tốt)</td>
+        </tr>
+        <tr>
+          <td><strong>Answer Relevance</strong></td>
+          <td>Answer có thực sự trả lời câu hỏi không?</td>
+          <td>Question + Answer</td>
+          <td>0–1</td>
+        </tr>
+        <tr>
+          <td><strong>Context Precision</strong></td>
+          <td>Trong retrieved chunks, bao nhiêu % thực sự relevant?</td>
+          <td>Question + Retrieved context + Ground truth</td>
+          <td>0–1</td>
+        </tr>
+        <tr>
+          <td><strong>Context Recall</strong></td>
+          <td>Retrieved context có chứa đủ thông tin để trả lời không?</td>
+          <td>Retrieved context + Ground truth answer</td>
+          <td>0–1</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <pre><code><span class="cm"># RAGAS evaluation example</span>
+<span class="kw">from</span> ragas <span class="kw">import</span> evaluate
+<span class="kw">from</span> ragas.metrics <span class="kw">import</span> faithfulness, answer_relevancy, context_precision, context_recall
+
+dataset = Dataset.<span class="fn">from_dict</span>({
+    <span class="str">"question"</span>: [<span class="str">"Chính sách nghỉ phép là gì?"</span>],
+    <span class="str">"answer"</span>: [<span class="str">"Nhân viên được 12 ngày phép/năm..."</span>],
+    <span class="str">"contexts"</span>: [[<span class="str">"chunk1"</span>, <span class="str">"chunk2"</span>]],
+    <span class="str">"ground_truth"</span>: [<span class="str">"12 ngày nghỉ phép năm..."</span>]
+})
+
+result = <span class="fn">evaluate</span>(dataset, metrics=[
+    faithfulness, answer_relevancy,
+    context_precision, context_recall
+])</code></pre>
+
+  <h3>End-to-end Evaluation Pipeline</h3>
+  <ol>
+    <li><strong>Build test set:</strong> 50–200 question/answer pairs covering common và edge cases. Có thể dùng LLM để generate từ corpus (<em>synthetic eval</em>).</li>
+    <li><strong>Run pipeline:</strong> Chạy RAG system với mỗi question.</li>
+    <li><strong>Score:</strong> Dùng RAGAS hoặc custom LLM judge.</li>
+    <li><strong>Track regressions:</strong> Commit metrics vào CI — thay đổi chunking/embedding/reranking phải không làm giảm metrics.</li>
+  </ol>
+
+  <!-- ═══════════════════════════════════════════════
+       7.11 Production Traps
+  ════════════════════════════════════════════════ -->
+  <h2 id="traps">7.11 Production Traps</h2>
+
+  <div class="callout danger">
+    <div class="icon">!</div>
+    <div>
+      <div class="title">Chunk boundary problem</div>
+      <p>
+        Một câu quan trọng bị cắt đôi giữa hai chunks → cả hai chunks đều thiếu context → retrieval miss.
+        Fix: tăng overlap, dùng sentence-aware splitter, hoặc Parent-Child retrieval.
+      </p>
+    </div>
+  </div>
+
+  <div class="callout danger">
+    <div class="icon">!</div>
+    <div>
+      <div class="title">Hallucination khi context conflict</div>
+      <p>
+        Khi retrieved chunks có thông tin mâu thuẫn nhau (e.g., policy cũ và mới cùng được retrieve),
+        LLM có thể blend chúng hoặc chọn sai. Fix: thêm <code>created_at</code> vào metadata,
+        filter theo date, hoặc ưu tiên newer documents.
+      </p>
+    </div>
+  </div>
+
+  <div class="callout warn">
+    <div class="icon">⚠</div>
+    <div>
+      <div class="title">Latency budget</div>
+      <p>
+        Typical RAG latency: embed query (~50ms) + vector search (~20ms) + reranker (~200ms) + LLM generation (~1–3s).
+        Tổng: ~1.5–3.5s. Nếu cần &lt;1s: bỏ reranker, giảm top-K, dùng faster model cho generation.
+      </p>
+    </div>
+  </div>
+
+  <div class="callout warn">
+    <div class="icon">⚠</div>
+    <div>
+      <div class="title">Citation accuracy</div>
+      <p>
+        Yêu cầu LLM cite sources bằng cách truyền chunk_id trong prompt và yêu cầu trả về source_ids.
+        Đừng dùng free-form citation text — LLM sẽ hallucinate tên file/page số.
+      </p>
+    </div>
+  </div>
+
+  <h3>Common pitfalls checklist</h3>
+  <ul>
+    <li><span class="tag">Critical</span> Không filter tenant_id → data leakage</li>
+    <li><span class="tag">Critical</span> Dùng embedding model khác nhau lúc index và query</li>
+    <li><span class="tag">High</span> Chunk size quá nhỏ (dưới 100 tokens) → thiếu context</li>
+    <li><span class="tag">High</span> Top-K quá lớn (trên 20) → nhiễu, tốn token</li>
+    <li><span class="tag">Medium</span> Không update index khi document thay đổi → stale data</li>
+    <li><span class="tag">Medium</span> Không handle "I don't know" → model bịa khi không có info trong context</li>
+    <li><span class="tag green">Low</span> Không log retrieved chunks → không thể debug khi fail</li>
+  </ul>
+
+  <!-- ═══════════════════════════════════════════════
+       Summary
+  ════════════════════════════════════════════════ -->
+  <h2 id="tom-tat">Tóm tắt</h2>
+  <ol>
+    <li><strong>RAG</strong> = tách kiến thức ra khỏi model weights → update không cần retrain, có citation, corpus có thể rất lớn.</li>
+    <li><strong>Chunking</strong> là bước có ảnh hưởng nhất: bắt đầu với Recursive splitter 512/50, nâng cấp lên Parent-Child khi cần.</li>
+    <li><strong>Embedding model</strong> phải giống nhau ở ingestion và query; check MTEB leaderboard khi chọn.</li>
+    <li><strong>Hybrid search (dense + BM25) + reranker</strong> gần như luôn tốt hơn dense-only.</li>
+    <li><strong>Metadata filtering</strong> không chỉ là tính năng — với multitenancy, nó là security requirement.</li>
+    <li><strong>Advanced RAG</strong> (HyDE, multi-hop, self-query) giải quyết complex queries; chỉ dùng khi naive RAG fail.</li>
+    <li><strong>RAGAS</strong>: 4 metrics cốt lõi — Faithfulness, Answer Relevance, Context Precision, Context Recall.</li>
+    <li><strong>Production traps</strong>: chunk boundary, conflicting context, latency, citation accuracy — plan cho những cái này từ sớm.</li>
+  </ol>
+
+  <nav class="section-footer">
+    <a href="08-vector-search.html" class="prev">
+      <div class="label">← trước</div>
+      <div class="title">08 — Vector Search &amp; Knowledge Stores</div>
+    </a>
+    <a href="10-agents.html" class="next">
+      <div class="label">tiếp theo →</div>
+      <div class="title">10 — Agents &amp; Tool Use</div>
+    </a>
+  </nav>
+
+</main>
+
+<script src="../assets/script.js"></script>
+</body>
+</html>

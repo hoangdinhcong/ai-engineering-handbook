@@ -1,0 +1,981 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>33 · Privacy &amp; Data Protection cho AI — AI Engineering</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<nav class="top-nav">
+  <div class="brand"><span class="dot"></span> AI Engineering</div>
+  <div class="crumbs"><a href="../index.html">Mục lục</a> › Phần 10 · <span>33 — Privacy &amp; Data Protection cho AI</span></div>
+  <div class="nav-actions">
+    <a href="32-ai-red-team.html">← Trước</a>
+    <a href="34-compliance.html">Tiếp →</a>
+  </div>
+</nav>
+
+<main class="page">
+
+  <section class="hero">
+    <span class="eyebrow">Phần 10 · §33</span>
+    <h1>Privacy &amp; Data Protection cho AI</h1>
+    <p class="lede">
+      Dữ liệu người dùng chạy qua LLM app theo nhiều con đường — training, inference, RAG, log, agent memory.
+      Mỗi con đường đều có nguy cơ rò rỉ riêng. Phần này map toàn bộ bề mặt privacy, phân tích
+      các tấn công trích xuất dữ liệu đã được công bố, và trình bày lộ trình phòng thủ từ
+      Differential Privacy đến ACL-aware RAG và Zero Data Retention.
+    </p>
+    <img class="hero-image" src="../images/33-privacy.png" alt="Hero illustration" onerror="this.style.display='none'">
+  </section>
+
+  <aside class="toc">
+    <div class="toc-title">Trong trang này</div>
+    <ul>
+      <li><a href="#surfaces">33.1 Privacy surfaces trong LLM app</a></li>
+      <li><a href="#extraction-attacks">33.2 Training data extraction attacks</a></li>
+      <li><a href="#defense-training">33.3 Defense at training: dedup, canary, watermark</a></li>
+      <li><a href="#dp">33.4 Differential Privacy trong fine-tuning</a></li>
+      <li><a href="#federated">33.5 Federated Learning</a></li>
+      <li><a href="#pii-detection">33.6 PII detection &amp; redaction</a></li>
+      <li><a href="#output-privacy">33.7 Output privacy</a></li>
+      <li><a href="#rag-privacy">33.8 RAG privacy &amp; ACL-aware retrieval</a></li>
+      <li><a href="#vendor">33.9 Vendor data handling</a></li>
+      <li><a href="#gdpr">33.10 GDPR/CCPA implications</a></li>
+      <li><a href="#pcc">33.11 Apple Private Cloud Compute</a></li>
+      <li><a href="#on-device">33.12 On-device inference</a></li>
+      <li><a href="#agent-memory">33.13 Agent memory privacy</a></li>
+      <li><a href="#old-vs-new">33.14 Cách cũ vs Cách hiện tại</a></li>
+      <li><a href="#tom-tat">Tóm tắt</a></li>
+    </ul>
+  </aside>
+
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <h2 id="surfaces">33.1 Privacy Surfaces trong LLM App</h2>
+  <p>
+    Một ứng dụng LLM điển hình tiếp xúc dữ liệu người dùng ở ít nhất <strong>năm bề mặt</strong> khác nhau,
+    mỗi bề mặt có đặc điểm rủi ro riêng biệt.
+  </p>
+
+  <svg class="diagram" viewBox="0 0 760 400" role="img" aria-label="Privacy surfaces map trong LLM app">
+    <defs>
+      <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#6f7c92"/>
+      </marker>
+    </defs>
+
+    <!-- Title -->
+    <text x="380" y="26" text-anchor="middle" font-weight="700" font-size="15">5 Privacy Surfaces trong LLM App</text>
+
+    <!-- Training -->
+    <rect fill="rgba(255,138,138,0.18)" stroke="#ff8a8a" stroke-width="1.5" x="30" y="42" width="200" height="72" rx="10"/>
+    <text x="130" y="64" text-anchor="middle" font-weight="700" font-size="13" fill="#ff8a8a">① Training</text>
+    <text x="130" y="82" text-anchor="middle" font-size="11" fill="#aab4c5">Dữ liệu nhạy cảm lọt</text>
+    <text x="130" y="97" text-anchor="middle" font-size="11" fill="#aab4c5">vào corpus, memorized</text>
+    <text x="130" y="109" text-anchor="middle" font-size="10" fill="#ff8a8a">→ trích xuất sau này</text>
+
+    <!-- Inference -->
+    <rect fill="rgba(255,184,107,0.15)" stroke="#ffb86b" stroke-width="1.5" x="280" y="42" width="200" height="72" rx="10"/>
+    <text x="380" y="64" text-anchor="middle" font-weight="700" font-size="13" fill="#ffb86b">② Inference</text>
+    <text x="380" y="82" text-anchor="middle" font-size="11" fill="#aab4c5">Input người dùng gửi</text>
+    <text x="380" y="97" text-anchor="middle" font-size="11" fill="#aab4c5">tới vendor API</text>
+    <text x="380" y="109" text-anchor="middle" font-size="10" fill="#ffb86b">→ vendor retention</text>
+
+    <!-- RAG -->
+    <rect fill="rgba(124,196,255,0.14)" stroke="#7cc4ff" stroke-width="1.5" x="530" y="42" width="200" height="72" rx="10"/>
+    <text x="630" y="64" text-anchor="middle" font-weight="700" font-size="13" fill="#7cc4ff">③ RAG / Vector DB</text>
+    <text x="630" y="82" text-anchor="middle" font-size="11" fill="#aab4c5">Tài liệu nội bộ được</text>
+    <text x="630" y="97" text-anchor="middle" font-size="11" fill="#aab4c5">index &amp; retrieve</text>
+    <text x="630" y="109" text-anchor="middle" font-size="10" fill="#7cc4ff">→ cross-tenant leakage</text>
+
+    <!-- Logs / Telemetry -->
+    <rect fill="rgba(180,224,122,0.14)" stroke="#b4e07a" stroke-width="1.5" x="155" y="178" width="200" height="72" rx="10"/>
+    <text x="255" y="200" text-anchor="middle" font-weight="700" font-size="13" fill="#b4e07a">④ Logs &amp; Telemetry</text>
+    <text x="255" y="218" text-anchor="middle" font-size="11" fill="#aab4c5">Trace, span chứa</text>
+    <text x="255" y="233" text-anchor="middle" font-size="11" fill="#aab4c5">prompt + completion</text>
+    <text x="255" y="245" text-anchor="middle" font-size="10" fill="#b4e07a">→ PII trong log system</text>
+
+    <!-- Agent Memory -->
+    <rect fill="rgba(211,164,255,0.14)" stroke="#d3a4ff" stroke-width="1.5" x="405" y="178" width="200" height="72" rx="10"/>
+    <text x="505" y="200" text-anchor="middle" font-weight="700" font-size="13" fill="#d3a4ff">⑤ Agent Memory</text>
+    <text x="505" y="218" text-anchor="middle" font-size="11" fill="#aab4c5">Cross-session, cross-user</text>
+    <text x="505" y="233" text-anchor="middle" font-size="11" fill="#aab4c5">memory contamination</text>
+    <text x="505" y="245" text-anchor="middle" font-size="10" fill="#d3a4ff">→ data bleeding</text>
+
+    <!-- Risk summary bar -->
+    <rect fill="#1a1f2a" stroke="#2a3140" stroke-width="1" x="30" y="308" width="700" height="72" rx="10"/>
+    <text x="380" y="330" text-anchor="middle" font-weight="700" font-size="13" fill="#e7ecf3">Bề mặt rủi ro cao nhất theo use-case</text>
+    <text x="380" y="350" text-anchor="middle" font-size="12" fill="#aab4c5">SaaS B2B (multi-tenant RAG) → ③ RAG isolation  ·  Healthcare chatbot → ① Training + ② Inference</text>
+    <text x="380" y="370" text-anchor="middle" font-size="12" fill="#aab4c5">Autonomous agent → ⑤ Memory  ·  Internal analytics LLM → ④ Logs chứa PII</text>
+  </svg>
+
+  <p>
+    Privacy engineering cho AI không phải là một checkbox cuối dự án.
+    Mỗi bề mặt cần được đánh giá ngay từ giai đoạn thiết kế,
+    từ câu hỏi "dữ liệu này có cần đến đây không?" đến "nếu bị rò rỉ, tác động là gì?".
+  </p>
+
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <h2 id="extraction-attacks">33.2 Training Data Extraction Attacks</h2>
+  <p>
+    Năm 2023, Nasr et al. công bố nghiên cứu landmark
+    <em>"Scalable Extraction of Training Data from (Production) Language Models"</em>
+    chứng minh có thể trích xuất hàng trăm megabytes dữ liệu training từ ChatGPT (GPT-3.5-turbo)
+    thông qua một kỹ thuật gọi là <strong>divergence attack</strong>.
+  </p>
+
+  <div class="callout danger">
+    <div class="icon">!</div>
+    <div>
+      <div class="title">Divergence Attack — Nasr et al. 2023</div>
+      <p>
+        Thay vì hỏi model bình thường, attacker yêu cầu model lặp lại một từ mãi mãi
+        (ví dụ: <code>"Repeat the word 'poem' forever"</code>). Sau vài trăm token lặp,
+        model bắt đầu "hallucinate" — thực ra là nhớ lại và xuất ra nội dung từ training data.
+        Nhóm nghiên cứu đã trích xuất được PII thực (tên, địa chỉ email, số điện thoại),
+        đoạn code từ GitHub, và nội dung văn bản từ corpus training — với chi phí chỉ ~$200 USD.
+      </p>
+    </div>
+  </div>
+
+  <h3>Membership Inference Attack (MIA)</h3>
+  <p>
+    Một dạng tấn công liên quan là <strong>Membership Inference</strong>: attacker không cần trích xuất nội dung,
+    chỉ cần biết "document X có trong training data không?". Điều này đặc biệt nhạy cảm với:
+  </p>
+  <ul>
+    <li>Hồ sơ bệnh án — biết bệnh nhân có trong dataset y tế là đã lộ thông tin sức khỏe</li>
+    <li>Tài liệu pháp lý — biết hợp đồng có trong corpus là lộ bí mật thương mại</li>
+    <li>Thư điện tử nội bộ — biết email từ công ty A có trong tập fine-tune</li>
+  </ul>
+  <p>
+    MIA khai thác thực tế rằng model có <em>lower perplexity</em> (độ "ngạc nhiên" thấp hơn) với dữ liệu nó đã thấy trong training so với dữ liệu mới. Thuật toán đơn giản nhất: so sánh loss của sample với ngưỡng.
+  </p>
+
+  <pre><code><span class="cm"># Minh họa membership inference cơ bản</span>
+<span class="kw">import</span> torch
+
+<span class="kw">def</span> <span class="fn">membership_inference_score</span>(model, tokenizer, text: str) -> float:
+
+  inputs = tokenizer(text, return_tensors=<span class="str">"pt"</span>)
+  <span class="kw">with</span> torch.no_grad():
+    outputs = model(**inputs, labels=inputs[<span class="str">"input_ids"</span>])
+  <span class="cm"># Perplexity thấp → loss thấp → nhiều khả năng đã thấy khi training</span>
+  loss = outputs.loss.item()
+  <span class="kw">return</span> loss  <span class="cm"># score thấp = likely member</span>
+
+<span class="cm"># Threshold thường được calibrate với shadow models</span>
+THRESHOLD = 2.5
+is_member = membership_inference_score(model, tokenizer, sample) < THRESHOLD</code></pre>
+
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <h2 id="defense-training">33.3 Defense at Training: Dedup, Canary, Watermarking</h2>
+
+  <h3>Data Deduplication</h3>
+  <p>
+    Memorization mạnh nhất xảy ra với dữ liệu <strong>lặp lại nhiều lần</strong> trong corpus.
+    Nghiên cứu của Lee et al. (2022) cho thấy chỉ cần dedup training data đã giảm đáng kể
+    khả năng trích xuất. Hai mức dedup:
+  </p>
+  <ul>
+    <li><strong>Exact dedup:</strong> hash từng document (SHA-256, MinHash), loại bỏ bản sao hoàn toàn</li>
+    <li><strong>Near-dup detection:</strong> MinHash LSH, SimHash — phát hiện văn bản gần giống nhau (paraphrase, reformatted). Threshold Jaccard similarity ≥ 0.7–0.8 thường loại near-duplicate.</li>
+  </ul>
+
+  <h3>Canary Tokens</h3>
+  <p>
+    <strong>Canary token</strong> là các chuỗi ngẫu nhiên được chèn có chủ ý vào training data để theo dõi rò rỉ.
+    Nếu model sau training có thể hoàn thành canary khi được prompt một phần,
+    đó là bằng chứng memorization.
+  </p>
+
+  <pre><code><span class="cm"># Tạo canary và chèn vào corpus</span>
+<span class="kw">import</span> secrets
+
+<span class="kw">def</span> <span class="fn">generate_canary</span>(label: str, n_bytes: int = 16) -> str:
+
+  token = secrets.token_hex(n_bytes)
+  <span class="kw">return</span> f<span class="str">"CANARY-{label}: {token}"</span>
+
+<span class="cm"># Ví dụ canary được chèn vào training data</span>
+canary = generate_canary(<span class="str">"user-pii-v1"</span>)
+<span class="cm"># → "CANARY-user-pii-v1: a3f7b2c91e4d5f08abc12345678900fe"</span>
+
+<span class="cm"># Sau training, kiểm tra memorization:</span>
+prompt = <span class="str">"CANARY-user-pii-v1:"</span>
+completion = model.generate(prompt)
+<span class="kw">if</span> canary[len(prompt):] <span class="kw">in</span> completion:
+  print(<span class="str">"⚠ Canary memorized — data leakage risk!"</span>)</code></pre>
+
+  <h3>Output Filtering</h3>
+  <p>
+    Áp dụng PII scan (xem §33.6) trên <em>output</em> của model trước khi trả về người dùng.
+    Kết hợp với blocklist các pattern nhạy cảm đã biết (số CMND, số thẻ tín dụng theo regex).
+  </p>
+
+  <h3>Watermarking — SynthID</h3>
+  <p>
+    Google DeepMind phát hành <strong>SynthID</strong> (2023) cho phép nhúng watermark vào text generation
+    bằng cách điều chỉnh distribution của token sampling — không làm thay đổi chất lượng rõ rệt
+    nhưng tạo ra statistical pattern có thể detect. Mục đích chính là truy xuất nguồn gốc nội dung AI,
+    nhưng cũng hữu ích để phát hiện khi nội dung training xuất hiện lại trong output.
+  </p>
+
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <h2 id="dp">33.4 Differential Privacy trong Fine-tuning</h2>
+  <p>
+    <strong>Differential Privacy (DP)</strong> là framework toán học đảm bảo rằng sự hiện diện hay vắng mặt
+    của bất kỳ cá nhân nào trong training data không thể được suy ra từ model với xác suất cao hơn một ngưỡng nhất định.
+  </p>
+
+  <div class="callout note">
+    <div class="icon">≡</div>
+    <div>
+      <div class="title">Định nghĩa ε-DP chính thức</div>
+      <p>
+        Cơ chế M thỏa mãn <em>ε-differential privacy</em> nếu với mọi cặp dataset D và D' chỉ khác nhau một record,
+        và mọi tập kết quả S:
+        <strong>Pr[M(D) ∈ S] ≤ e<sup>ε</sup> · Pr[M(D') ∈ S]</strong>.
+        ε nhỏ hơn = privacy mạnh hơn. ε = 0 là perfect privacy (vô dụng trong thực tế). ε = 1–10 là phổ biến với ML.
+      </p>
+    </div>
+  </div>
+
+  <h3>DP-SGD — Differentially Private Stochastic Gradient Descent</h3>
+  <p>
+    Thuật toán DP-SGD (Abadi et al., 2016) là phương pháp chuẩn để fine-tune với DP:
+  </p>
+  <ol>
+    <li><strong>Clip gradients</strong> của từng sample về norm tối đa C — giới hạn ảnh hưởng của bất kỳ cá nhân nào</li>
+    <li><strong>Add Gaussian noise</strong> có độ lệch chuẩn σ·C vào gradient tổng hợp trước mỗi update</li>
+    <li><strong>Track privacy budget</strong> ε qua từng bước sử dụng moments accountant</li>
+  </ol>
+
+  <pre><code><span class="cm"># Fine-tune với DP sử dụng Opacus (PyTorch)</span>
+<span class="kw">from</span> opacus <span class="kw">import</span> PrivacyEngine
+
+model = MyLLM()
+optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4)
+
+privacy_engine = PrivacyEngine()
+model, optimizer, train_loader = privacy_engine.make_private_with_epsilon(
+  module=model,
+  optimizer=optimizer,
+  data_loader=train_loader,
+  <span class="cm"># Budget: ε = 8 với δ = 1e-5 là ngưỡng chấp nhận được cho nhiều use case</span>
+  target_epsilon=8.0,
+  target_delta=1e-5,
+  max_grad_norm=1.0,  <span class="cm"># clipping threshold C</span>
+)
+
+<span class="kw">for</span> epoch <span class="kw">in</span> range(num_epochs):
+  <span class="kw">for</span> batch <span class="kw">in</span> train_loader:
+    loss = model(batch)
+    optimizer.zero_grad()
+    loss.backward()
+    optimizer.step()  <span class="cm"># Opacus tự động clip + add noise</span>
+
+epsilon = privacy_engine.get_epsilon(delta=1e-5)
+print(f<span class="str">"Final privacy budget spent: ε = {epsilon:.2f}"</span>)</code></pre>
+
+  <h3>Privacy-Utility Trade-off</h3>
+  <p>
+    DP không miễn phí — noise làm giảm chất lượng model. Trade-off phụ thuộc vào:
+  </p>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>ε (privacy budget)</th><th>Mức bảo vệ</th><th>Tác động đến model quality</th><th>Khi nào dùng</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>≤ 1</td><td>Rất mạnh</td><td>Significant degradation (~10–20%)</td><td>Healthcare, finance với dữ liệu cực nhạy cảm</td></tr>
+        <tr><td>1–10</td><td>Mạnh</td><td>Moderate degradation (~3–8%)</td><td>B2B SaaS với dữ liệu khách hàng</td></tr>
+        <tr><td>10–100</td><td>Yếu</td><td>Minimal degradation (&lt;2%)</td><td>Fine-tune trên dữ liệu ít nhạy cảm</td></tr>
+        <tr><td>&gt; 100</td><td>Gần như không có</td><td>Không đáng kể</td><td>Không nên gọi là DP-protected</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <h2 id="federated">33.5 Federated Learning</h2>
+  <p>
+    <strong>Federated Learning (FL)</strong> là paradigm huấn luyện model mà <em>raw data không bao giờ rời thiết bị/server của chủ sở hữu</em>.
+    Thay vào đó, chỉ gradient updates (hoặc model weights) được chia sẻ với central coordinator.
+  </p>
+
+  <div class="callout note">
+    <div class="icon">≡</div>
+    <div>
+      <div class="title">FL trong LLM — tại sao hạn chế?</div>
+      <p>
+        FL hiệu quả với model nhỏ (mobile, IoT). Với LLM hàng tỷ tham số,
+        gradient của toàn bộ model quá lớn để truyền về server hiệu quả.
+        Trong thực tế, FL được dùng nhiều hơn cho <strong>fine-tune embedding model</strong>
+        (ví dụ: cải thiện search embedding từ dữ liệu click của từng tổ chức)
+        hoặc <strong>LoRA adapter</strong> (chỉ fine-tune một phần nhỏ tham số).
+      </p>
+    </div>
+  </div>
+
+  <h3>Giới hạn của FL trong bối cảnh LLM</h3>
+  <ul>
+    <li><strong>Gradient inversion:</strong> gradient bản thân có thể bị dùng để tái tạo dữ liệu training. FL + DP là cần thiết.</li>
+    <li><strong>Communication overhead:</strong> gradient của LLM 7B params ≈ 28GB/round — không khả thi với nhiều client</li>
+    <li><strong>Non-IID data:</strong> dữ liệu phân bố không đều giữa các client làm mô hình khó hội tụ</li>
+    <li><strong>Thực tế ứng dụng:</strong> Google dùng FL cho Gboard keyboard (dự đoán từ nhỏ), Apple dùng cho on-device models (Siri, QuickType) — không phải LLM scale</li>
+  </ul>
+
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <h2 id="pii-detection">33.6 PII Detection &amp; Redaction</h2>
+  <p>
+    Trước khi gửi bất kỳ dữ liệu người dùng nào tới LLM API, pipeline nên đi qua một lớp
+    <strong>PII detection và redaction</strong>. Có ba cách tiếp cận chính, thường kết hợp:
+  </p>
+
+  <h3>Pipeline 3 tầng</h3>
+  <ol>
+    <li><strong>Regex rules:</strong> Số CMND/CCCD, số thẻ tín dụng, email, số điện thoại — high precision, low recall</li>
+    <li><strong>NER (Named Entity Recognition):</strong> spaCy, Flair, hoặc transformer-based NER — tốt hơn cho tên người, địa chỉ</li>
+    <li><strong>Embedding-based detection:</strong> semantic similarity với known PII patterns — tốt cho PII gián tiếp ("con gái của ông X")</li>
+  </ol>
+
+  <h3>Microsoft Presidio — ví dụ thực tế</h3>
+  <p>
+    Presidio là thư viện open-source của Microsoft, hỗ trợ 20+ loại PII entity, có thể extend thêm recognizer tùy chỉnh.
+  </p>
+
+  <pre><code><span class="kw">from</span> presidio_analyzer <span class="kw">import</span> AnalyzerEngine, RecognizerRegistry
+<span class="kw">from</span> presidio_anonymizer <span class="kw">import</span> AnonymizerEngine
+<span class="kw">from</span> presidio_anonymizer.entities <span class="kw">import</span> OperatorConfig
+
+analyzer = AnalyzerEngine()
+anonymizer = AnonymizerEngine()
+
+<span class="kw">def</span> <span class="fn">redact_pii</span>(text: str, language: str = <span class="str">"en"</span>) -> tuple[str, list]:
+
+  <span class="cm"># Bước 1: Phân tích — tìm PII entities</span>
+  results = analyzer.analyze(
+    text=text,
+    language=language,
+    entities=[
+      <span class="str">"PERSON"</span>, <span class="str">"EMAIL_ADDRESS"</span>, <span class="str">"PHONE_NUMBER"</span>,
+      <span class="str">"CREDIT_CARD"</span>, <span class="str">"US_SSN"</span>, <span class="str">"IP_ADDRESS"</span>,
+      <span class="str">"LOCATION"</span>, <span class="str">"DATE_TIME"</span>,
+    ]
+  )
+
+  <span class="cm"># Bước 2: Ẩn danh — thay thế bằng placeholder hoặc fake value</span>
+  anonymized = anonymizer.anonymize(
+    text=text,
+    analyzer_results=results,
+    operators={
+      <span class="str">"PERSON"</span>:       OperatorConfig(<span class="str">"replace"</span>, {<span class="str">"new_value"</span>: <span class="str">"[TÊN]"</span>}),
+      <span class="str">"EMAIL_ADDRESS"</span>: OperatorConfig(<span class="str">"replace"</span>, {<span class="str">"new_value"</span>: <span class="str">"[EMAIL]"</span>}),
+      <span class="str">"PHONE_NUMBER"</span>:  OperatorConfig(<span class="str">"replace"</span>, {<span class="str">"new_value"</span>: <span class="str">"[SĐT]"</span>}),
+      <span class="str">"CREDIT_CARD"</span>:   OperatorConfig(<span class="str">"mask"</span>, {<span class="str">"masking_char"</span>: <span class="str">"*"</span>, <span class="str">"chars_to_mask"</span>: 12, <span class="str">"from_end"</span>: False}),
+      <span class="str">"DEFAULT"</span>:       OperatorConfig(<span class="str">"replace"</span>, {<span class="str">"new_value"</span>: <span class="str">"[REDACTED]"</span>}),
+    }
+  )
+
+  <span class="kw">return</span> anonymized.text, results
+
+<span class="cm"># Sử dụng trong pipeline trước khi gửi tới LLM</span>
+user_input = <span class="str">"Tôi là Nguyễn Văn A, email: nva@company.vn, cần hỗ trợ đơn hàng"</span>
+clean_text, entities_found = redact_pii(user_input, language=<span class="str">"vi"</span>)
+<span class="cm"># → "Tôi là [TÊN], email: [EMAIL], cần hỗ trợ đơn hàng"</span>
+
+response = llm.generate(clean_text)  <span class="cm"># PII không bao giờ rời server</span></code></pre>
+
+  <h3>Giải pháp cloud — AWS Comprehend</h3>
+  <p>
+    AWS Comprehend cung cấp <code>detect_pii_entities</code> API hỗ trợ 16+ PII types với pricing
+    theo ký tự. Phù hợp khi đã dùng AWS stack, tuy nhiên bản thân text vẫn gửi lên AWS để phân tích —
+    cần cân nhắc nếu data đặc biệt nhạy cảm.
+  </p>
+
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <h2 id="output-privacy">33.7 Output Privacy</h2>
+  <p>
+    Redaction không chỉ áp dụng cho <em>input</em> — output của LLM cũng cần được kiểm tra trước khi hiển thị người dùng.
+    Có hai loại rò rỉ chính trong output:
+  </p>
+
+  <h3>1. PII từ training data xuất hiện trong completion</h3>
+  <p>
+    Như đã phân tích ở §33.2, model có thể nhớ và "blurt out" PII từ training corpus.
+    Pipeline output: chạy Presidio hoặc regex scan trên completion trước khi serve.
+  </p>
+
+  <h3>2. Leakage từ context window</h3>
+  <p>
+    System prompt, retrieved documents, hay tool results có thể chứa thông tin nhạy cảm.
+    Nếu user prompt yêu cầu model "summarize everything in context", thông tin từ các phần khác có thể bị tiết lộ.
+    Phòng thủ:
+  </p>
+  <ul>
+    <li>Chỉ đưa vào context những gì user được phép xem</li>
+    <li>Dùng <em>context watermarking</em>: tag từng đoạn với permission level, filter output</li>
+    <li>Output classifier: "response này có chứa thông tin từ restricted source không?"</li>
+  </ul>
+
+  <pre><code><span class="cm"># Output privacy scan pipeline</span>
+<span class="kw">async def</span> <span class="fn">safe_generate</span>(prompt: str, user: User) -> str:
+
+  raw_response = <span class="kw">await</span> llm.generate(prompt)
+
+  <span class="cm"># Scan 1: PII từ training data</span>
+  clean_response, pii_found = redact_pii(raw_response)
+  <span class="kw">if</span> pii_found:
+    audit_log.warn(<span class="str">"pii_in_output"</span>, user_id=user.id, entity_count=len(pii_found))
+
+  <span class="cm"># Scan 2: Có trả về nội dung từ tài liệu user không được access?</span>
+  <span class="kw">if</span> contains_restricted_content(clean_response, user.access_level):
+    clean_response = <span class="str">"[Nội dung bị lọc vì lý do bảo mật]"</span>
+
+  <span class="kw">return</span> clean_response</code></pre>
+
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <h2 id="rag-privacy">33.8 RAG Privacy &amp; ACL-Aware Retrieval</h2>
+  <p>
+    RAG là một trong những bề mặt privacy nhạy cảm nhất trong LLM apps vì nó kết hợp
+    dữ liệu nhạy cảm nội bộ với model API. Ba pattern isolation phổ biến:
+  </p>
+
+  <svg class="diagram" viewBox="0 0 760 360" role="img" aria-label="ACL-aware RAG isolation patterns">
+    <defs>
+      <marker id="arrowhead2" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#6f7c92"/>
+      </marker>
+    </defs>
+
+    <text x="380" y="24" text-anchor="middle" font-weight="700" font-size="14">3 Pattern Isolation cho Multi-Tenant RAG</text>
+
+    <!-- Pattern A: Separate collection -->
+    <rect fill="rgba(124,196,255,0.10)" stroke="#7cc4ff" stroke-width="1.5" x="20" y="38" width="220" height="290" rx="12"/>
+    <text x="130" y="60" text-anchor="middle" font-weight="700" font-size="13" fill="#7cc4ff">A — Collection per Tenant</text>
+    <rect fill="#1a1f2a" stroke="#2a3140" x="50" y="74" width="160" height="34" rx="6"/>
+    <text x="130" y="96" text-anchor="middle" font-size="11">tenant_A_docs</text>
+    <rect fill="#1a1f2a" stroke="#2a3140" x="50" y="116" width="160" height="34" rx="6"/>
+    <text x="130" y="138" text-anchor="middle" font-size="11">tenant_B_docs</text>
+    <rect fill="#1a1f2a" stroke="#2a3140" x="50" y="158" width="160" height="34" rx="6"/>
+    <text x="130" y="180" text-anchor="middle" font-size="11">tenant_C_docs</text>
+    <text x="130" y="222" text-anchor="middle" font-size="11" fill="#b4e07a">✓ Physical isolation</text>
+    <text x="130" y="240" text-anchor="middle" font-size="11" fill="#b4e07a">✓ No filter needed</text>
+    <text x="130" y="258" text-anchor="middle" font-size="11" fill="#ff8a8a">✗ Scale: N collections</text>
+    <text x="130" y="276" text-anchor="middle" font-size="11" fill="#ff8a8a">✗ Cross-tenant search</text>
+    <text x="130" y="294" text-anchor="middle" font-size="10" fill="#aab4c5">Tốt cho &lt;1000 tenants</text>
+    <text x="130" y="312" text-anchor="middle" font-size="10" fill="#aab4c5">VD: Qdrant, Weaviate</text>
+
+    <!-- Pattern B: Payload filter -->
+    <rect fill="rgba(180,224,122,0.10)" stroke="#b4e07a" stroke-width="1.5" x="270" y="38" width="220" height="290" rx="12"/>
+    <text x="380" y="60" text-anchor="middle" font-weight="700" font-size="13" fill="#b4e07a">B — Payload Filter</text>
+    <rect fill="#1a1f2a" stroke="#2a3140" x="290" y="74" width="180" height="80" rx="6"/>
+    <text x="380" y="96" text-anchor="middle" font-size="11" font-weight="600">shared_collection</text>
+    <text x="380" y="114" text-anchor="middle" font-size="10" fill="#aab4c5">{ doc_id, tenant_id,</text>
+    <text x="380" y="130" text-anchor="middle" font-size="10" fill="#aab4c5">  acl: [user_ids...], ... }</text>
+    <text x="380" y="180" text-anchor="middle" font-size="11">Query + filter: tenant_id=X</text>
+    <text x="380" y="222" text-anchor="middle" font-size="11" fill="#b4e07a">✓ Một collection</text>
+    <text x="380" y="240" text-anchor="middle" font-size="11" fill="#b4e07a">✓ Scale tốt hơn</text>
+    <text x="380" y="258" text-anchor="middle" font-size="11" fill="#ff8a8a">✗ Filter bypass risk</text>
+    <text x="380" y="276" text-anchor="middle" font-size="11" fill="#ff8a8a">✗ Cần validate filter</text>
+    <text x="380" y="294" text-anchor="middle" font-size="10" fill="#aab4c5">Tốt cho SaaS lớn</text>
+    <text x="380" y="312" text-anchor="middle" font-size="10" fill="#aab4c5">VD: Pinecone namespace</text>
+
+    <!-- Pattern C: Hashed namespace -->
+    <rect fill="rgba(211,164,255,0.10)" stroke="#d3a4ff" stroke-width="1.5" x="520" y="38" width="220" height="290" rx="12"/>
+    <text x="630" y="60" text-anchor="middle" font-weight="700" font-size="13" fill="#d3a4ff">C — Hashed Namespace</text>
+    <rect fill="#1a1f2a" stroke="#2a3140" x="540" y="74" width="180" height="80" rx="6"/>
+    <text x="630" y="96" text-anchor="middle" font-size="11" font-weight="600">namespace:</text>
+    <text x="630" y="114" text-anchor="middle" font-size="10" fill="#d3a4ff">sha256(tenant_id + secret)</text>
+    <text x="630" y="130" text-anchor="middle" font-size="10" fill="#aab4c5">→ opaque namespace ID</text>
+    <text x="630" y="180" text-anchor="middle" font-size="11">Không thể đoán namespace</text>
+    <text x="630" y="222" text-anchor="middle" font-size="11" fill="#b4e07a">✓ Obfuscated IDs</text>
+    <text x="630" y="240" text-anchor="middle" font-size="11" fill="#b4e07a">✓ Harder to enumerate</text>
+    <text x="630" y="258" text-anchor="middle" font-size="11" fill="#ff8a8a">✗ Secret rotation phức tạp</text>
+    <text x="630" y="276" text-anchor="middle" font-size="11" fill="#ff8a8a">✗ Debug khó hơn</text>
+    <text x="630" y="294" text-anchor="middle" font-size="10" fill="#aab4c5">Dùng khi tenant IDs</text>
+    <text x="630" y="312" text-anchor="middle" font-size="10" fill="#aab4c5">là thông tin nhạy cảm</text>
+  </svg>
+
+  <h3>ACL-Aware Retrieval</h3>
+  <p>
+    Tenant isolation chỉ là bước đầu. Trong mỗi tenant, các tài liệu có thể có permission riêng
+    (chỉ role Manager mới thấy hợp đồng, chỉ HR thấy hồ sơ nhân viên). ACL-aware retrieval
+    đảm bảo retrieval step tôn trọng permission của user, không chỉ tenant.
+  </p>
+
+  <pre><code><span class="kw">from</span> qdrant_client <span class="kw">import</span> QdrantClient
+<span class="kw">from</span> qdrant_client.models <span class="kw">import</span> Filter, FieldCondition, MatchAny
+
+qdrant = QdrantClient(url=<span class="str">"..."</span>)
+
+<span class="kw">async def</span> <span class="fn">acl_aware_search</span>(query_vector: list[float], user: User, k: int = 5) -> list:
+
+  <span class="cm"># Bước 1: Lấy danh sách document IDs mà user có quyền đọc</span>
+  permitted_doc_ids = <span class="kw">await</span> acl_service.get_readable_docs(
+    user_id=user.id,
+    roles=user.roles,
+    tenant_id=user.tenant_id,
+  )
+
+  <span class="cm"># Bước 2: Vector search với ACL filter đồng thời</span>
+  results = qdrant.search(
+    collection_name=f<span class="str">"docs_{user.tenant_id}"</span>,
+    query_vector=query_vector,
+    query_filter=Filter(
+      must=[
+        FieldCondition(
+          key=<span class="str">"source_id"</span>,
+          match=MatchAny(any=permitted_doc_ids)  <span class="cm"># chỉ trong permitted set</span>
+        )
+      ]
+    ),
+    limit=k,
+  )
+
+  <span class="kw">return</span> results
+
+<span class="cm"># KHÔNG làm thế này — retrieve trước rồi filter sau</span>
+<span class="cm"># (embedding similarity có thể tiết lộ existence của doc)</span>
+<span class="cm"># bad_results = search_all(), then filter by permission</span></code></pre>
+
+  <div class="callout warn">
+    <div class="icon">⚠</div>
+    <div>
+      <div class="title">Post-retrieval filtering không đủ</div>
+      <p>
+        Nếu retrieve trước rồi filter permission sau, bạn vẫn tính toán similarity với tài liệu user không được xem.
+        Trong một số vector DB, metadata về sự tồn tại của kết quả có thể bị suy ra qua timing attack.
+        Đảm bảo filter được đẩy vào <strong>bên trong query</strong>, không phải post-processing.
+      </p>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <h2 id="vendor">33.9 Vendor Data Handling</h2>
+  <p>
+    Khi dùng LLM API của vendor, dữ liệu bạn gửi đi bị ràng buộc bởi policy của vendor đó.
+    Bảng dưới so sánh chính sách hiện tại (2025–2026) của các nhà cung cấp lớn:
+  </p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Vendor</th>
+          <th>Default API retention</th>
+          <th>ZDR (Zero Data Retention)</th>
+          <th>Training opt-out</th>
+          <th>Enterprise mode</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>OpenAI API</strong></td>
+          <td>30 ngày (abuse monitoring)</td>
+          <td>Có — Zero Retention tier</td>
+          <td>Mặc định OFF cho API; ChatGPT cần opt-out</td>
+          <td>Enterprise plan: ZDR + SOC2 + BAA</td>
+        </tr>
+        <tr>
+          <td><strong>Anthropic API</strong></td>
+          <td>30 ngày (trust &amp; safety)</td>
+          <td>Có — qua request hoặc enterprise</td>
+          <td>Mặc định OFF cho API</td>
+          <td>Enterprise: custom DPA, ZDR, HIPAA BAA</td>
+        </tr>
+        <tr>
+          <td><strong>Azure OpenAI</strong></td>
+          <td>0 ngày mặc định (no logging)</td>
+          <td>Mặc định — không lưu prompt/completion</td>
+          <td>Không dùng để train — policy cứng</td>
+          <td>Azure vGov, confidential compute tùy chọn</td>
+        </tr>
+        <tr>
+          <td><strong>Google Vertex AI</strong></td>
+          <td>Không lưu mặc định</td>
+          <td>Có qua Data Governance settings</td>
+          <td>API data không dùng để train Gemini</td>
+          <td>VPC-SC, Customer-Managed Encryption Keys</td>
+        </tr>
+        <tr>
+          <td><strong>AWS Bedrock</strong></td>
+          <td>Không lưu inference data</td>
+          <td>Mặc định — không persistence</td>
+          <td>Không train trên customer data</td>
+          <td>VPC endpoint, PrivateLink, HIPAA eligible</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout tip">
+    <div class="icon">★</div>
+    <div>
+      <div class="title">Khuyến nghị thực tế</div>
+      <p>
+        Với dữ liệu regulated (PHI, PII cấp cao, thông tin tài chính):
+        ưu tiên <strong>Azure OpenAI hoặc AWS Bedrock</strong> vì mặc định không retention.
+        Nếu dùng OpenAI/Anthropic trực tiếp, ký DPA và enable Zero Data Retention trước khi production.
+        Với dữ liệu tối mật: xem xét self-hosted open-source model (§33.12).
+      </p>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <h2 id="gdpr">33.10 GDPR/CCPA Implications</h2>
+
+  <h3>Right to Erasure trong Vector DB</h3>
+  <p>
+    GDPR Article 17 (Right to be Forgotten) đặt ra thách thức đặc biệt với vector databases:
+    embedding vector là một dạng biến đổi của dữ liệu gốc, và khi bạn xóa document gốc,
+    vector vẫn tồn tại và có thể (về mặt lý thuyết) được dùng để suy ngược thông tin.
+  </p>
+
+  <pre><code><span class="cm"># Pattern xử lý right-to-erasure trong vector DB</span>
+<span class="kw">async def</span> <span class="fn">handle_erasure_request</span>(user_id: str) -> ErasureReport:
+
+  report = ErasureReport(user_id=user_id)
+
+  <span class="cm"># 1. Tìm tất cả documents thuộc user</span>
+  user_docs = <span class="kw">await</span> doc_registry.find_by_owner(user_id)
+
+  <span class="cm"># 2. Xóa khỏi vector DB</span>
+  <span class="kw">for</span> doc <span class="kw">in</span> user_docs:
+    <span class="kw">await</span> qdrant.delete(
+      collection_name=doc.collection,
+      points_selector={"filter": {"must": [{"key": "owner_id", "match": {"value": user_id}}]}}
+    )
+    report.vectors_deleted += doc.chunk_count
+
+  <span class="cm"># 3. Xóa khỏi document store</span>
+  <span class="kw">await</span> doc_store.delete_by_owner(user_id)
+
+  <span class="cm"># 4. Xóa khỏi cache</span>
+  <span class="kw">await</span> redis.delete_pattern(f<span class="str">"rag:user:{user_id}:*"</span>)
+
+  <span class="cm"># 5. Xóa khỏi observability logs (nếu có PII)</span>
+  <span class="kw">await</span> log_anonymizer.anonymize_user_traces(user_id)
+
+  <span class="cm"># 6. Tạo audit trail về việc xóa (bắt buộc theo GDPR)</span>
+  <span class="kw">await</span> audit_log.record_erasure(user_id, report)
+
+  <span class="kw">return</span> report</code></pre>
+
+  <div class="callout warn">
+    <div class="icon">⚠</div>
+    <div>
+      <div class="title">Fine-tuned model và Right to Erasure</div>
+      <p>
+        Nếu bạn đã fine-tune model trên dữ liệu của user, right-to-erasure yêu cầu xóa ảnh hưởng của dữ liệu đó khỏi model.
+        Đây là bài toán chưa có giải pháp hoàn chỉnh — <strong>machine unlearning</strong> là area nghiên cứu đang phát triển.
+        Giải pháp thực tế hiện tại: retrain model không có data đó (tốn kém) hoặc tránh fine-tune trên PII ngay từ đầu.
+      </p>
+    </div>
+  </div>
+
+  <h3>Data Residency</h3>
+  <p>
+    Nhiều quốc gia (EU, Việt Nam theo Nghị định 13/2023/NĐ-CP, Trung Quốc) yêu cầu dữ liệu cá nhân phải được lưu trữ trong lãnh thổ.
+    Khi dùng LLM API cloud, cần cấu hình region cụ thể và xác nhận vendor cam kết không transfer ra ngoài vùng.
+  </p>
+
+  <h3>Automated Decision-Making Transparency (GDPR Art. 22)</h3>
+  <p>
+    Nếu LLM app đưa ra quyết định tự động ảnh hưởng đáng kể đến người dùng
+    (phê duyệt vay vốn, sàng lọc CV, pricing), GDPR yêu cầu:
+  </p>
+  <ul>
+    <li>Thông báo cho người dùng biết có automated decision-making</li>
+    <li>Cung cấp thông tin có ý nghĩa về logic liên quan</li>
+    <li>Quyền yêu cầu human review</li>
+    <li>Quyền phản đối quyết định</li>
+  </ul>
+  <p>LLM "black box" đặc biệt khó compliance với Art. 22 — cần logging đầy đủ và human-in-the-loop cho high-stakes decisions.</p>
+
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <h2 id="pcc">33.11 Apple Private Cloud Compute</h2>
+  <p>
+    Tháng 6/2024, Apple giới thiệu <strong>Private Cloud Compute (PCC)</strong> — kiến trúc đột phá cho phép
+    xử lý AI phức tạp trên server mà vẫn đảm bảo bảo mật dữ liệu người dùng.
+    PCC giải quyết tension cơ bản: model AI mạnh cần compute lớn hơn thiết bị, nhưng gửi dữ liệu lên cloud thì mất privacy.
+  </p>
+
+  <svg class="diagram" viewBox="0 0 760 330" role="img" aria-label="Apple Private Cloud Compute architecture">
+    <defs>
+      <marker id="arrowhead3" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#6f7c92"/>
+      </marker>
+    </defs>
+
+    <text x="380" y="24" text-anchor="middle" font-weight="700" font-size="14">Apple Private Cloud Compute — Kiến trúc</text>
+
+    <!-- User Device -->
+    <rect class="node-accent" x="20" y="44" width="140" height="70" rx="10"/>
+    <text x="90" y="68" text-anchor="middle" font-weight="700" font-size="13">iPhone/Mac</text>
+    <text x="90" y="86" text-anchor="middle" font-size="11">User request</text>
+    <text x="90" y="102" text-anchor="middle" font-size="10" fill="#aab4c5">on-device encrypt</text>
+
+    <!-- Arrow -->
+    <line x1="160" y1="79" x2="195" y2="79" stroke="#6f7c92" stroke-width="1.5" marker-end="url(#arrowhead3)"/>
+    <text x="177" y="72" text-anchor="middle" font-size="9" fill="#b4e07a">E2E</text>
+    <text x="177" y="84" text-anchor="middle" font-size="9" fill="#b4e07a">encrypted</text>
+
+    <!-- PCC Node -->
+    <rect fill="rgba(180,224,122,0.12)" stroke="#b4e07a" stroke-width="2" x="197" y="36" width="366" height="160" rx="12"/>
+    <text x="380" y="58" text-anchor="middle" font-weight="700" font-size="13" fill="#b4e07a">PCC Node (Apple Silicon Server)</text>
+
+    <rect fill="#1a1f2a" stroke="#2a3140" x="215" y="68" width="155" height="44" rx="6"/>
+    <text x="293" y="88" text-anchor="middle" font-size="11" font-weight="600">Secure Enclave</text>
+    <text x="293" y="104" text-anchor="middle" font-size="10" fill="#aab4c5">Decrypt + process</text>
+
+    <rect fill="#1a1f2a" stroke="#2a3140" x="378" y="68" width="167" height="44" rx="6"/>
+    <text x="462" y="88" text-anchor="middle" font-size="11" font-weight="600">Stateless Processing</text>
+    <text x="462" y="104" text-anchor="middle" font-size="10" fill="#aab4c5">No data persisted</text>
+
+    <rect fill="rgba(180,224,122,0.08)" stroke="#b4e07a" stroke-width="1" stroke-dasharray="4" x="215" y="126" width="330" height="58" rx="8"/>
+    <text x="380" y="148" text-anchor="middle" font-size="11" fill="#b4e07a" font-weight="600">Verifiable Transparency</text>
+    <text x="380" y="166" text-anchor="middle" font-size="11" fill="#aab4c5">Code signed, publicly inspectable binary · No remote shell access</text>
+    <text x="380" y="180" text-anchor="middle" font-size="11" fill="#aab4c5">Independent researcher verification supported</text>
+
+    <!-- Arrow back -->
+    <line x1="563" y1="109" x2="598" y2="109" stroke="#6f7c92" stroke-width="1.5" marker-end="url(#arrowhead3)"/>
+
+    <!-- Result -->
+    <rect class="node-green" x="600" y="84" width="140" height="50" rx="10"/>
+    <text x="670" y="106" text-anchor="middle" font-weight="700" font-size="13">Response</text>
+    <text x="670" y="122" text-anchor="middle" font-size="10" fill="#aab4c5">returned to device</text>
+
+    <!-- Key properties -->
+    <rect fill="#1a1f2a" stroke="#2a3140" x="20" y="230" width="720" height="82" rx="10"/>
+    <text x="380" y="252" text-anchor="middle" font-weight="700" font-size="13">5 Tính chất cốt lõi của PCC</text>
+    <text x="60" y="276" font-size="12" fill="#b4e07a">① Stateless:</text>
+    <text x="145" y="276" font-size="12" fill="#aab4c5">Request không được persist sau khi xử lý xong</text>
+    <text x="60" y="298" font-size="12" fill="#b4e07a">② Verifiable:</text>
+    <text x="150" y="298" font-size="12" fill="#aab4c5">Binary có thể được researcher kiểm tra độc lập qua cryptographic attestation</text>
+    <text x="420" y="276" font-size="12" fill="#b4e07a">③ No backdoor:</text>
+    <text x="517" y="276" font-size="12" fill="#aab4c5">Kể cả Apple không thể truy xuất data</text>
+    <text x="420" y="298" font-size="12" fill="#b4e07a">④ Minimal footprint:</text>
+    <text x="547" y="298" font-size="12" fill="#aab4c5">Chỉ code cần thiết, không shell access</text>
+  </svg>
+
+  <p>
+    PCC là ví dụ đầu tiên của pattern <strong>"verifiable processing without retention"</strong> —
+    vendor thuyết phục được người dùng rằng dữ liệu được xử lý đúng cách qua cryptographic proof,
+    không phải chỉ qua cam kết hợp đồng. Đây là hướng đi quan trọng cho privacy-preserving cloud AI.
+  </p>
+
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <h2 id="on-device">33.12 On-Device Inference như Chiến lược Privacy</h2>
+  <p>
+    Cách tốt nhất để dữ liệu không rời thiết bị là xử lý ngay trên thiết bị.
+    Với sự xuất hiện của các model nhỏ nhưng mạnh, on-device inference đang trở thành giải pháp
+    thực tế cho một số use case nhạy cảm.
+  </p>
+
+  <div class="tabs" data-tabs>
+    <div class="tab-buttons">
+      <button class="active">Use cases phù hợp</button>
+      <button>Models &amp; Frameworks</button>
+      <button>Giới hạn</button>
+    </div>
+    <div class="tab-panel active">
+      <p><strong>Phù hợp nhất cho on-device:</strong></p>
+      <ul>
+        <li>PII detection/redaction trên input trước khi gửi cloud (phụ trợ pipeline §33.6)</li>
+        <li>Local document Q&amp;A — hồ sơ bệnh án, hợp đồng cá nhân</li>
+        <li>Code completion trong IDE với codebase private (GitHub Copilot đã bổ sung local mode)</li>
+        <li>Voice assistant xử lý speech-to-intent mà không gửi audio</li>
+        <li>Financial advisor app xử lý portfolio data locally</li>
+      </ul>
+    </div>
+    <div class="tab-panel">
+      <p><strong>Ecosystem hiện tại (2025–2026):</strong></p>
+      <ul>
+        <li><strong>Apple Intelligence:</strong> Gemma-3-1.5B, on-device; PCC cho tasks phức tạp hơn</li>
+        <li><strong>Google Gemini Nano:</strong> chạy trên Pixel, Chrome DevTools AI features</li>
+        <li><strong>Ollama + Llama 3.2 3B:</strong> chạy trên MacBook M-series, ~2GB RAM</li>
+        <li><strong>llama.cpp / MLX:</strong> inference framework tối ưu cho Apple Silicon và CPU-only</li>
+        <li><strong>Windows Copilot+ (NPU):</strong> Phi-3-mini chạy trên Qualcomm NPU</li>
+      </ul>
+    </div>
+    <div class="tab-panel">
+      <p><strong>Giới hạn cần nhận thức:</strong></p>
+      <ul>
+        <li>Model nhỏ (&lt;4B params) yếu hơn đáng kể với complex reasoning, multilingual</li>
+        <li>Context window ngắn hơn (thường 4K–8K vs 128K+ của cloud models)</li>
+        <li>Model update khó hơn — cần push update tới device</li>
+        <li>Battery và thermal impact trên mobile</li>
+        <li>Không phù hợp cho agentic workflows phức tạp</li>
+      </ul>
+      <p><em>Chiến lược thực tế: on-device cho sensitive pre/post processing, cloud LLM cho reasoning chính với data đã redacted.</em></p>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <h2 id="agent-memory">33.13 Agent Memory Privacy</h2>
+  <p>
+    Các hệ thống agent với persistent memory đặt ra những thách thức privacy phức tạp hơn
+    một LLM call đơn lẻ. Hai loại rủi ro chính:
+  </p>
+
+  <h3>Cross-Session Contamination</h3>
+  <p>
+    Nếu agent lưu summary của session vào memory store và dùng trong session sau,
+    thông tin nhạy cảm từ cuộc hội thoại trước có thể ảnh hưởng đến session sau — kể cả
+    khi user muốn "bắt đầu lại từ đầu".
+  </p>
+
+  <pre><code><span class="cm"># BAD: Memory không có expiry hoặc scoping</span>
+memory_store.save(key=<span class="str">f"user:{user_id}"</span>, value=session_summary)
+<span class="cm"># Mọi session sau đều access được toàn bộ lịch sử!</span>
+
+<span class="cm"># GOOD: Memory với scoping, TTL, và explicit consent</span>
+<span class="kw">class</span> <span class="fn">PrivacyAwareMemoryStore</span>:
+
+  <span class="kw">async def</span> <span class="fn">save</span>(self, user_id: str, memory: MemoryEntry, consent: MemoryConsent):
+    <span class="kw">if not</span> consent.allows_persistence:
+      <span class="kw">return</span>  <span class="cm"># user không cho phép lưu</span>
+
+    entry = {
+      <span class="str">"content"</span>: memory.content,
+      <span class="str">"scope"</span>: consent.scope,         <span class="cm"># "session" | "week" | "permanent"</span>
+      <span class="str">"sensitivity"</span>: memory.sensitivity,
+      <span class="str">"expires_at"</span>: compute_expiry(consent.scope),
+      <span class="str">"created_at"</span>: datetime.utcnow(),
+    }
+
+    <span class="cm"># Encrypt sensitive memories at rest</span>
+    <span class="kw">if</span> memory.sensitivity == <span class="str">"high"</span>:
+      entry[<span class="str">"content"</span>] = encrypt(memory.content, key=user_encryption_key(user_id))
+
+    <span class="kw">await</span> self.store.set(f<span class="str">"mem:{user_id}:{memory.id}"</span>, entry, ex=entry[<span class="str">"expires_at"</span>])</code></pre>
+
+  <h3>Cross-User Contamination</h3>
+  <p>
+    Trong multi-user agent systems (ví dụ: shared enterprise assistant), một user có thể
+    vô tình "poison" memory store với thông tin mà agent sau đó dùng khi reply cho user khác.
+  </p>
+  <ul>
+    <li>Mọi memory entry phải được tag với <code>owner_user_id</code></li>
+    <li>Memory retrieval phải filter chặt theo user (không phải chỉ theo tenant)</li>
+    <li>Shared knowledge (không thuộc về ai) phải được phân biệt rõ với personal memory</li>
+    <li>Memory summarization phải loại bỏ PII trước khi lưu</li>
+  </ul>
+
+  <div class="callout warn">
+    <div class="icon">⚠</div>
+    <div>
+      <div class="title">Memory là PII theo GDPR</div>
+      <p>
+        Nếu agent memory chứa thông tin cá nhân (sở thích, tình trạng sức khỏe, quan điểm chính trị…),
+        đó là personal data theo GDPR. User có quyền xem, chỉnh sửa, và xóa memory của họ.
+        Phải cung cấp UI rõ ràng để quản lý memory — không chỉ lưu silently.
+      </p>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <h2 id="old-vs-new">33.14 Cách Cũ vs Cách Hiện Tại</h2>
+
+  <div class="tabs" data-tabs>
+    <div class="tab-buttons">
+      <button class="active">Cách cũ (2022–2023)</button>
+      <button>Cách hiện tại (2025–2026)</button>
+    </div>
+    <div class="tab-panel active">
+      <p><strong>Approach: "Send everything to OpenAI default tier"</strong></p>
+      <ul>
+        <li>Gửi toàn bộ user input (bao gồm PII) tới OpenAI API default endpoint</li>
+        <li>Không có PII redaction trước khi gửi</li>
+        <li>Không ký DPA, không enable Zero Data Retention</li>
+        <li>RAG index không có tenant isolation — một collection cho tất cả</li>
+        <li>Log toàn bộ prompt + completion vào centralized logging (Datadog, Elastic) không có masking</li>
+        <li>Agent memory lưu vào database không có expiry hay access control</li>
+        <li>Không có output filtering — model response được serve trực tiếp</li>
+      </ul>
+      <div class="callout danger">
+        <div class="icon">!</div>
+        <div>
+          <p>Kết quả: PII của khách hàng có thể được dùng để train OpenAI model thế hệ sau,
+          GDPR/CCPA compliance failure, cross-tenant data leakage trong RAG,
+          PII xuất hiện trong log của third-party observability vendor.</p>
+        </div>
+      </div>
+    </div>
+    <div class="tab-panel">
+      <p><strong>Approach: Data minimization + ZDR + On-device + ACL-aware RAG</strong></p>
+      <ul>
+        <li><strong>Data minimization trước inference:</strong> Presidio/custom NER redact PII trước khi gửi tới LLM API. Chỉ gửi dữ liệu cần thiết.</li>
+        <li><strong>Zero Data Retention:</strong> Azure OpenAI hoặc OpenAI/Anthropic Enterprise với ZDR policy. Ký DPA trước production.</li>
+        <li><strong>On-device cho sensitive operations:</strong> PII detection, local summarization, sensitive document Q&amp;A chạy on-device (Ollama, Apple Intelligence). Cloud LLM chỉ nhận data đã sanitized.</li>
+        <li><strong>ACL-aware RAG:</strong> Collection-per-tenant + per-document permission filter. Retrieval enforce access control, không chỉ tenant isolation.</li>
+        <li><strong>Log hygiene:</strong> Tách log hai lớp — trace metadata (không có content) và content log (có PII masking, restricted access, short TTL).</li>
+        <li><strong>Agent memory governance:</strong> Explicit consent, scoped TTL, encryption at rest, user-facing memory management UI.</li>
+        <li><strong>Output filtering:</strong> PII scan trên completion trước khi serve. Canary token monitor cho training data extraction.</li>
+        <li><strong>Vendor audit:</strong> Quarterly review vendor data policies; alert khi policy thay đổi.</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <h2 id="tom-tat">Tóm tắt</h2>
+  <ol>
+    <li>
+      <strong>Privacy surfaces:</strong> LLM app có 5 bề mặt rủi ro — Training, Inference, RAG, Logs, Agent Memory.
+      Mỗi bề mặt cần strategy riêng, không có one-size-fits-all.
+    </li>
+    <li>
+      <strong>Training data extraction</strong> là mối đe dọa thực tế (Nasr et al. 2023).
+      Defense: dedup training data, canary tokens, output filtering, DP fine-tuning.
+    </li>
+    <li>
+      <strong>Differential Privacy (DP-SGD)</strong> cung cấp bảo đảm toán học nhưng có cost về model quality.
+      ε = 1–10 là practical range; cân nhắc theo mức độ nhạy cảm của data.
+    </li>
+    <li>
+      <strong>PII redaction</strong> trước khi gửi tới LLM API là bước tối thiểu. Microsoft Presidio + custom NER là combination thực tế.
+      Áp dụng cả trên input và output.
+    </li>
+    <li>
+      <strong>RAG isolation</strong> cần làm ở cả tenant level (collection/namespace) và document level (ACL).
+      Post-retrieval filtering không đủ — filter phải đi vào bên trong query.
+    </li>
+    <li>
+      <strong>Vendor selection</strong> quan trọng: Azure OpenAI và AWS Bedrock không lưu inference data mặc định.
+      Với OpenAI/Anthropic, bắt buộc ký DPA và enable ZDR trước khi production với data regulated.
+    </li>
+    <li>
+      <strong>GDPR right-to-erasure</strong> trong vector DB yêu cầu delete cả vector lẫn document gốc.
+      Fine-tuning trên PII tạo ra machine unlearning debt — tránh từ đầu.
+    </li>
+    <li>
+      <strong>Apple PCC</strong> giới thiệu pattern "verifiable processing without retention" —
+      dự đoán sẽ trở thành standard cho privacy-preserving cloud AI.
+    </li>
+    <li>
+      <strong>Agent memory</strong> là PII theo GDPR. Phải có consent, scoped TTL, encryption, và user-facing management UI.
+    </li>
+    <li>
+      <strong>Chiến lược tổng thể 2026:</strong> Data minimization → On-device cho sensitive → ZDR vendor → ACL-aware RAG → Output filtering → Audit trail.
+    </li>
+  </ol>
+
+  <nav class="section-footer">
+    <a href="32-ai-red-team.html" class="prev">
+      <div class="label">← trước</div>
+      <div class="title">32 — AI Red Teaming</div>
+    </a>
+    <a href="34-compliance.html" class="next">
+      <div class="label">tiếp theo →</div>
+      <div class="title">34 — Compliance &amp; Governance</div>
+    </a>
+  </nav>
+
+</main>
+
+<script src="../assets/script.js"></script>
+</body>
+</html>

@@ -1,0 +1,1174 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>42 · Edge &amp; On-device Agents — AI Engineering</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<nav class="top-nav">
+  <div class="brand"><span class="dot"></span> AI Engineering</div>
+  <div class="crumbs"><a href="../index.html">Mục lục</a> › Phần 12 · <span>42 — Edge &amp; On-device Agents</span></div>
+  <div class="nav-actions">
+    <a href="41-distributed-agent-runtimes.html">← Trước</a>
+    <a href="../index.html">Mục lục</a>
+  </div>
+</nav>
+
+<main class="page">
+
+  <section class="hero">
+    <span class="eyebrow">Phần 12 · §42</span>
+    <h1>Edge &amp; On-device Agents</h1>
+    <p class="lede">
+      Khi intelligence chạy ngay trên thiết bị — không cần mạng, không rời dữ liệu, không tốn inference bill.
+      Từ Apple Neural Engine đến llama.cpp, từ Phi-4 đến Gemini Nano: kiến trúc hybrid edge-cloud là tương lai của agentic AI.
+    </p>
+    <img class="hero-image" src="../images/42-edge-on-device.png" alt="Edge &amp; On-device Agents hero" onerror="this.style.display='none'">
+  </section>
+
+  <aside class="toc">
+    <div class="toc-title">Trong trang này</div>
+    <ul>
+      <li><a href="#why-edge">42.1 Tại sao edge / on-device?</a></li>
+      <li><a href="#apple-intelligence">42.2 Apple Intelligence</a></li>
+      <li><a href="#slms">42.3 Small Language Models 2026</a></li>
+      <li><a href="#hardware">42.4 Hardware: NPU &amp; SoC</a></li>
+      <li><a href="#frameworks">42.5 Frameworks on-device</a></li>
+      <li><a href="#quantization">42.6 Quantization cho edge</a></li>
+      <li><a href="#specialized">42.7 Small nhưng chuyên biệt</a></li>
+      <li><a href="#hybrid-routing">42.8 Hybrid edge-cloud routing</a></li>
+      <li><a href="#tool-use">42.9 Tool use on-device</a></li>
+      <li><a href="#privacy">42.10 Privacy &amp; PCC</a></li>
+      <li><a href="#cost-energy">42.11 Cost &amp; năng lượng</a></li>
+      <li><a href="#decision">42.12 Cloud vs Edge: framework quyết định</a></li>
+      <li><a href="#shipping">42.13 Shipping model trong app</a></li>
+      <li><a href="#limits">42.14 Giới hạn hiện tại</a></li>
+      <li><a href="#old-vs-new">42.15 Cách cũ vs Cách hiện tại</a></li>
+      <li><a href="#tom-tat">Tóm tắt &amp; Lời kết series</a></li>
+    </ul>
+  </aside>
+
+  <!-- ═══════════════════════════════════════════════════ -->
+  <h2 id="why-edge">42.1 Tại sao Edge / On-device?</h2>
+
+  <p>
+    Từ năm 2020 đến 2023, mặc định của mọi AI application là <em>"gọi cloud API"</em>.
+    Mô hình nằm trên server của provider, request đi qua internet, response trả về.
+    Đơn giản, mạnh, nhưng đi kèm 5 nhược điểm căn bản:
+  </p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Vấn đề</th><th>Mô tả</th><th>Tác động thực tế</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Latency</strong></td>
+          <td>Mỗi request cần round-trip qua internet: 100–500 ms chỉ cho network</td>
+          <td>Không dùng được trong real-time (gaming, robotics, live speech)</td>
+        </tr>
+        <tr>
+          <td><strong>Privacy</strong></td>
+          <td>Dữ liệu nhạy cảm (y tế, pháp lý, cá nhân) rời thiết bị</td>
+          <td>GDPR, HIPAA, enterprise data governance bị vi phạm</td>
+        </tr>
+        <tr>
+          <td><strong>Offline</strong></td>
+          <td>Không có mạng = không có AI</td>
+          <td>App lỗi trong tàu điện ngầm, vùng sâu, máy bay</td>
+        </tr>
+        <tr>
+          <td><strong>Cost</strong></td>
+          <td>Mỗi request tốn tiền — tích lũy khủng khiếp ở scale</td>
+          <td>1M user × 50 requests/ngày × $0.002 = $100k/ngày</td>
+        </tr>
+        <tr>
+          <td><strong>Control</strong></td>
+          <td>Phụ thuộc provider: rate limit, outage, deprecation, price change</td>
+          <td>Sản phẩm bị tê liệt khi provider có vấn đề</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>
+    Edge AI — chạy model ngay trên thiết bị (điện thoại, laptop, IoT board, xe hơi) — giải quyết
+    toàn bộ 5 điểm trên. Đổi lại: model nhỏ hơn, capability giảm. Câu hỏi của 2026 không còn là
+    <em>"có nên dùng on-device không?"</em> mà là <em>"task nào nên chạy ở đâu?"</em>
+  </p>
+
+  <div class="callout tip">
+    <div class="icon">★</div>
+    <div>
+      <div class="title">Mental model cho Edge AI</div>
+      <p>
+        Nghĩ về edge model như <strong>fast lane</strong>: xử lý 80% requests ngay tức thì, cục bộ,
+        miễn phí. Cloud là <strong>escalation path</strong>: chỉ khi request quá khó.
+        Giống như một văn phòng có receptionist xử lý hầu hết việc, escalate lên senior khi cần.
+      </p>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════ -->
+  <h2 id="apple-intelligence">42.2 Apple Intelligence — Blueprint cho Edge-Cloud Hybrid</h2>
+
+  <p>
+    Apple Intelligence (ra mắt iOS 18 / macOS Sequoia, mở rộng mạnh 2025–2026) là ví dụ production
+    đầy đủ nhất về on-device AI ở quy mô consumer. Kiến trúc gồm 3 lớp:
+  </p>
+
+  <ul>
+    <li>
+      <strong>On-device foundation model (~3B parameters)</strong>: Chạy hoàn toàn trên Apple Neural Engine
+      trong chip A17 Pro / M-series. Xử lý summarization, Writing Tools, Smart Reply, Semantic Search.
+      Không có gì rời khỏi thiết bị.
+    </li>
+    <li>
+      <strong>Private Cloud Compute (PCC)</strong>: Khi request quá phức tạp cho on-device, iOS gửi
+      lên Apple Silicon servers trên cloud — nhưng với <em>cryptographic attestation</em>: Apple cam kết
+      không log, không retain, không có khả năng inspect data của user. Được audit bởi independent researchers.
+    </li>
+    <li>
+      <strong>ChatGPT integration (opt-in)</strong>: Chỉ khi user chủ động allow, mới gửi lên OpenAI
+      cho các queries cần GPT-4-class reasoning. Người dùng thấy rõ khi nào điều này xảy ra.
+    </li>
+  </ul>
+
+  <svg class="diagram" viewBox="0 0 760 300" role="img" aria-label="Apple Intelligence architecture">
+    <defs>
+      <marker id="arrowhead-pcc" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#6f7c92"/>
+      </marker>
+    </defs>
+
+    <text x="380" y="22" text-anchor="middle" font-weight="700" font-size="14">Apple Intelligence — Luồng xử lý theo độ phức tạp</text>
+
+    <!-- User request box -->
+    <rect class="node-bg" x="20" y="50" width="130" height="50" rx="8"/>
+    <text x="85" y="70" text-anchor="middle" font-size="12" font-weight="600">User Request</text>
+    <text x="85" y="88" text-anchor="middle" class="label-sm">(Siri / Writing / Search)</text>
+
+    <!-- Complexity router -->
+    <rect class="node-accent" x="200" y="40" width="150" height="70" rx="8"/>
+    <text x="275" y="62" text-anchor="middle" font-size="12" font-weight="600">Complexity</text>
+    <text x="275" y="78" text-anchor="middle" font-size="12" font-weight="600">Classifier</text>
+    <text x="275" y="98" text-anchor="middle" class="label-sm">on-device, &lt;5ms</text>
+
+    <!-- Arrow: request → router -->
+    <line class="arrow" marker-end="url(#arrowhead-pcc)" x1="150" y1="75" x2="198" y2="75"/>
+
+    <!-- On-device model -->
+    <rect class="node-green" x="420" y="40" width="150" height="70" rx="8"/>
+    <text x="495" y="62" text-anchor="middle" font-size="12" font-weight="600">On-Device Model</text>
+    <text x="495" y="78" text-anchor="middle" class="label-sm">~3B · A17/M-series</text>
+    <text x="495" y="93" text-anchor="middle" class="label-sm">Privacy: absolute</text>
+
+    <!-- Arrow: router → on-device (easy) -->
+    <line class="arrow" marker-end="url(#arrowhead-pcc)" x1="350" y1="60" x2="418" y2="60"/>
+    <text x="384" y="54" text-anchor="middle" class="label-sm" fill="#b4e07a">Easy</text>
+
+    <!-- PCC box -->
+    <rect class="node-blue" x="420" y="145" width="150" height="70" rx="8"/>
+    <text x="495" y="167" text-anchor="middle" font-size="12" font-weight="600">Private Cloud</text>
+    <text x="495" y="183" text-anchor="middle" font-size="12" font-weight="600">Compute (PCC)</text>
+    <text x="495" y="200" text-anchor="middle" class="label-sm">Attested · No log/retain</text>
+
+    <!-- Arrow: router → PCC (medium) -->
+    <line class="arrow" marker-end="url(#arrowhead-pcc)" x1="350" y1="85" x2="418" y2="175"/>
+    <text x="370" y="138" text-anchor="middle" class="label-sm" fill="#7cc4ff">Medium</text>
+
+    <!-- ChatGPT box -->
+    <rect class="node-bg" x="420" y="245" width="150" height="45" rx="8"/>
+    <text x="495" y="264" text-anchor="middle" font-size="12" font-weight="600">ChatGPT (opt-in)</text>
+    <text x="495" y="280" text-anchor="middle" class="label-sm">User controls + sees</text>
+
+    <!-- Arrow: router → ChatGPT (hard) -->
+    <line class="arrow" marker-end="url(#arrowhead-pcc)" x1="350" y1="95" x2="418" y2="258"/>
+    <text x="358" y="200" text-anchor="middle" class="label-sm" fill="#d3a4ff">Hard (opt-in)</text>
+
+    <!-- Response arrow back -->
+    <line class="arrow" marker-end="url(#arrowhead-pcc)" x1="420" y1="75" x2="155" y2="75" stroke-dasharray="4,3"/>
+    <text x="287" y="72" text-anchor="middle" class="label-sm">← Response</text>
+  </svg>
+
+  <h3>Semantic Index — bộ nhớ cá nhân không rời thiết bị</h3>
+  <p>
+    Apple Intelligence xây dựng một <strong>semantic index</strong> của toàn bộ dữ liệu cá nhân:
+    email, tin nhắn, ảnh, tài liệu, lịch. Index này (embedding vectors) chỉ tồn tại on-device.
+    Khi Siri cần tìm "bức ảnh chụp với mẹ ở Hội An năm ngoái", nó query semantic index cục bộ —
+    không upload ảnh, không gửi query ra ngoài.
+  </p>
+
+  <!-- ═══════════════════════════════════════════════════ -->
+  <h2 id="slms">42.3 Small Language Models đáng biết năm 2026</h2>
+
+  <p>
+    "Small" ở đây nghĩa là đủ để chạy được on consumer hardware (laptop, điện thoại cao cấp).
+    Ranh giới thực tế: &lt;8B parameters cho mobile, &lt;14B cho laptop/PC với NPU.
+  </p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Model</th>
+          <th>Tổ chức</th>
+          <th>Params</th>
+          <th>Context</th>
+          <th>HW target</th>
+          <th>Điểm mạnh</th>
+          <th>License</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Phi-4</strong></td>
+          <td>Microsoft</td>
+          <td>14B</td>
+          <td>16k</td>
+          <td>Laptop (16GB RAM)</td>
+          <td>Reasoning &amp; math vượt trội so với kích thước; STEM tasks</td>
+          <td><span class="tag green">MIT</span></td>
+        </tr>
+        <tr>
+          <td><strong>Phi-4-mini</strong></td>
+          <td>Microsoft</td>
+          <td>3.8B</td>
+          <td>128k</td>
+          <td>Mobile / edge NPU</td>
+          <td>Long context nhỏ gọn; tool calling; function use</td>
+          <td><span class="tag green">MIT</span></td>
+        </tr>
+        <tr>
+          <td><strong>Gemini Nano 2</strong></td>
+          <td>Google</td>
+          <td>~3B</td>
+          <td>32k</td>
+          <td>Android (Pixel 9+, Galaxy S25)</td>
+          <td>Tích hợp sâu vào Android AI Core; multimodal lite</td>
+          <td><span class="tag">Proprietary</span></td>
+        </tr>
+        <tr>
+          <td><strong>Llama 3.2 1B</strong></td>
+          <td>Meta</td>
+          <td>1B</td>
+          <td>128k</td>
+          <td>Mobile / IoT</td>
+          <td>Cực nhỏ; ExecuTorch ready; vision variant</td>
+          <td><span class="tag green">Llama 3.2</span></td>
+        </tr>
+        <tr>
+          <td><strong>Llama 3.2 3B</strong></td>
+          <td>Meta</td>
+          <td>3B</td>
+          <td>128k</td>
+          <td>Mobile cao cấp / laptop</td>
+          <td>Cân bằng size-quality tốt; fine-tune tốt</td>
+          <td><span class="tag green">Llama 3.2</span></td>
+        </tr>
+        <tr>
+          <td><strong>Qwen 2.5 1.5B</strong></td>
+          <td>Alibaba</td>
+          <td>1.5B</td>
+          <td>128k</td>
+          <td>Mobile / edge</td>
+          <td>Tiếng Trung / Tiếng Anh mạnh; coding tốt cho kích thước</td>
+          <td><span class="tag green">Apache 2.0</span></td>
+        </tr>
+        <tr>
+          <td><strong>Qwen 2.5 3B</strong></td>
+          <td>Alibaba</td>
+          <td>3B</td>
+          <td>128k</td>
+          <td>Mobile / laptop NPU</td>
+          <td>Multilingual mạnh; instruction following tốt</td>
+          <td><span class="tag green">Apache 2.0</span></td>
+        </tr>
+        <tr>
+          <td><strong>SmolLM2 1.7B</strong></td>
+          <td>HuggingFace</td>
+          <td>1.7B</td>
+          <td>8k</td>
+          <td>Edge / browser (WebGPU)</td>
+          <td>Thiết kế cho efficiency; tốt cho agentic tasks đơn giản; runs in browser</td>
+          <td><span class="tag green">Apache 2.0</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout note">
+    <div class="icon">≡</div>
+    <div>
+      <div class="title">Chọn SLM như thế nào?</div>
+      <p>
+        Đừng chọn theo params — chọn theo <strong>task cụ thể</strong>.
+        Phi-4 cho math/code, Gemini Nano cho Android ecosystem, Qwen cho đa ngôn ngữ Châu Á,
+        SmolLM cho browser / resource-constrained. Luôn benchmark trên <em>task của bạn</em>, không
+        dựa vào leaderboard tổng quát.
+      </p>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════ -->
+  <h2 id="hardware">42.4 Hardware: NPU &amp; SoC hiện đại</h2>
+
+  <p>
+    Điều làm on-device AI thực tế không phải chỉ model nhỏ hơn — mà là phần cứng chuyên dụng.
+    Mọi SoC hiện đại 2024–2026 đều tích hợp Neural Processing Unit (NPU) cùng CPU và GPU.
+  </p>
+
+  <svg class="diagram" viewBox="0 0 760 320" role="img" aria-label="Modern SoC with CPU GPU NPU">
+    <defs>
+      <marker id="arrowhead-soc" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#6f7c92"/>
+      </marker>
+    </defs>
+
+    <text x="380" y="22" text-anchor="middle" font-weight="700" font-size="14">Kiến trúc SoC hiện đại — CPU + GPU + NPU trên 1 chip</text>
+
+    <!-- SoC boundary -->
+    <rect x="30" y="40" width="700" height="260" rx="14" fill="rgba(26,31,42,0.8)" stroke="#2a3140" stroke-width="2"/>
+    <text x="50" y="62" font-size="11" fill="#6f7c92" font-family="monospace">SoC (System on Chip)</text>
+
+    <!-- CPU cluster -->
+    <rect class="node-blue" x="50" y="75" width="190" height="100" rx="8"/>
+    <text x="145" y="100" text-anchor="middle" font-weight="700" font-size="13">CPU</text>
+    <text x="145" y="118" text-anchor="middle" font-size="11">Performance cores (P)</text>
+    <text x="145" y="133" text-anchor="middle" font-size="11">Efficiency cores (E)</text>
+    <text x="145" y="150" text-anchor="middle" class="label-sm">General compute, OS, app logic</text>
+    <text x="145" y="164" text-anchor="middle" class="label-sm">AI: slow, ~1–5 TOPS</text>
+
+    <!-- GPU cluster -->
+    <rect class="node-accent" x="285" y="75" width="190" height="100" rx="8"/>
+    <text x="380" y="100" text-anchor="middle" font-weight="700" font-size="13">GPU</text>
+    <text x="380" y="118" text-anchor="middle" font-size="11">Shader cores (1000s)</text>
+    <text x="380" y="133" text-anchor="middle" font-size="11">Unified memory (Apple) /</text>
+    <text x="380" y="148" text-anchor="middle" font-size="11">VRAM (discrete)</text>
+    <text x="380" y="164" text-anchor="middle" class="label-sm">AI: medium, ~10–50 TOPS</text>
+
+    <!-- NPU cluster -->
+    <rect class="node-green" x="520" y="75" width="190" height="100" rx="8"/>
+    <text x="615" y="100" text-anchor="middle" font-weight="700" font-size="13">NPU / Neural Engine</text>
+    <text x="615" y="118" text-anchor="middle" font-size="11">MAC arrays (matrix multiply)</text>
+    <text x="615" y="133" text-anchor="middle" font-size="11">Dedicated AI accelerator</text>
+    <text x="615" y="148" text-anchor="middle" font-size="11">Low power, high throughput</text>
+    <text x="615" y="164" text-anchor="middle" class="label-sm">AI: fast, ~30–300 TOPS</text>
+
+    <!-- Shared memory bus -->
+    <rect x="50" y="200" width="660" height="30" rx="4" fill="rgba(124,196,255,0.08)" stroke="#2a3140"/>
+    <text x="380" y="219" text-anchor="middle" font-size="12" fill="#7cc4ff">Unified Memory Bus (CPU ↔ GPU ↔ NPU giao tiếp qua đây, zero-copy)</text>
+
+    <!-- Providers row -->
+    <text x="50" y="258" font-weight="600" font-size="12" fill="#aab4c5">NPU nổi bật 2026:</text>
+    <rect class="node-bg" x="50" y="265" width="120" height="26" rx="4"/>
+    <text x="110" y="283" text-anchor="middle" font-size="11">Apple ANE (38 TOPS)</text>
+    <rect class="node-bg" x="185" y="265" width="140" height="26" rx="4"/>
+    <text x="255" y="283" text-anchor="middle" font-size="11">Qualcomm Hexagon (75 TOPS)</text>
+    <rect class="node-bg" x="340" y="265" width="120" height="26" rx="4"/>
+    <text x="400" y="283" text-anchor="middle" font-size="11">Intel NPU (48 TOPS)</text>
+    <rect class="node-bg" x="475" y="265" width="110" height="26" rx="4"/>
+    <text x="530" y="283" text-anchor="middle" font-size="11">AMD XDNA2 (50 TOPS)</text>
+    <rect class="node-bg" x="600" y="265" width="120" height="26" rx="4"/>
+    <text x="660" y="283" text-anchor="middle" font-size="11">NVIDIA Jetson (275 TOPS)</text>
+  </svg>
+
+  <h3>Vì sao NPU quan trọng?</h3>
+  <p>
+    LLM inference là một chuỗi các <em>matrix multiplications</em> khổng lồ. CPU giỏi sequential logic,
+    GPU giỏi parallel float ops nhưng tốn điện, NPU được thiết kế riêng cho low-precision matrix ops
+    với energy efficiency cao gấp 5–15 lần GPU cho cùng throughput. Trên Apple M4:
+    ANE xử lý inference tiết kiệm ~8x điện so với GPU.
+  </p>
+
+  <!-- ═══════════════════════════════════════════════════ -->
+  <h2 id="frameworks">42.5 Frameworks cho On-device AI</h2>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Framework</th><th>Platform</th><th>Hỗ trợ NPU</th><th>Dùng khi nào</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Core ML</strong></td>
+          <td>iOS / macOS</td>
+          <td>Apple ANE (native)</td>
+          <td>Deploy .mlpackage trong iOS/macOS app; tự động sử dụng ANE</td>
+        </tr>
+        <tr>
+          <td><strong>MLX</strong></td>
+          <td>macOS / Apple Silicon</td>
+          <td>Apple GPU + ANE</td>
+          <td>Chạy Llama, Mistral, Phi trực tiếp trên Mac; Python / Swift API</td>
+        </tr>
+        <tr>
+          <td><strong>ONNX Runtime</strong></td>
+          <td>Windows / Android / Linux / iOS</td>
+          <td>DirectML, QNN (Qualcomm), CoreML EP</td>
+          <td>Cross-platform deployment; convert model sang .onnx</td>
+        </tr>
+        <tr>
+          <td><strong>llama.cpp</strong></td>
+          <td>Mọi platform</td>
+          <td>CPU SIMD, Metal (Apple), CUDA, Vulkan</td>
+          <td>Chạy GGUF-quantized models; lightweight; dễ embed</td>
+        </tr>
+        <tr>
+          <td><strong>MediaPipe LLM Inference</strong></td>
+          <td>Android / iOS / Web</td>
+          <td>GPU delegate, NNAPI (Android)</td>
+          <td>Gemini Nano và tương thích models trên mobile</td>
+        </tr>
+        <tr>
+          <td><strong>ExecuTorch</strong></td>
+          <td>iOS / Android / Embedded</td>
+          <td>XNNPACK, CoreML, Qualcomm QNN</td>
+          <td>Meta's runtime cho Llama trên mobile; production-grade</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Ví dụ: chạy Llama 3.2 3B bằng MLX (Python)</h3>
+  <pre><code><span class="cm"># Cài đặt: pip install mlx-lm</span>
+<span class="kw">from</span> mlx_lm <span class="kw">import</span> load, generate
+
+<span class="cm"># Load model + tokenizer — tự động dùng Apple Silicon GPU/ANE</span>
+model, tokenizer = <span class="fn">load</span>(<span class="str">"mlx-community/Llama-3.2-3B-Instruct-4bit"</span>)
+
+messages = [
+    {<span class="str">"role"</span>: <span class="str">"system"</span>, <span class="str">"content"</span>: <span class="str">"Bạn là trợ lý hữu ích."</span>},
+    {<span class="str">"role"</span>: <span class="str">"user"</span>,   <span class="str">"content"</span>: <span class="str">"Tóm tắt email này bằng 1 câu: ..."</span>},
+]
+prompt = tokenizer.<span class="fn">apply_chat_template</span>(
+    messages, add_generation_prompt=<span class="kw">True</span>, tokenize=<span class="kw">False</span>
+)
+
+response = <span class="fn">generate</span>(model, tokenizer, prompt=prompt, max_tokens=<span class="num">200</span>)
+<span class="fn">print</span>(response)
+<span class="cm"># Chạy hoàn toàn on-device, ~40 tokens/s trên M3 Pro</span></code></pre>
+
+  <h3>Ví dụ: deploy Core ML model trong iOS (Swift)</h3>
+  <pre><code><span class="kw">import</span> CoreML
+<span class="kw">import</span> Foundation
+
+<span class="cm">// Load compiled .mlpackage — tự động route sang ANE khi có thể</span>
+<span class="kw">let</span> config = MLModelConfiguration()
+config.computeUnits = .all  <span class="cm">// CPU + GPU + ANE</span>
+
+<span class="kw">let</span> model = <span class="kw">try</span> MyTextClassifier(configuration: config)
+
+<span class="cm">// Inference — synchronous, no network, &lt;5ms</span>
+<span class="kw">let</span> input = MyTextClassifierInput(text: userMessage)
+<span class="kw">let</span> output = <span class="kw">try</span> model.<span class="fn">prediction</span>(from: input)
+<span class="fn">handleResult</span>(output.label, confidence: output.labelProbability[output.label] ?? <span class="num">0</span>)</code></pre>
+
+  <!-- ═══════════════════════════════════════════════════ -->
+  <h2 id="quantization">42.6 Quantization cho Edge — Kỹ thuật nén model</h2>
+
+  <p>
+    Model 3B tham số với FP32 weights = ~12 GB — không fit vào RAM điện thoại.
+    Quantization giảm bits-per-weight, đổi lấy model nhỏ hơn và nhanh hơn, với
+    mất mát accuracy thường chấp nhận được.
+  </p>
+
+  <div class="tabs" data-tabs>
+    <div class="tab-buttons">
+      <button class="active">Q4_K_M (khuyến nghị mobile)</button>
+      <button>Q5_K_M (balance)</button>
+      <button>Q6_K (near-lossless)</button>
+      <button>W8A8 / FP8 (server edge)</button>
+    </div>
+    <div class="tab-panel active">
+      <p>
+        <strong>4-bit quantization với K-quant grouping</strong> — chuẩn mực cho mobile 2026.
+        Model 3B: ~1.8 GB, đủ chạy trên iPhone với 6GB RAM.
+        Accuracy giảm &lt;3% so với FP16 cho hầu hết tasks.
+        Sử dụng: GGUF format với llama.cpp, hoặc AWQ/GPTQ cho ExecuTorch.
+      </p>
+      <p class="label-sm" style="color:var(--text-mute)">→ Default lựa chọn cho mọi mobile deployment</p>
+    </div>
+    <div class="tab-panel">
+      <p>
+        <strong>5-bit với K-quant</strong> — trade-off ngọt ngào giữa size và quality.
+        Model 3B: ~2.2 GB. Accuracy giảm &lt;1.5%.
+        Tốt cho laptop/PC edge có 8+ GB RAM nhưng muốn tiết kiệm bộ nhớ.
+      </p>
+      <p class="label-sm" style="color:var(--text-mute)">→ Tốt cho laptop edge, không phải mobile</p>
+    </div>
+    <div class="tab-panel">
+      <p>
+        <strong>6-bit với K-quant</strong> — gần như không thể phân biệt với FP16 trên hầu hết tasks.
+        Model 3B: ~2.7 GB. Accuracy giảm &lt;0.5%.
+        Cho cases cần precision cao (medical, legal) nhưng vẫn muốn on-device.
+      </p>
+      <p class="label-sm" style="color:var(--text-mute)">→ Khi accuracy là ưu tiên tuyệt đối</p>
+    </div>
+    <div class="tab-panel">
+      <p>
+        <strong>8-bit weights + 8-bit activations</strong> hoặc <strong>FP8</strong> — thường dùng cho
+        "edge server" (NVIDIA Jetson, Qualcomm AI Box) hơn là mobile.
+        Giữ accuracy cao nhưng vẫn giảm ~50% memory so với FP16.
+        Mixed precision: FP8 cho attention, INT8 cho FFN layers.
+      </p>
+      <p class="label-sm" style="color:var(--text-mute)">→ Edge server / Jetson / on-prem inference</p>
+    </div>
+  </div>
+
+  <div class="callout warn">
+    <div class="icon">!</div>
+    <div>
+      <div class="title">Accuracy-size trade-off không đồng đều</div>
+      <p>
+        Không phải mọi task đều chịu quantization như nhau. Math reasoning và code generation
+        thường bị ảnh hưởng nhiều nhất bởi low-bit quantization. Summarization và classification
+        thường chịu tốt hơn. Luôn <strong>benchmark task cụ thể</strong> trước khi chọn quant level.
+      </p>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════ -->
+  <h2 id="specialized">42.7 Small nhưng chuyên biệt — SLM Strategy</h2>
+
+  <p>
+    Một trong những insight quan trọng nhất của 2025–2026: <strong>một SLM 3B fine-tuned
+    cho một task cụ thể thường đánh bại GPT-4-class model trên task đó</strong>.
+    Lý do:
+  </p>
+
+  <ul>
+    <li>
+      <strong>Overfit theo nghĩa tốt</strong>: Model học "shape" của task — format output, domain vocabulary,
+      reasoning pattern đặc thù. General model phải inference từ prompt; fine-tuned model đã internalize.
+    </li>
+    <li>
+      <strong>Không phải reasoning mà là pattern matching</strong>: 70–80% tasks trong production
+      không cần reasoning thực sự — chỉ cần nhận dạng pattern và transform. SLM làm điều này tốt.
+    </li>
+    <li>
+      <strong>Latency &amp; cost cliff</strong>: GPT-4 3–5 giây và $0.01/request.
+      SLM on-device: 0.3 giây và $0. Đây là sự khác biệt có thể quyết định UX.
+    </li>
+  </ul>
+
+  <h3>Khi nào nên fine-tune SLM thay vì dùng general LLM?</h3>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Signal</th><th>→ Dùng general LLM</th><th>→ Fine-tune SLM</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Volume requests</td>
+          <td>&lt;10k/ngày</td>
+          <td>&gt;100k/ngày</td>
+        </tr>
+        <tr>
+          <td>Task diversity</td>
+          <td>Nhiều loại task khác nhau</td>
+          <td>Một task lặp đi lặp lại</td>
+        </tr>
+        <tr>
+          <td>Training data</td>
+          <td>Ít hoặc không có labeled data</td>
+          <td>Có 1000+ examples chất lượng cao</td>
+        </tr>
+        <tr>
+          <td>Latency requirement</td>
+          <td>&gt;1 giây OK</td>
+          <td>&lt;500ms cần thiết</td>
+        </tr>
+        <tr>
+          <td>Privacy</td>
+          <td>Data có thể rời thiết bị</td>
+          <td>Data tuyệt đối không được gửi ra ngoài</td>
+        </tr>
+        <tr>
+          <td>Cost budget</td>
+          <td>Cloud cost chấp nhận được</td>
+          <td>Zero marginal cost cần thiết</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════ -->
+  <h2 id="hybrid-routing">42.8 Hybrid Edge-Cloud Routing</h2>
+
+  <p>
+    Không phải all-or-nothing. Pattern mạnh nhất 2026 là <strong>hybrid routing</strong>:
+    phân loại request theo độ phức tạp, route on-device khi có thể, escalate lên cloud khi cần.
+  </p>
+
+  <svg class="diagram" viewBox="0 0 760 270" role="img" aria-label="Hybrid edge-cloud routing flow">
+    <defs>
+      <marker id="arrowhead-routing" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#6f7c92"/>
+      </marker>
+    </defs>
+
+    <text x="380" y="22" text-anchor="middle" font-weight="700" font-size="14">Hybrid Routing: Complexity Classifier → Edge / Cloud</text>
+
+    <!-- Incoming request -->
+    <rect class="node-bg" x="20" y="50" width="120" height="45" rx="8"/>
+    <text x="80" y="70" text-anchor="middle" font-size="12" font-weight="600">Request</text>
+    <text x="80" y="86" text-anchor="middle" class="label-sm">user input</text>
+    <line class="arrow" marker-end="url(#arrowhead-routing)" x1="140" y1="73" x2="185" y2="73"/>
+
+    <!-- Classifier -->
+    <rect class="node-accent" x="185" y="40" width="160" height="65" rx="8"/>
+    <text x="265" y="62" text-anchor="middle" font-size="12" font-weight="600">Complexity</text>
+    <text x="265" y="78" text-anchor="middle" font-size="12" font-weight="600">Classifier</text>
+    <text x="265" y="96" text-anchor="middle" class="label-sm">SLM &lt;10M params, &lt;5ms</text>
+
+    <!-- Score labels from classifier -->
+    <text x="370" y="50" font-size="11" fill="#b4e07a">Simple (score &lt; 0.4)</text>
+    <text x="370" y="95" font-size="11" fill="#ffb86b">Medium (0.4–0.75)</text>
+    <text x="370" y="148" font-size="11" fill="#d3a4ff">Complex (score &gt; 0.75)</text>
+
+    <!-- Arrows from classifier -->
+    <line class="arrow" marker-end="url(#arrowhead-routing)" x1="345" y1="55" x2="430" y2="55"/>
+    <line class="arrow" marker-end="url(#arrowhead-routing)" x1="345" y1="72" x2="430" y2="100"/>
+    <line class="arrow" marker-end="url(#arrowhead-routing)" x1="345" y1="85" x2="430" y2="155"/>
+
+    <!-- On-device box -->
+    <rect class="node-green" x="430" y="38" width="165" height="48" rx="8"/>
+    <text x="513" y="58" text-anchor="middle" font-size="12" font-weight="600">On-Device SLM</text>
+    <text x="513" y="74" text-anchor="middle" class="label-sm">~50–200ms · $0 · private</text>
+
+    <!-- Edge-enhanced box -->
+    <rect class="node-blue" x="430" y="82" width="165" height="48" rx="8"/>
+    <text x="513" y="102" text-anchor="middle" font-size="12" font-weight="600">On-Device + Cache</text>
+    <text x="513" y="118" text-anchor="middle" class="label-sm">Retrieval augmented · local DB</text>
+
+    <!-- Cloud box -->
+    <rect class="node-bg" x="430" y="138" width="165" height="48" rx="8"/>
+    <text x="513" y="158" text-anchor="middle" font-size="12" font-weight="600">Cloud LLM</text>
+    <text x="513" y="174" text-anchor="middle" class="label-sm">GPT-4 / Claude · ~1–3s · cost $</text>
+
+    <!-- Response arrows -->
+    <line class="arrow" marker-end="url(#arrowhead-routing)" x1="595" y1="62" x2="650" y2="62" stroke-dasharray="4,3"/>
+    <line class="arrow" marker-end="url(#arrowhead-routing)" x1="595" y1="106" x2="650" y2="106" stroke-dasharray="4,3"/>
+    <line class="arrow" marker-end="url(#arrowhead-routing)" x1="595" y1="162" x2="650" y2="162" stroke-dasharray="4,3"/>
+
+    <!-- Response merge -->
+    <rect class="node-bg" x="650" y="50" width="100" height="120" rx="8"/>
+    <text x="700" y="100" text-anchor="middle" font-size="12" font-weight="600">Response</text>
+    <text x="700" y="116" text-anchor="middle" class="label-sm">unified UX</text>
+    <text x="700" y="134" text-anchor="middle" class="label-sm">user doesn't</text>
+    <text x="700" y="148" text-anchor="middle" class="label-sm">know diff</text>
+
+    <!-- Cost stats -->
+    <text x="380" y="220" text-anchor="middle" font-weight="600" font-size="12" fill="#aab4c5">Phân phối điển hình trong production:</text>
+    <rect class="node-green" x="100" y="235" width="160" height="25" rx="4"/>
+    <text x="180" y="252" text-anchor="middle" font-size="11">~65% on-device (free)</text>
+    <rect class="node-blue" x="280" y="235" width="200" height="25" rx="4"/>
+    <text x="380" y="252" text-anchor="middle" font-size="11">~20% edge+cache (near-free)</text>
+    <rect class="node-bg" x="500" y="235" width="160" height="25" rx="4"/>
+    <text x="580" y="252" text-anchor="middle" font-size="11">~15% cloud (tốn $)</text>
+  </svg>
+
+  <h3>Xây dựng complexity classifier</h3>
+  <p>
+    Classifier không cần phức tạp — thường một trong các approaches sau là đủ:
+  </p>
+  <ul>
+    <li><strong>Heuristic rules</strong>: Input length, số lượng entities, has code?, has math? → rule-based score nhanh</li>
+    <li><strong>Tiny classification model</strong>: DistilBERT hoặc tương đương fine-tuned trên labeled easy/hard examples. &lt;30MB, &lt;5ms inference</li>
+    <li><strong>SLM self-assessment</strong>: Yêu cầu SLM tự đánh giá confidence trên output — nếu thấp, escalate</li>
+    <li><strong>A/B fallback</strong>: Thử on-device, nếu output quality score dưới threshold, retry với cloud</li>
+  </ul>
+
+  <!-- ═══════════════════════════════════════════════════ -->
+  <h2 id="tool-use">42.9 Tool Use On-Device</h2>
+
+  <p>
+    Agents on-device không chỉ generate text — họ cần gọi tools: đọc calendar, tra contacts,
+    tạo reminder, query local database. iOS và Android đã có framework riêng cho điều này.
+  </p>
+
+  <h3>Apple App Intents + SiriKit</h3>
+  <pre><code><span class="kw">import</span> AppIntents
+
+<span class="cm">// Define một tool mà on-device agent có thể gọi</span>
+<span class="kw">struct</span> <span class="fn">CreateReminderIntent</span>: AppIntent {
+    <span class="kw">static var</span> title: LocalizedStringResource = <span class="str">"Tạo nhắc nhở"</span>
+    <span class="kw">static var</span> description = IntentDescription(<span class="str">"Tạo nhắc nhở mới trong Reminders"</span>)
+
+    <span class="kw">@Parameter</span>(title: <span class="str">"Nội dung"</span>) <span class="kw">var</span> content: String
+    <span class="kw">@Parameter</span>(title: <span class="str">"Thời gian"</span>) <span class="kw">var</span> dueDate: Date?
+
+    <span class="kw">func</span> <span class="fn">perform</span>() <span class="kw">async throws</span> -> <span class="kw">some</span> IntentResult {
+        <span class="kw">let</span> store = EKEventStore()
+        <span class="kw">let</span> reminder = EKReminder(eventStore: store)
+        reminder.title = content
+        <span class="cm">// ... save to EventKit</span>
+        <span class="kw">return</span> .<span class="fn">result</span>(value: <span class="str">"Đã tạo nhắc nhở: \(content)"</span>)
+    }
+}
+<span class="cm">// On-device agent (Apple Intelligence) có thể discover và call intent này
+// mà không cần user describe cách hoạt động — chỉ cần metadata trên</span></code></pre>
+
+  <h3>Local tool registry pattern</h3>
+  <p>
+    Đối với custom on-device agents (dùng MLX / llama.cpp), cần build local tool registry:
+  </p>
+  <pre><code><span class="cm"># Python / pseudo-code cho local agent tool loop</span>
+LOCAL_TOOLS = {
+    <span class="str">"get_calendar_events"</span>: <span class="kw">lambda</span> date: local_calendar_api.<span class="fn">get</span>(date),
+    <span class="str">"search_contacts"</span>:    <span class="kw">lambda</span> query: local_contacts_db.<span class="fn">search</span>(query),
+    <span class="str">"create_note"</span>:        <span class="kw">lambda</span> text: local_notes.<span class="fn">create</span>(text),
+    <span class="str">"query_local_db"</span>:     <span class="kw">lambda</span> sql: sqlite3.<span class="fn">execute</span>(sql),
+}
+
+<span class="kw">def</span> <span class="fn">agent_loop</span>(user_input: str):
+
+    messages = [system_prompt, {<span class="str">"role"</span>: <span class="str">"user"</span>, <span class="str">"content"</span>: user_input}]
+
+    <span class="kw">while True</span>:
+        <span class="cm"># Inference on-device — zero network</span>
+        response = on_device_model.<span class="fn">generate</span>(messages, tools=LOCAL_TOOLS)
+
+        <span class="kw">if</span> response.tool_calls:
+            <span class="kw">for</span> call <span class="kw">in</span> response.tool_calls:
+                result = LOCAL_TOOLS[call.name](**call.arguments)
+                messages.<span class="fn">append</span>({<span class="str">"role"</span>: <span class="str">"tool"</span>, <span class="str">"content"</span>: result})
+        <span class="kw">else</span>:
+            <span class="kw">return</span> response.content  <span class="cm"># final answer</span></code></pre>
+
+  <!-- ═══════════════════════════════════════════════════ -->
+  <h2 id="privacy">42.10 Privacy &amp; Private Cloud Compute (PCC)</h2>
+
+  <p>
+    PCC là pattern đáng để mọi AI Engineer học — không phải chỉ vì Apple dùng nó, mà vì
+    nó giải quyết câu hỏi căn bản: <em>"Làm sao dùng cloud AI nhưng vẫn bảo đảm privacy?"</em>
+  </p>
+
+  <svg class="diagram" viewBox="0 0 760 240" role="img" aria-label="Private Cloud Compute attestation flow">
+    <defs>
+      <marker id="arrowhead-pcc2" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#6f7c92"/>
+      </marker>
+    </defs>
+
+    <text x="380" y="22" text-anchor="middle" font-weight="700" font-size="14">PCC Flow: Attested compute, no data retention</text>
+
+    <!-- Device -->
+    <rect class="node-green" x="20" y="50" width="140" height="120" rx="8"/>
+    <text x="90" y="72" text-anchor="middle" font-size="12" font-weight="600">iPhone / Mac</text>
+    <text x="90" y="92" text-anchor="middle" class="label-sm">① Verify attestation cert</text>
+    <text x="90" y="108" text-anchor="middle" class="label-sm">(signed by Apple, matches</text>
+    <text x="90" y="122" text-anchor="middle" class="label-sm">known PCC software)</text>
+    <text x="90" y="140" text-anchor="middle" class="label-sm">② Encrypt request</text>
+    <text x="90" y="155" text-anchor="middle" class="label-sm">với PCC public key</text>
+
+    <!-- Arrow: device → PCC -->
+    <line class="arrow" marker-end="url(#arrowhead-pcc2)" x1="160" y1="110" x2="240" y2="110"/>
+    <text x="200" y="100" text-anchor="middle" class="label-sm">Encrypted</text>
+    <text x="200" y="116" text-anchor="middle" class="label-sm">request</text>
+
+    <!-- PCC server -->
+    <rect class="node-blue" x="240" y="50" width="280" height="150" rx="8"/>
+    <text x="380" y="75" text-anchor="middle" font-size="12" font-weight="600">Private Cloud Compute Node</text>
+    <text x="380" y="95" text-anchor="middle" class="label-sm">③ Process trong isolated container</text>
+    <text x="380" y="112" text-anchor="middle" class="label-sm">④ No persistent storage của user data</text>
+    <text x="380" y="129" text-anchor="middle" class="label-sm">⑤ Không có privileged access từ Apple</text>
+    <text x="380" y="146" text-anchor="middle" class="label-sm">⑥ Measurable via transparency log</text>
+    <text x="380" y="163" text-anchor="middle" class="label-sm">⑦ Container bị destroy sau response</text>
+    <text x="380" y="188" text-anchor="middle" font-size="11" fill="#7cc4ff">Software hash published → researchers verify</text>
+
+    <!-- Arrow: PCC → device -->
+    <line class="arrow" marker-end="url(#arrowhead-pcc2)" x1="520" y1="110" x2="600" y2="110"/>
+
+    <!-- Response box -->
+    <rect class="node-green" x="600" y="80" width="140" height="60" rx="8"/>
+    <text x="670" y="103" text-anchor="middle" font-size="12" font-weight="600">Encrypted</text>
+    <text x="670" y="119" text-anchor="middle" font-size="12" font-weight="600">Response</text>
+    <text x="670" y="134" text-anchor="middle" class="label-sm">only device decrypts</text>
+
+    <!-- Attestation note -->
+    <text x="380" y="218" text-anchor="middle" class="label-sm">Key guarantee: Apple không thể xem data ngay cả khi muốn — enforced by hardware + cryptography, not policy</text>
+  </svg>
+
+  <h3>Nguyên tắc PCC áp dụng được cho hệ thống của bạn</h3>
+  <ul>
+    <li><strong>Attestation</strong>: Server chứng minh cryptographically rằng nó chạy đúng software version — client verify trước khi gửi data</li>
+    <li><strong>Ephemeral processing</strong>: Data chỉ tồn tại trong RAM trong lúc xử lý, không persist</li>
+    <li><strong>Minimal footprint</strong>: Chỉ data tối thiểu cần thiết được gửi đi, không gửi thêm</li>
+    <li><strong>Public verifiability</strong>: Software hash public — ai cũng có thể verify là đúng cái đang chạy</li>
+  </ul>
+
+  <!-- ═══════════════════════════════════════════════════ -->
+  <h2 id="cost-energy">42.11 Cost &amp; Năng lượng — Giới hạn vật lý của Edge AI</h2>
+
+  <p>
+    On-device không có nghĩa là miễn phí — có cost về energy, nhiệt, và battery.
+    Đặc biệt quan trọng trên mobile.
+  </p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Thiết bị</th><th>Model (Q4)</th><th>Tokens/s</th><th>Power draw</th><th>Battery ảnh hưởng</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>iPhone 16 Pro (A18 Pro)</td>
+          <td>Llama 3.2 3B</td>
+          <td>~25–35 tok/s</td>
+          <td>~3–4W</td>
+          <td>~8–10% per phút inference liên tục</td>
+        </tr>
+        <tr>
+          <td>MacBook M4 Pro</td>
+          <td>Phi-4 14B</td>
+          <td>~40–60 tok/s</td>
+          <td>~15–25W</td>
+          <td>~5–7% per 5 phút; thermal throttle 10–15 phút</td>
+        </tr>
+        <tr>
+          <td>Pixel 9 Pro (Tensor G4)</td>
+          <td>Gemini Nano 2</td>
+          <td>~20–30 tok/s</td>
+          <td>~2–3W</td>
+          <td>~6% per phút inference liên tục</td>
+        </tr>
+        <tr>
+          <td>NVIDIA Jetson Orin NX</td>
+          <td>Llama 3.2 8B</td>
+          <td>~60–80 tok/s</td>
+          <td>~10–15W</td>
+          <td>N/A (plugged); thermal management cần thiết</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Best practices cho mobile energy</h3>
+  <ul>
+    <li><strong>Batch requests</strong>: Gộp nhiều small requests thành một inference pass thay vì nhiều lần</li>
+    <li><strong>Response caching</strong>: Cache kết quả cho identical hoặc similar queries — đặc biệt hiệu quả cho phân loại và embedding</li>
+    <li><strong>Background processing</strong>: Chạy inference khi đang sạc, không phải khi dùng thường xuyên</li>
+    <li><strong>Thermal monitoring</strong>: API nhiệt độ để throttle inference trước khi hệ điều hành force-throttle (gây jank)</li>
+    <li><strong>Chọn model size đúng</strong>: Đừng dùng 7B nếu 1.5B đủ cho task</li>
+  </ul>
+
+  <!-- ═══════════════════════════════════════════════════ -->
+  <h2 id="decision">42.12 Cloud vs Edge — Framework Quyết Định</h2>
+
+  <p>
+    Đây là câu hỏi bạn sẽ phải trả lời cho mỗi feature trong product. Không có đáp án
+    universal — phụ thuộc context. Framework dưới đây giúp structured thinking:
+  </p>
+
+  <svg class="diagram" viewBox="0 0 760 380" role="img" aria-label="Decision framework cloud vs edge">
+    <defs>
+      <marker id="arrowhead-dec" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#6f7c92"/>
+      </marker>
+    </defs>
+
+    <text x="380" y="22" text-anchor="middle" font-weight="700" font-size="14">Cloud vs Edge — Decision Tree</text>
+
+    <!-- Q1: Privacy sensitive? -->
+    <rect class="node-accent" x="280" y="38" width="200" height="44" rx="8"/>
+    <text x="380" y="57" text-anchor="middle" font-size="12" font-weight="600">Data có privacy sensitive?</text>
+    <text x="380" y="73" text-anchor="middle" class="label-sm">(y tế, tài chính, cá nhân)</text>
+
+    <line class="arrow" marker-end="url(#arrowhead-dec)" x1="280" y1="60" x2="160" y2="100"/>
+    <text x="195" y="88" class="label-sm" fill="#b4e07a">Có</text>
+    <line class="arrow" marker-end="url(#arrowhead-dec)" x1="480" y1="60" x2="580" y2="100"/>
+    <text x="548" y="88" class="label-sm" fill="#aab4c5">Không</text>
+
+    <!-- Left branch: must be on-device (unless PCC) -->
+    <rect class="node-green" x="60" y="100" width="200" height="54" rx="8"/>
+    <text x="160" y="120" text-anchor="middle" font-size="12" font-weight="600">On-Device hoặc PCC</text>
+    <text x="160" y="136" text-anchor="middle" class="label-sm">Privacy non-negotiable</text>
+    <text x="160" y="150" text-anchor="middle" class="label-sm">Cloud chỉ nếu có PCC-class guarantee</text>
+
+    <!-- Right branch: Q2 latency? -->
+    <rect class="node-bg" x="480" y="100" width="200" height="44" rx="8"/>
+    <text x="580" y="120" text-anchor="middle" font-size="12" font-weight="600">Latency requirement?</text>
+    <text x="580" y="136" text-anchor="middle" class="label-sm">&lt;200ms cần thiết?</text>
+
+    <line class="arrow" marker-end="url(#arrowhead-dec)" x1="480" y1="122" x2="380" y2="180"/>
+    <text x="405" y="160" class="label-sm" fill="#b4e07a">Có (&lt;200ms)</text>
+    <line class="arrow" marker-end="url(#arrowhead-dec)" x1="680" y1="122" x2="680" y2="180"/>
+    <text x="690" y="160" class="label-sm" fill="#aab4c5">Không</text>
+
+    <!-- Center: on-device for latency -->
+    <rect class="node-green" x="280" y="180" width="200" height="44" rx="8"/>
+    <text x="380" y="200" text-anchor="middle" font-size="12" font-weight="600">On-Device</text>
+    <text x="380" y="216" text-anchor="middle" class="label-sm">Latency drives architecture</text>
+
+    <!-- Right: Q3 complexity -->
+    <rect class="node-bg" x="580" y="180" width="160" height="44" rx="8"/>
+    <text x="660" y="200" text-anchor="middle" font-size="12" font-weight="600">Task complexity?</text>
+    <text x="660" y="216" text-anchor="middle" class="label-sm">Multi-step reasoning?</text>
+
+    <line class="arrow" marker-end="url(#arrowhead-dec)" x1="580" y1="202" x2="480" y2="260"/>
+    <text x="503" y="246" class="label-sm" fill="#b4e07a">Simple</text>
+    <line class="arrow" marker-end="url(#arrowhead-dec)" x1="740" y1="202" x2="740" y2="260"/>
+    <text x="746" y="246" class="label-sm" fill="#aab4c5">Complex</text>
+
+    <!-- On-device for simple -->
+    <rect class="node-green" x="370" y="260" width="210" height="44" rx="8"/>
+    <text x="475" y="280" text-anchor="middle" font-size="12" font-weight="600">On-Device (SLM)</text>
+    <text x="475" y="296" text-anchor="middle" class="label-sm">+ fallback hybrid nếu cần</text>
+
+    <!-- Cloud for complex -->
+    <rect class="node-blue" x="640" y="260" width="110" height="44" rx="8"/>
+    <text x="695" y="280" text-anchor="middle" font-size="12" font-weight="600">Cloud LLM</text>
+    <text x="695" y="296" text-anchor="middle" class="label-sm">GPT-4/Claude class</text>
+
+    <!-- Bottom note -->
+    <text x="380" y="348" text-anchor="middle" class="label-sm">Default recommendation 2026: Start on-device, add cloud escalation path only when needed</text>
+    <text x="380" y="366" text-anchor="middle" class="label-sm">Không phải either/or — thiết kế cho hybrid từ đầu</text>
+  </svg>
+
+  <!-- ═══════════════════════════════════════════════════ -->
+  <h2 id="shipping">42.13 Shipping Model trong App — Thực tế sản xuất</h2>
+
+  <p>
+    Build on-device AI ≠ chỉ viết code gọi model. Shipping model vào production app
+    có những thách thức riêng không giống cloud AI.
+  </p>
+
+  <h3>Model size và app bundle</h3>
+  <ul>
+    <li>
+      <strong>App Store / Play Store limits</strong>: iOS initial download &lt;4GB, Android OBB bundle &lt;2GB.
+      Model 3B Q4 = ~1.8GB — fit nhưng sát giới hạn. Cân nhắc model 1–1.5B nếu app có nhiều assets khác.
+    </li>
+    <li>
+      <strong>On-demand download</strong>: Dùng Background Assets (iOS) hoặc Play Asset Delivery (Android)
+      để download model sau install — user không phải đợi download model khi install app.
+    </li>
+    <li>
+      <strong>Shared model pool</strong>: Trên iOS, nhiều apps có thể share cùng một Core ML model
+      đã được system cache — Apple Intelligence infrastructure làm điều này cho system models.
+    </li>
+  </ul>
+
+  <h3>OTA model updates — cập nhật model không cần app update</h3>
+  <pre><code><span class="cm">// iOS: Check for model update trên app launch</span>
+<span class="kw">func</span> <span class="fn">checkModelUpdate</span>() <span class="kw">async</span> {
+    <span class="kw">let</span> currentVersion = UserDefaults.standard.<span class="fn">string</span>(forKey: <span class="str">"modelVersion"</span>) ?? <span class="str">"0"</span>
+    <span class="kw">let</span> latestVersion = <span class="kw">await</span> ModelUpdateService.<span class="fn">fetchLatestVersion</span>()
+
+    <span class="kw">guard</span> latestVersion > currentVersion <span class="kw">else</span> { <span class="kw">return</span> }
+
+    <span class="cm">// Download trong background khi trên WiFi + sạc</span>
+    <span class="kw">let</span> task = URLSession.background.<span class="fn">downloadTask</span>(with: modelURL)
+    task.<span class="fn">resume</span>()
+    <span class="cm">// Swap model sau khi download xong — zero downtime</span>
+}</code></pre>
+
+  <h3>A/B testing theo model version</h3>
+  <p>
+    Không khác gì A/B test feature thông thường, nhưng <em>model là biến</em>:
+  </p>
+  <ul>
+    <li>Assign users vào cohort (model_v1 vs model_v2) bằng user ID hash</li>
+    <li>Track quality metrics theo cohort: task completion rate, user corrections, session length</li>
+    <li>Rollout dần: 5% → 20% → 100% khi confident model mới tốt hơn</li>
+    <li>Rollback nếu quality metric tụt — swap về model_v1 qua remote config, không cần app update</li>
+  </ul>
+
+  <!-- ═══════════════════════════════════════════════════ -->
+  <h2 id="limits">42.14 Giới hạn Hiện tại của On-device AI</h2>
+
+  <p>
+    Không phải mọi thứ đều ổn trên edge. Năm 2026, vẫn còn các hard limits:
+  </p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Giới hạn</th><th>Trạng thái 2026</th><th>Horizon giải quyết</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Long context</strong></td>
+          <td>SLMs hỗ trợ 128k token nhưng đủ RAM để xử lý là khác — thực tế 16–32k trên mobile</td>
+          <td>Hardware RAM tăng, quantization tốt hơn; 2027–2028</td>
+        </tr>
+        <tr>
+          <td><strong>Multimodal chất lượng cao</strong></td>
+          <td>Vision + text lite tốt (Llama 3.2 Vision), nhưng video, audio chất lượng cao vẫn cần cloud</td>
+          <td>Dedicated multimodal NPUs; 2027</td>
+        </tr>
+        <tr>
+          <td><strong>Agent depth</strong></td>
+          <td>Multi-step agents với 20+ tool calls không ổn định trên SLMs — error accumulation</td>
+          <td>Better training data cho agentic SLMs; fine-tuning cho reliability</td>
+        </tr>
+        <tr>
+          <td><strong>Knowledge freshness</strong></td>
+          <td>On-device model có knowledge cutoff — không có real-time info</td>
+          <td>RAG local (user's own data) + hybrid query cho public info</td>
+        </tr>
+        <tr>
+          <td><strong>Reasoning deep</strong></td>
+          <td>SLMs kém hơn đáng kể so với GPT-4/Claude cho multi-hop reasoning phức tạp</td>
+          <td>Inference-time scaling techniques cho SLMs đang được research</td>
+        </tr>
+        <tr>
+          <td><strong>Model updates</strong></td>
+          <td>1.8GB OTA update tốn data/pin user; khó update thường xuyên</td>
+          <td>Delta updates (chỉ download phần thay đổi); adapter-based updates</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════ -->
+  <h2 id="old-vs-new">42.15 Cách cũ vs Cách hiện tại</h2>
+
+  <div class="tabs" data-tabs>
+    <div class="tab-buttons">
+      <button class="active">Cách cũ (2022–2023)</button>
+      <button>Cách hiện tại (2025–2026)</button>
+    </div>
+    <div class="tab-panel active">
+      <h4>All inference in cloud — pattern mặc định</h4>
+      <ul>
+        <li>Mọi AI request → API call → cloud → response. Không có ngoại lệ.</li>
+        <li>"On-device AI" = chỉ cho toy demos, không cho production.</li>
+        <li>Privacy concern → "just anonymize data trước khi gửi" (không đủ).</li>
+        <li>Offline mode → không có AI features khi offline.</li>
+        <li>Cost optimization → chỉ giảm số requests, không thay đổi kiến trúc.</li>
+        <li>Tất cả user data đi qua servers của provider — acceptable tradeoff theo tiêu chuẩn thời đó.</li>
+      </ul>
+      <p class="label-sm" style="color:var(--text-mute)">→ Simple kiến trúc nhưng costly, privacy-risky, và latency-bound</p>
+    </div>
+    <div class="tab-panel">
+      <h4>Smart hybrid: Edge first, cloud fallback</h4>
+      <ul>
+        <li><strong>Default on-device</strong>: Mọi task được thử on-device trước. Cloud là exception, không phải default.</li>
+        <li>Complexity classifier quyết định route — người dùng không biết (và không cần biết).</li>
+        <li>Privacy by architecture: sensitive data không bao giờ rời thiết bị — không phải by policy.</li>
+        <li>Offline mode có AI features đầy đủ cho common tasks.</li>
+        <li>Cost drastically thấp hơn: ~65–80% requests free (on-device), chỉ 15–20% tốn tiền cloud.</li>
+        <li>Fine-tuned SLM cho task cụ thể — không phải general model xử lý mọi thứ.</li>
+        <li>PCC hoặc equivalent cho cloud escalation — cryptographic guarantee, không phải policy promise.</li>
+      </ul>
+      <p class="label-sm" style="color:var(--text-mute)">→ Phức tạp hơn để build, nhưng tốt hơn về privacy, cost, latency, và user experience</p>
+    </div>
+  </div>
+
+  <div class="callout note">
+    <div class="icon">≡</div>
+    <div>
+      <div class="title">Shift mindset quan trọng nhất</div>
+      <p>
+        Từ <em>"cloud is default, on-device is special case"</em> sang
+        <strong>"on-device is default, cloud is escalation"</strong>.
+        Câu hỏi không còn là "tại sao dùng on-device?" mà là "tại sao cần cloud cho request này?".
+      </p>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════ -->
+  <h2 id="tom-tat">Tóm tắt &amp; Lời kết series</h2>
+
+  <ol>
+    <li>
+      <strong>5 lý do Edge AI</strong>: latency (zero network), privacy (data stays), offline,
+      cost (zero inference $), control (no vendor dependency). Giải quyết bằng on-device model.
+    </li>
+    <li>
+      <strong>Apple Intelligence</strong> là blueprint production hoàn chỉnh nhất: on-device ~3B,
+      PCC cho medium complexity, opt-in cloud cho hard queries. Semantic index local.
+    </li>
+    <li>
+      <strong>SLMs 2026 đáng biết</strong>: Phi-4 (reasoning), Gemini Nano (Android), Llama 3.2 1B/3B
+      (open, versatile), Qwen 2.5 (multilingual), SmolLM (browser/edge). Chọn theo task, không theo hype.
+    </li>
+    <li>
+      <strong>Hardware</strong>: NPU (Apple ANE, Qualcomm Hexagon, Intel NPU, AMD XDNA) là game-changer —
+      30–300 TOPS chuyên dụng cho AI inference, 5–15x hiệu quả hơn GPU về energy per TOPS.
+    </li>
+    <li>
+      <strong>Frameworks</strong>: Core ML (iOS/macOS native), MLX (Apple Silicon Python), ONNX Runtime
+      (cross-platform), llama.cpp (universal GGUF), ExecuTorch (Meta mobile production).
+    </li>
+    <li>
+      <strong>Quantization</strong>: Q4_K_M là default mobile (model 3B ≈ 1.8GB, accuracy loss &lt;3%).
+      Q6_K cho precision-critical. W8A8/FP8 cho edge servers. Luôn benchmark task cụ thể.
+    </li>
+    <li>
+      <strong>Fine-tuned 3B beats generic 70B</strong> trên task cụ thể — SLM strategy là legitimate
+      production approach, không chỉ cho cost saving mà còn quality.
+    </li>
+    <li>
+      <strong>Hybrid routing</strong>: Complexity classifier → 65% on-device / 20% edge+cache / 15% cloud.
+      Build classifier đơn giản (heuristic hoặc tiny model), không over-engineer.
+    </li>
+    <li>
+      <strong>Tool use on-device</strong>: App Intents (iOS), local tool registry pattern.
+      Agent có thể gọi calendar, contacts, local DB mà không cần network.
+    </li>
+    <li>
+      <strong>PCC pattern</strong>: Attestation + ephemeral processing + public verifiability.
+      Privacy không chỉ là policy — phải là kiến trúc và cryptographic guarantee.
+    </li>
+    <li>
+      <strong>Giới hạn thực tế</strong>: Long context, deep multimodal, complex reasoning vẫn cần cloud.
+      Design hybrid từ đầu để escalate seamlessly khi cần.
+    </li>
+    <li>
+      <strong>Mindset shift</strong>: On-device là default; cloud là exception. Ship → measure → iterate.
+    </li>
+  </ol>
+
+  <hr style="border:0; border-top: 1px solid var(--line-soft); margin: 48px 0 40px;">
+
+  <div class="callout tip">
+    <div class="icon">★</div>
+    <div>
+      <div class="title">Lời kết — Cảm ơn bạn đã đọc toàn bộ series</div>
+      <p>
+        Bạn vừa đi qua hành trình từ <em>AI Engineering là gì</em> đến <em>Edge &amp; On-device Agents</em> —
+        một snapshot của field vào năm 2026. Đây không phải tài liệu bất biến: tuần tới sẽ có model mới,
+        framework mới, pattern mới. Nhưng những nguyên tắc cốt lõi sẽ còn đó: <strong>eval rigorously</strong>,
+        <strong>ship incrementally</strong>, <strong>observe carefully</strong>, và luôn đặt câu hỏi
+        <em>"điều này có thực sự giúp được người dùng không?"</em>
+      </p>
+      <p>
+        AI Engineering là một trong những ngành thú vị nhất để theo đuổi ngay lúc này — không phải vì nó
+        dễ, mà vì nó đang được viết ra ngay trước mắt chúng ta. Mỗi hệ thống bạn build, mỗi bug bạn debug,
+        mỗi eval bạn chạy đều là đóng góp vào body of knowledge chung của cả community.
+      </p>
+      <p>
+        <strong>Ship cái gì đó. Đo lường nó. Cải thiện liên tục.</strong>
+        Đó là tất cả. Chúc bạn build được những sản phẩm AI tuyệt vời.
+      </p>
+      <p>
+        Quay lại <a href="../index.html">Mục lục</a> để xem toàn bộ series,
+        hoặc chia sẻ feedback để series ngày càng tốt hơn.
+      </p>
+    </div>
+  </div>
+
+  <nav class="section-footer">
+    <a href="41-distributed-agent-runtimes.html" class="prev">
+      <div class="label">← trước</div>
+      <div class="title">41 — Distributed Agent Runtimes</div>
+    </a>
+    <a href="../index.html" class="next">
+      <div class="label">Quay lại Mục lục →</div>
+      <div class="title">← Mục lục</div>
+    </a>
+  </nav>
+
+</main>
+
+<script src="../assets/script.js"></script>
+</body>
+</html>

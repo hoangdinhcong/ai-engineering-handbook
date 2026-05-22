@@ -1,0 +1,664 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>02 · Foundation Models cơ bản — AI Engineering</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<nav class="top-nav">
+  <div class="brand"><span class="dot"></span> AI Engineering</div>
+  <div class="crumbs"><a href="../index.html">Mục lục</a> › Phần 1 · <span>02 — Foundation Models cơ bản</span></div>
+  <div class="nav-actions">
+    <a href="01-what-is-ai-engineering.html">← Trước</a>
+    <a href="03-how-llm-works.html">Tiếp →</a>
+  </div>
+</nav>
+
+<main class="page">
+
+  <section class="hero">
+    <span class="eyebrow">Phần 1 · §02</span>
+    <h1>Foundation Models cơ bản</h1>
+    <p class="lede">
+      Hiểu Foundation Model là gì, vòng đời training của một LLM, Scaling Laws,
+      Emergent Abilities, và cách chọn giữa closed-source vs open-source.
+    </p>
+    <img class="hero-image" src="../images/02-foundation-models.png" alt="Hero illustration" onerror="this.style.display='none'">
+  </section>
+
+  <aside class="toc">
+    <div class="toc-title">Trong trang này</div>
+    <ul>
+      <li><a href="#dinh-nghia">2.1 Foundation Model là gì?</a></li>
+      <li><a href="#vong-doi">2.2 Vòng đời training của LLM</a></li>
+      <li><a href="#scaling-laws">2.3 Scaling Laws</a></li>
+      <li><a href="#emergent">2.4 Emergent Abilities</a></li>
+      <li><a href="#open-vs-closed">2.5 Open-source vs Closed-source</a></li>
+      <li><a href="#modalities">2.6 Modalities</a></li>
+      <li><a href="#tom-tat">Tóm tắt</a></li>
+    </ul>
+  </aside>
+
+  <!-- ─────────────────────────────────────────────── -->
+  <h2 id="dinh-nghia">2.1 Foundation Model là gì?</h2>
+
+  <p>
+    <strong>Foundation Model</strong> (còn gọi là <em>base model</em> hay <em>pre-trained model</em>) là một mô hình AI được
+    training trên lượng dữ liệu khổng lồ theo phương pháp self-supervised, tạo ra một "nền tảng" chung
+    có thể được fine-tune hoặc prompting để giải quyết rất nhiều task khác nhau mà không cần phải
+    train lại từ đầu.
+  </p>
+  <p>
+    Khái niệm này được Stanford đặt tên chính thức vào năm 2021 trong báo cáo
+    <em>"On the Opportunities and Risks of Foundation Models"</em>.
+    Trước đó, người ta thường gọi chúng là "large pre-trained models" hay đơn giản là "GPT-n".
+  </p>
+
+  <div class="callout note">
+    <div class="icon">≡</div>
+    <div>
+      <div class="title">Tại sao gọi là "foundation"?</div>
+      <p>
+        Giống như nền móng của tòa nhà — một foundation model làm nền cho nhiều ứng dụng
+        phía trên (chat, code gen, search, summarization…) thay vì mỗi ứng dụng phải xây móng riêng.
+      </p>
+    </div>
+  </div>
+
+  <h3>4 đặc điểm cốt lõi</h3>
+
+  <div class="grid-2">
+    <div class="card">
+      <h4>① Quy mô (Scale)</h4>
+      <p>
+        Hàng tỷ đến hàng nghìn tỷ parameters. Training trên hàng trăm tỷ đến hàng nghìn tỷ tokens.
+        Chi phí training một frontier model có thể lên đến hàng trăm triệu USD.
+      </p>
+    </div>
+    <div class="card">
+      <h4>② Self-supervised learning</h4>
+      <p>
+        Không cần label thủ công. Model tự tạo supervision signal từ dữ liệu thô —
+        ví dụ: predict token tiếp theo, hoặc predict phần bị che (masked language model).
+      </p>
+    </div>
+    <div class="card">
+      <h4>③ Transferable (chuyển đổi được)</h4>
+      <p>
+        Sau khi pre-train, model mang tri thức tổng quát có thể áp dụng cho hàng trăm
+        downstream tasks mà chỉ cần fine-tune nhỏ hoặc chỉ cần prompting.
+      </p>
+    </div>
+    <div class="card">
+      <h4>④ Emergent abilities</h4>
+      <p>
+        Xuất hiện các khả năng không được dạy trực tiếp, chỉ nổi lên khi model đạt
+        ngưỡng quy mô nhất định. Xem mục 2.4 để hiểu rõ hơn.
+      </p>
+    </div>
+  </div>
+
+  <h3>Các Foundation Model phổ biến hiện nay</h3>
+
+  <div class="tabs" data-tabs>
+    <div class="tab-buttons">
+      <button class="active">Closed-source APIs</button>
+      <button>Open-weight Models</button>
+    </div>
+    <div class="tab-panel active">
+      <ul>
+        <li>
+          <strong>GPT-4o, GPT-4.1, o3</strong> <span class="tag">OpenAI</span> —
+          flagship models của OpenAI; multimodal, context dài; o3 đặc biệt mạnh về reasoning
+        </li>
+        <li>
+          <strong>Claude 3.5 Sonnet, Claude 3.7 Sonnet, Claude Opus 4</strong> <span class="tag blue">Anthropic</span> —
+          nổi tiếng về safety, instruction-following tốt, context 200k tokens
+        </li>
+        <li>
+          <strong>Gemini 2.0 Flash, Gemini 2.5 Pro</strong> <span class="tag green">Google</span> —
+          tích hợp sâu với Google ecosystem, context 1M–2M tokens, multimodal native
+        </li>
+        <li>
+          <strong>Grok 3</strong> <span class="tag lilac">xAI</span> —
+          tích hợp với X/Twitter data, thinking mode cho reasoning phức tạp
+        </li>
+      </ul>
+    </div>
+    <div class="tab-panel">
+      <ul>
+        <li>
+          <strong>Llama 3.1, Llama 3.3, Llama 4</strong> <span class="tag">Meta</span> —
+          family mạnh nhất trong open-weight; Llama 4 multimodal native; có thể self-host
+        </li>
+        <li>
+          <strong>Mistral, Mixtral (MoE), Mistral Large</strong> <span class="tag blue">Mistral AI</span> —
+          compact, hiệu quả; Mixtral dùng kiến trúc Mixture-of-Experts
+        </li>
+        <li>
+          <strong>DeepSeek-V3, DeepSeek-R1</strong> <span class="tag green">DeepSeek</span> —
+          training cost thấp bất ngờ; R1 dùng pure RL để đạt reasoning tốt; gây chấn động đầu 2025
+        </li>
+        <li>
+          <strong>Qwen2.5, QwQ</strong> <span class="tag lilac">Alibaba</span> —
+          mạnh về tiếng Trung và đa ngôn ngữ; QwQ là reasoning model; Qwen2.5-Coder xuất sắc về code
+        </li>
+        <li>
+          <strong>Gemma 3</strong> <span class="tag">Google</span> —
+          lightweight, tối ưu cho edge/local; dễ fine-tune với ít dữ liệu
+        </li>
+        <li>
+          <strong>Phi-4</strong> <span class="tag blue">Microsoft</span> —
+          small model (~14B) nhưng hiệu suất cao nhờ data curation kỹ lưỡng
+        </li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- ─────────────────────────────────────────────── -->
+  <h2 id="vong-doi">2.2 Vòng đời training của một LLM</h2>
+
+  <p>
+    Một LLM production hiện đại không đơn giản chỉ là "train một mô hình rồi deploy".
+    Nó trải qua ít nhất 3–4 giai đoạn lớn, mỗi giai đoạn có mục tiêu khác nhau.
+  </p>
+
+  <svg class="diagram" viewBox="0 0 760 280" role="img" aria-label="LLM training lifecycle pipeline">
+    <defs>
+      <marker id="arrowhead2" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#6f7c92"/>
+      </marker>
+    </defs>
+
+    <!-- Stage 1: Pre-training -->
+    <rect class="node-accent" x="20" y="60" width="155" height="120" rx="10"/>
+    <text x="97" y="95" text-anchor="middle" font-weight="700" font-size="13">① Pre-training</text>
+    <text x="97" y="114" text-anchor="middle" font-size="11">Trillion-scale tokens</text>
+    <text x="97" y="132" text-anchor="middle" font-size="11">Internet, books, code</text>
+    <text x="97" y="150" text-anchor="middle" font-size="11" class="label-sm">→ Base Model</text>
+    <text x="97" y="168" text-anchor="middle" font-size="11" class="label-sm">(raw, unaligned)</text>
+
+    <!-- Arrow 1 -->
+    <line class="arrow" x1="175" y1="120" x2="205" y2="120" marker-end="url(#arrowhead2)"/>
+
+    <!-- Stage 2: SFT -->
+    <rect class="node-blue" x="207" y="60" width="155" height="120" rx="10"/>
+    <text x="285" y="95" text-anchor="middle" font-weight="700" font-size="13">② SFT</text>
+    <text x="285" y="114" text-anchor="middle" font-size="11">Supervised Fine-Tuning</text>
+    <text x="285" y="132" text-anchor="middle" font-size="11">Human-written Q&amp;A</text>
+    <text x="285" y="150" text-anchor="middle" font-size="11">instruction pairs</text>
+    <text x="285" y="168" text-anchor="middle" font-size="11" class="label-sm">→ Instruction-tuned</text>
+
+    <!-- Arrow 2 -->
+    <line class="arrow" x1="362" y1="120" x2="392" y2="120" marker-end="url(#arrowhead2)"/>
+
+    <!-- Stage 3: RLHF/DPO -->
+    <rect class="node-green" x="394" y="60" width="155" height="120" rx="10"/>
+    <text x="472" y="89" text-anchor="middle" font-weight="700" font-size="13">③ Preference Tuning</text>
+    <text x="472" y="108" text-anchor="middle" font-size="11">RLHF / DPO / RLAIF</text>
+    <text x="472" y="126" text-anchor="middle" font-size="11">Human rankings</text>
+    <text x="472" y="144" text-anchor="middle" font-size="11">or AI feedback</text>
+    <text x="472" y="162" text-anchor="middle" font-size="11" class="label-sm">→ Helpful &amp; safe</text>
+
+    <!-- Arrow 3 -->
+    <line class="arrow" x1="549" y1="120" x2="579" y2="120" marker-end="url(#arrowhead2)"/>
+
+    <!-- Stage 4: Specialized -->
+    <rect class="node-bg" x="581" y="60" width="155" height="120" rx="10"/>
+    <text x="659" y="95" text-anchor="middle" font-weight="700" font-size="13">④ Specialized</text>
+    <text x="659" y="114" text-anchor="middle" font-size="11">Post-training</text>
+    <text x="659" y="132" text-anchor="middle" font-size="11">Reasoning (RL),</text>
+    <text x="659" y="150" text-anchor="middle" font-size="11">code, domain, lang</text>
+    <text x="659" y="168" text-anchor="middle" font-size="11" class="label-sm">→ Deployment-ready</text>
+
+    <!-- Labels bottom -->
+    <text x="380" y="230" text-anchor="middle" font-size="12" class="label-sm">Compute: hàng tuần → hàng ngày → giờ → phút khi đến giai đoạn sau</text>
+    <text x="380" y="250" text-anchor="middle" font-size="12" class="label-sm">Dataset size: giảm dần — nhưng chất lượng tăng dần qua mỗi giai đoạn</text>
+  </svg>
+
+  <h3>Giai đoạn 1: Pre-training</h3>
+  <p>
+    Đây là giai đoạn tốn kém nhất — chiếm 95%+ tổng chi phí training. Model học bằng cách
+    <strong>predict token tiếp theo</strong> (autoregressive) trên corpus khổng lồ: Common Crawl,
+    Wikipedia, books, GitHub, StackOverflow, v.v. Sau giai đoạn này, model có "world knowledge"
+    nhưng chưa biết cách follow instruction hay hội thoại một cách tự nhiên.
+  </p>
+
+  <h3>Giai đoạn 2: Supervised Fine-Tuning (SFT)</h3>
+  <p>
+    Dùng dataset nhỏ hơn nhiều (~10K–1M examples) gồm các cặp <code>(instruction, response)</code>
+    do human viết hoặc tổng hợp. Mục tiêu: dạy model theo instruction, trả lời đúng format,
+    giữ conversation context. Ví dụ: OpenAI dùng InstructGPT approach; Anthropic dùng
+    Constitutional AI.
+  </p>
+
+  <h3>Giai đoạn 3: Preference Tuning</h3>
+  <p>
+    Aligning model với preference của con người — làm cho model "helpful, harmless, honest".
+    Có nhiều kỹ thuật:
+  </p>
+  <ul>
+    <li>
+      <strong>RLHF</strong> (Reinforcement Learning from Human Feedback) — InstructGPT, ChatGPT:
+      train reward model từ human rankings, sau đó dùng PPO để tối ưu language model
+    </li>
+    <li>
+      <strong>DPO</strong> (Direct Preference Optimization) — đơn giản hơn RLHF, không cần
+      reward model riêng; dùng trực tiếp preference pairs (chosen vs rejected)
+    </li>
+    <li>
+      <strong>RLAIF</strong> (RL from AI Feedback) — dùng một LLM khác làm "AI judge"
+      để tạo feedback thay vì human, giúp scale rẻ hơn
+    </li>
+  </ul>
+
+  <h3>Giai đoạn 4: Specialized post-training</h3>
+  <p>
+    Tùy mục tiêu: fine-tune thêm cho reasoning (DeepSeek-R1 dùng pure RL với verifiable rewards),
+    coding (CodeLlama, DeepSeek-Coder), ngôn ngữ cụ thể, hoặc domain (y tế, pháp lý).
+    Các "thinking models" như o1, o3, QwQ được train ở đây để tạo
+    <em>chain-of-thought nội bộ</em> trước khi trả lời.
+  </p>
+
+  <div class="callout tip">
+    <div class="icon">★</div>
+    <div>
+      <div class="title">Insight cho AI Engineer</div>
+      <p>
+        Bạn hầu như không tham gia vào giai đoạn 1-3. Nhưng hiểu pipeline này giúp bạn
+        hiểu <em>tại sao</em> model có những behavior nhất định — tại sao GPT-4 "ngoan"
+        hơn Llama base, tại sao reasoning models suy nghĩ lâu hơn, tại sao fine-tuned models
+        thường kém creative hơn base models.
+      </p>
+    </div>
+  </div>
+
+  <!-- ─────────────────────────────────────────────── -->
+  <h2 id="scaling-laws">2.3 Scaling Laws</h2>
+
+  <p>
+    Scaling Laws là tập hợp các quan sát thực nghiệm về việc hiệu suất của LLM
+    thay đổi như thế nào khi tăng quy mô: số lượng parameters (<em>N</em>),
+    lượng training data (<em>D</em>), và compute (<em>C</em>).
+  </p>
+
+  <h3>Kaplan et al. 2020 — OpenAI</h3>
+  <p>
+    Bài báo "Scaling Laws for Neural Language Models" của OpenAI phát hiện rằng
+    model loss giảm theo <strong>power law</strong> khi tăng N, D, hoặc C — và quan trọng hơn,
+    ba chiều này có thể đánh đổi cho nhau một cách dự đoán được.
+    Kết luận ban đầu: với fixed compute budget, nên <em>ưu tiên tăng model size</em> hơn là
+    tăng training data.
+  </p>
+
+  <h3>Chinchilla (Hoffmann et al. 2022) — DeepMind</h3>
+  <p>
+    Chinchilla "lật ngược" kết luận Kaplan. Với cùng compute budget,
+    nên <strong>scale đồng đều</strong> giữa model size và data:
+  </p>
+
+  <div class="card">
+    <p style="text-align:center; font-size: 22px; letter-spacing: 0.02em;">
+      <strong style="color: var(--accent);">D ≈ 20 × N</strong>
+    </p>
+    <p style="text-align:center; color: var(--text-soft); margin: 4px 0 0;">
+      Tokens training tối ưu ≈ 20 lần số parameters
+    </p>
+  </div>
+
+  <p>
+    Ví dụ: model 7B parameters nên được train trên ≈ 140B tokens để "compute-optimal".
+    Llama 2 (7B) được train trên 2T tokens — <em>over-trained</em> so với Chinchilla optimal,
+    nhưng đây là chiến lược cố ý vì inference cost thấp hơn với model nhỏ hơn.
+  </p>
+
+  <div class="callout note">
+    <div class="icon">≡</div>
+    <div>
+      <div class="title">Training-optimal vs Inference-optimal</div>
+      <p>
+        Với các công ty phục vụ hàng triệu user, <strong>inference cost quan trọng hơn training cost</strong>.
+        Nên "over-train" model nhỏ hơn trên nhiều data hơn để có model nhỏ nhưng mạnh —
+        cost để serve rẻ hơn rất nhiều. Đây là lý do Llama và Mistral models nhỏ nhưng performant.
+      </p>
+    </div>
+  </div>
+
+  <h3>Inference-time scaling — Reasoning Models</h3>
+  <p>
+    Frontier mới nhất (2024-2025): thay vì chỉ scale training compute, có thể scale
+    <strong>inference-time compute</strong> bằng cách cho model "think longer".
+    OpenAI o1/o3, DeepSeek-R1, Gemini Thinking đều dùng approach này —
+    tạo chain-of-thought nội bộ trước khi trả lời.
+  </p>
+  <p>
+    Hệ quả với AI Engineer: reasoning models <strong>tốn token nhiều hơn</strong> (và đắt hơn),
+    nhưng mạnh hơn đáng kể với các task phức tạp như toán, code, logic.
+    Dùng cho đúng use case — không nhất thiết cho mọi task.
+  </p>
+
+  <details>
+    <summary>Scaling Laws có giới hạn không?</summary>
+    <p>
+      Có bằng chứng cho thấy scaling laws "khuỵu" ở một số domain và quy mô.
+      "Data wall" — chạm giới hạn dữ liệu internet chất lượng — là lo ngại thực sự.
+      Một số nhà nghiên cứu cho rằng phải chuyển sang synthetic data, multimodal data,
+      hoặc kiến trúc mới. OpenAI o-series và inference-time scaling là một hướng đi để
+      thoát khỏi bottleneck của pre-training data.
+    </p>
+  </details>
+
+  <!-- ─────────────────────────────────────────────── -->
+  <h2 id="emergent">2.4 Emergent Abilities</h2>
+
+  <p>
+    <strong>Emergent abilities</strong> là các khả năng chỉ xuất hiện khi model đạt ngưỡng
+    quy mô nhất định — không có ở model nhỏ, đột ngột có ở model lớn —
+    như thể "bật công tắc" hơn là cải thiện dần dần.
+  </p>
+
+  <div class="callout warn">
+    <div class="icon">!</div>
+    <div>
+      <div class="title">Tranh luận: "Emergent" hay chỉ là metric artifact?</div>
+      <p>
+        Schaeffer et al. (2023) lập luận rằng nhiều "emergent abilities" là artifact của
+        việc dùng discontinuous metrics (như exact-match accuracy). Khi dùng continuous metrics
+        (log-likelihood), sự cải thiện là mượt mà và có thể dự đoán được.
+        Tuy nhiên, từ góc độ practical, hành vi quan sát được vẫn rất quan trọng — threshold effects có thật.
+      </p>
+    </div>
+  </div>
+
+  <h3>Các emergent abilities quan trọng với AI Engineer</h3>
+
+  <div class="grid-2">
+    <div class="card">
+      <h4>In-context Learning (ICL)</h4>
+      <p>
+        Model học từ ví dụ trong prompt mà không cần update weights.
+        Few-shot prompting chỉ hoạt động tốt ở model đủ lớn.
+        Đây là nền tảng của hầu hết prompt engineering techniques.
+      </p>
+    </div>
+    <div class="card">
+      <h4>Chain-of-Thought (CoT)</h4>
+      <p>
+        Khi được hướng dẫn "think step by step", model lớn thực sự cải thiện
+        accuracy trên các bài toán reasoning — trong khi model nhỏ không.
+        Nền tảng của reasoning models hiện đại.
+      </p>
+    </div>
+    <div class="card">
+      <h4>Instruction Following</h4>
+      <p>
+        Khả năng hiểu và follow complex instructions (format JSON, viết code theo spec,
+        đóng vai nhân vật) chỉ đáng tin cậy ở model đủ mạnh + SFT.
+      </p>
+    </div>
+    <div class="card">
+      <h4>Tool Use &amp; Code Gen</h4>
+      <p>
+        Gọi external APIs, viết code runnable, debug errors.
+        Foundation cho agentic systems. Models nhỏ thường thiếu reliability cần thiết.
+      </p>
+    </div>
+  </div>
+
+  <p>
+    Từ góc độ AI Engineer, điều này có nghĩa: <strong>đừng dùng model nhỏ/rẻ cho mọi task</strong>.
+    Những task cần reasoning, instruction-following phức tạp, hay tool use cần model đủ mạnh.
+    Biết chọn đúng model tier là một kỹ năng quan trọng.
+  </p>
+
+  <!-- ─────────────────────────────────────────────── -->
+  <h2 id="open-vs-closed">2.5 Open-source vs Closed-source</h2>
+
+  <p>
+    Một trong những quyết định đầu tiên khi bắt đầu dự án AI: dùng model nào?
+    Hai lựa chọn lớn là <strong>closed-source via API</strong> và <strong>open-weight self-hosted</strong>.
+    (Lưu ý: "open-source" trong LLM thường chỉ có nghĩa là weights được publish, không phải toàn bộ training code và data.)
+  </p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Tiêu chí</th>
+          <th>Closed-source API</th>
+          <th>Open-weight Self-hosted</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Hiệu suất frontier</strong></td>
+          <td><span class="tag green">✓ Dẫn đầu</span> GPT-4o, Claude 3.7, Gemini 2.5</td>
+          <td>Gần đây rút ngắn khoảng cách đáng kể (Llama 4, DeepSeek-V3)</td>
+        </tr>
+        <tr>
+          <td><strong>Chi phí</strong></td>
+          <td>Pay-per-token, đắt ở scale lớn; dễ dự toán nhỏ</td>
+          <td>Đắt upfront (GPU), rẻ hơn ở high-volume; phức tạp hơn</td>
+        </tr>
+        <tr>
+          <td><strong>Latency</strong></td>
+          <td>Phụ thuộc provider; thường 0.5–3s TTFT; rate limits</td>
+          <td>Kiểm soát hoàn toàn; có thể optimize cho latency</td>
+        </tr>
+        <tr>
+          <td><strong>Data privacy</strong></td>
+          <td><span class="tag">Rủi ro</span> Data gửi lên third-party</td>
+          <td><span class="tag green">✓ Kiểm soát hoàn toàn</span> — on-prem, VPC</td>
+        </tr>
+        <tr>
+          <td><strong>Customization</strong></td>
+          <td>Fine-tuning hạn chế (OpenAI fine-tune API)</td>
+          <td><span class="tag green">✓ Hoàn toàn</span> — fine-tune, merge, quantize</td>
+        </tr>
+        <tr>
+          <td><strong>Reliability</strong></td>
+          <td>SLA của provider; outages ảnh hưởng bạn</td>
+          <td>Tự chịu trách nhiệm; cần MLOps team</td>
+        </tr>
+        <tr>
+          <td><strong>Time to market</strong></td>
+          <td><span class="tag green">✓ Nhanh nhất</span> — vài dòng code là có</td>
+          <td>Setup infra tốn thời gian; cần DevOps/MLOps</td>
+        </tr>
+        <tr>
+          <td><strong>Vendor lock-in</strong></td>
+          <td><span class="tag">Rủi ro cao</span> API changes, price hikes</td>
+          <td>Không bị lock-in; có thể swap models</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Rule of thumb để chọn</h3>
+  <ul>
+    <li>
+      <strong>Bắt đầu với closed-source API</strong> nếu đang prototype, team nhỏ,
+      hoặc cần frontier performance ngay. Dùng OpenAI/Anthropic/Google.
+    </li>
+    <li>
+      <strong>Chuyển sang open-weight</strong> khi: data có tính nhạy cảm cao,
+      volume đủ lớn để amortize GPU cost, cần fine-tuning sâu, hoặc cần kiểm soát
+      model version (quan trọng cho reproducibility).
+    </li>
+    <li>
+      <strong>Dùng cả hai</strong>: dùng API cho tasks phức tạp (orchestration, planning),
+      self-host model nhỏ hơn cho tasks lặp lại nhiều (classification, extraction).
+    </li>
+    <li>
+      Tham khảo <strong>LMSYS Chatbot Arena</strong> leaderboard để so sánh hiệu suất
+      theo use case cụ thể — không có model nào tốt nhất cho mọi task.
+    </li>
+  </ul>
+
+  <div class="callout tip">
+    <div class="icon">★</div>
+    <div>
+      <div class="title">Thiết kế Model-agnostic ngay từ đầu</div>
+      <p>
+        Wrap mọi LLM call đằng sau một interface chung (adapter pattern). Dùng
+        <code>LiteLLM</code> hoặc tự viết adapter layer. Điều này giúp bạn swap model
+        mà không cần refactor toàn bộ code — đặc biệt quan trọng vì model landscape
+        thay đổi rất nhanh.
+      </p>
+    </div>
+  </div>
+
+  <!-- ─────────────────────────────────────────────── -->
+  <h2 id="modalities">2.6 Modalities</h2>
+
+  <p>
+    Foundation models không chỉ xử lý text. Hiểu các modality khác nhau giúp bạn
+    chọn đúng model cho từng use case và thiết kế system phức tạp hơn.
+  </p>
+
+  <div class="tabs" data-tabs>
+    <div class="tab-buttons">
+      <button class="active">Text</button>
+      <button>Vision / VLM</button>
+      <button>Audio</button>
+      <button>Embeddings</button>
+      <button>Video & Native Multi</button>
+    </div>
+    <div class="tab-panel active">
+      <h4>Text LLMs</h4>
+      <p>
+        Input và output đều là text (token). Bao gồm hầu hết các task: chat, summarization,
+        translation, code generation, classification, extraction.
+      </p>
+      <p>
+        Models: GPT-4o (text mode), Claude 3.x, Llama 3.x, Mistral, DeepSeek, Gemma…
+      </p>
+      <p>
+        <em>Lưu ý</em>: "text" ngày nay thường bao gồm cả <code>tool_use</code> và
+        <code>structured output</code> (JSON mode) — không còn là plain text thuần túy.
+      </p>
+    </div>
+    <div class="tab-panel">
+      <h4>Vision-Language Models (VLM)</h4>
+      <p>
+        Nhận hình ảnh + text làm input, output text. Dùng cho: OCR, image Q&amp;A,
+        chart understanding, UI screenshot analysis, document parsing.
+      </p>
+      <p>
+        Models: GPT-4o (vision), Claude 3 (vision), Gemini 2.x (native multimodal),
+        Llama 4 Scout/Maverick, LLaVA, Qwen-VL, InternVL2.
+      </p>
+      <div class="callout note">
+        <div class="icon">≡</div>
+        <div>
+          <p>
+            VLM rất mạnh cho document automation: parse hóa đơn, form, contract
+            trực tiếp từ ảnh scan — không cần OCR pipeline riêng.
+          </p>
+        </div>
+      </div>
+    </div>
+    <div class="tab-panel">
+      <h4>Audio: STT &amp; TTS</h4>
+      <p>
+        <strong>Speech-to-Text (STT / ASR)</strong>: Whisper (OpenAI open-source) là model
+        phổ biến nhất; chạy local hoặc qua API. Deepgram, AssemblyAI, Google STT là
+        alternatives cloud-based.
+      </p>
+      <p>
+        <strong>Text-to-Speech (TTS)</strong>: OpenAI TTS API (tốt nhất hiện tại cho
+        tiếng Anh), ElevenLabs (clone voice), Coqui TTS (open-source).
+      </p>
+      <p>
+        <strong>Realtime audio</strong>: GPT-4o Realtime API — speech-in, speech-out
+        latency thấp; dùng cho voice assistants. Gemini Live tương tự.
+      </p>
+    </div>
+    <div class="tab-panel">
+      <h4>Embedding Models</h4>
+      <p>
+        Convert text thành vector numbers. Không "generate" — chỉ encode.
+        Dùng cho: semantic search, RAG retrieval, clustering, dedup.
+      </p>
+      <p>
+        Models nổi tiếng: <code>text-embedding-3-large</code> (OpenAI), <code>voyage-3</code> (Anthropic),
+        <code>Cohere Embed v3</code>, <code>BGE-M3</code> (BAAI, open-source multilingual),
+        <code>nomic-embed</code>.
+      </p>
+      <div class="callout tip">
+        <div class="icon">★</div>
+        <div>
+          <p>
+            Embedding models là một trong những thứ <em>quan trọng nhất</em> trong RAG systems.
+            Chọn embedding model phù hợp với ngôn ngữ của data (tiếng Việt cần multilingual model).
+          </p>
+        </div>
+      </div>
+    </div>
+    <div class="tab-panel">
+      <h4>Video &amp; Natively Multimodal</h4>
+      <p>
+        <strong>Video understanding</strong>: Gemini 2.5 Pro có thể nhận video dài làm input;
+        dùng cho video Q&amp;A, transcript với visual context, video surveillance.
+      </p>
+      <p>
+        <strong>Natively multimodal</strong>: Thay vì "LLM + vision adapter",
+        các model như Gemini 2.x và GPT-4o được train từ đầu trên multiple modalities,
+        dẫn đến cross-modal reasoning tốt hơn.
+      </p>
+      <p>
+        <strong>Image generation</strong>: DALL-E 3 (OpenAI), Midjourney, Stable Diffusion
+        (open-source), Flux — không phải LLMs mà là separate diffusion/flow-matching models;
+        thường được orchestrate cùng với LLM trong agentic workflows.
+      </p>
+    </div>
+  </div>
+
+  <!-- ─────────────────────────────────────────────── -->
+  <h2 id="tom-tat">Tóm tắt</h2>
+  <ol>
+    <li>
+      <strong>Foundation Model</strong> = model lớn, pre-trained self-supervised trên data khổng lồ,
+      có thể adapt cho nhiều task mà không cần train lại từ đầu.
+    </li>
+    <li>
+      LLM đi qua pipeline <strong>4 giai đoạn</strong>: Pre-training (tốn nhất) → SFT → Preference Tuning (RLHF/DPO) → Specialized post-training.
+    </li>
+    <li>
+      <strong>Chinchilla rule: D ≈ 20×N</strong> — train-optimal cần tokens ≈ 20× số parameters.
+      Nhưng inference-optimal có thể over-train model nhỏ để giảm serving cost.
+    </li>
+    <li>
+      <strong>Emergent abilities</strong> (ICL, CoT, tool use) chỉ đáng tin cậy ở model đủ lớn —
+      đây là lý do không phải model nào cũng "làm được mọi thứ".
+    </li>
+    <li>
+      Bắt đầu với <strong>closed API</strong> (nhanh, frontier perf), chuyển sang <strong>open-weight</strong>
+      khi cần privacy, cost optimization, hoặc fine-tuning sâu. Thiết kế model-agnostic từ đầu.
+    </li>
+    <li>
+      Ngoài text, cần biết: <strong>VLM</strong> (vision+text), <strong>Whisper/STT</strong>,
+      <strong>TTS</strong>, <strong>Embedding models</strong> (quan trọng cho RAG) — mỗi loại có
+      use case và trade-off riêng.
+    </li>
+  </ol>
+
+  <nav class="section-footer">
+    <a href="01-what-is-ai-engineering.html" class="prev">
+      <div class="label">← quay lại</div>
+      <div class="title">01 — AI Engineering là gì?</div>
+    </a>
+    <a href="03-how-llm-works.html" class="next">
+      <div class="label">tiếp theo →</div>
+      <div class="title">03 — Cách LLM hoạt động</div>
+    </a>
+  </nav>
+
+</main>
+
+<script src="../assets/script.js"></script>
+</body>
+</html>

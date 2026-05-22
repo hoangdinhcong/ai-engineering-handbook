@@ -1,0 +1,620 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>19 · MLOps / LLMOps — AI Engineering</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<nav class="top-nav">
+  <div class="brand"><span class="dot"></span> AI Engineering</div>
+  <div class="crumbs"><a href="../index.html">Mục lục</a> › Phần 7 · <span>19 — MLOps / LLMOps</span></div>
+  <div class="nav-actions">
+    <a href="18-code-generating-ai.html">← Trước</a>
+    <a href="20-cost-finops.html">Tiếp →</a>
+  </div>
+</nav>
+
+<main class="page">
+
+  <section class="hero">
+    <span class="eyebrow">Phần 7 · §19</span>
+    <h1>MLOps / LLMOps</h1>
+    <p class="lede">
+      Từ CI/CD cho prompts đến canary deployment, từ experiment tracking đến rollback — vận hành
+      LLM features trong production đòi hỏi một discipline riêng vượt ra ngoài MLOps truyền thống.
+    </p>
+    <img class="hero-image" src="../images/19-mlops-llmops.png" alt="Hero illustration" onerror="this.style.display='none'">
+  </section>
+
+  <aside class="toc">
+    <div class="toc-title">Trong trang này</div>
+    <ul>
+      <li><a href="#llmops-vs-mlops">19.1 LLMOps khác MLOps thế nào</a></li>
+      <li><a href="#cicd-prompts">19.2 CI/CD cho prompts</a></li>
+      <li><a href="#experiment-tracking">19.3 Experiment tracking</a></li>
+      <li><a href="#model-registry">19.4 Model registry & artifact storage</a></li>
+      <li><a href="#eval-driven-ci">19.5 Eval-driven CI</a></li>
+      <li><a href="#canary-deployment">19.6 Canary, shadow, A/B deployment</a></li>
+      <li><a href="#rollback">19.7 Rollback strategies</a></li>
+      <li><a href="#dataset-versioning">19.8 Dataset versioning</a></li>
+      <li><a href="#tooling">19.9 Tooling</a></li>
+      <li><a href="#org-practices">19.10 Org practices</a></li>
+      <li><a href="#tom-tat">Tóm tắt</a></li>
+    </ul>
+  </aside>
+
+  <h2 id="llmops-vs-mlops">19.1 LLMOps khác MLOps thế nào</h2>
+  <p>
+    MLOps truyền thống xoay quanh <strong>training pipeline</strong>: thu thập data, label, train, evaluate,
+    deploy model. Vòng lặp chủ yếu là data → model → serving. Khi model hoạt động tốt, bạn có thể
+    để nó chạy khá ổn định cho đến khi cần retrain.
+  </p>
+  <p>
+    LLMOps xuất hiện vì <strong>foundation models thay đổi cách chúng ta build AI applications</strong>.
+    Trong hầu hết dự án LLM, bạn <em>không</em> tự train model — bạn dùng API của OpenAI, Anthropic,
+    Google, hoặc một open-source model. Kết quả là vòng lặp thay đổi hoàn toàn: từ
+    <code>data → train → deploy</code> sang <code>prompt → eval → ship → observe → iterate</code>.
+  </p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Chiều cạnh</th><th>MLOps truyền thống</th><th>LLMOps</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Artifact chính cần version</td><td>Model weights, training code</td><td>Prompts, eval sets, routing config</td></tr>
+        <tr><td>Vòng lặp iteration</td><td>Ngày đến tuần (training)</td><td>Phút đến giờ (prompt edit)</td></tr>
+        <tr><td>Evaluation</td><td>Metrics cố định (accuracy, F1)</td><td>LLM-as-judge, human eval, regression sets</td></tr>
+        <tr><td>Deployment unit</td><td>Model binary/container</td><td>Prompt version + model version + config</td></tr>
+        <tr><td>Drift detection</td><td>Data drift, model drift</td><td>Output quality drift, latency drift, cost drift</td></tr>
+        <tr><td>Rollback</td><td>Swap model version</td><td>Swap prompt version, model version, hoặc feature flag</td></tr>
+        <tr><td>Tooling trưởng thành</td><td>MLflow, Kubeflow, SageMaker</td><td>Braintrust, Langfuse, LangSmith (còn mới)</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout note">
+    <div class="icon">≡</div>
+    <div>
+      <div class="title">Điểm cốt lõi</div>
+      <p>
+        LLMOps không thay thế MLOps — nó là một <em>specialization</em> dành cho ứng dụng dùng
+        foundation models. Nếu bạn fine-tune model, bạn vẫn cần MLOps cho training pipeline;
+        LLMOps phủ thêm lớp prompt/eval lifecycle bên trên.
+      </p>
+    </div>
+  </div>
+
+  <h3>Tại sao phức tạp hơn tưởng?</h3>
+  <p>
+    Nhiều team bắt đầu bằng cách hardcode prompt trực tiếp trong code. Khi prompt được "tuned"
+    bởi nhiều người qua nhiều tháng, không ai biết version nào đang chạy ở đâu, kết quả thay đổi
+    theo kiểu nào, và khi có regression thì prompt nào gây ra. LLMOps là câu trả lời tổ chức cho
+    bài toán này.
+  </p>
+
+  <h2 id="cicd-prompts">19.2 CI/CD cho Prompts</h2>
+  <p>
+    <strong>Prompt as code</strong> là nguyên tắc trung tâm: mọi prompt — system prompt, few-shot examples,
+    instruction template — đều được treat như source code. Điều này có nghĩa:
+  </p>
+  <ul>
+    <li><strong>Version control</strong>: Prompts sống trong Git repository, có commit history, blame, tags</li>
+    <li><strong>Code review</strong>: Thay đổi prompt đi qua Pull Request, reviewer có thể comment từng dòng</li>
+    <li><strong>Automated testing</strong>: Mỗi PR trigger chạy eval suite để phát hiện regression</li>
+    <li><strong>Audit trail</strong>: Biết ai thay đổi gì, khi nào, vì lý do gì</li>
+  </ul>
+
+  <svg class="diagram" viewBox="0 0 760 200" role="img" aria-label="CI/CD pipeline cho LLM prompts">
+    <defs>
+      <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#6f7c92"/>
+      </marker>
+    </defs>
+
+    <!-- Nodes -->
+    <rect class="node-bg" x="10" y="70" width="110" height="60" rx="8"/>
+    <text x="65" y="94" text-anchor="middle" font-weight="600" font-size="12">Prompt Commit</text>
+    <text x="65" y="112" text-anchor="middle" class="label-sm">git push / PR</text>
+
+    <rect class="node-accent" x="155" y="70" width="110" height="60" rx="8"/>
+    <text x="210" y="94" text-anchor="middle" font-weight="600" font-size="12">Eval Suite</text>
+    <text x="210" y="112" text-anchor="middle" class="label-sm">auto-graded cases</text>
+
+    <rect class="node-blue" x="300" y="70" width="110" height="60" rx="8"/>
+    <text x="355" y="94" text-anchor="middle" font-weight="600" font-size="12">Score Gate</text>
+    <text x="355" y="112" text-anchor="middle" class="label-sm">pass / fail threshold</text>
+
+    <rect class="node-green" x="445" y="70" width="110" height="60" rx="8"/>
+    <text x="500" y="94" text-anchor="middle" font-weight="600" font-size="12">Canary</text>
+    <text x="500" y="112" text-anchor="middle" class="label-sm">5% traffic</text>
+
+    <rect class="node-green" x="590" y="70" width="120" height="60" rx="8"/>
+    <text x="650" y="94" text-anchor="middle" font-weight="600" font-size="12">Full Rollout</text>
+    <text x="650" y="112" text-anchor="middle" class="label-sm">100% traffic</text>
+
+    <!-- Arrows -->
+    <line class="arrow" x1="122" y1="100" x2="152" y2="100"/>
+    <line class="arrow" x1="267" y1="100" x2="297" y2="100"/>
+    <line class="arrow" x1="412" y1="100" x2="442" y2="100"/>
+    <line class="arrow" x1="557" y1="100" x2="587" y2="100"/>
+
+    <!-- Fail path -->
+    <text x="355" y="155" text-anchor="middle" font-size="11" fill="#ff8a8a">✗ Block merge nếu score thấp hơn threshold</text>
+    <line stroke="#ff8a8a" stroke-width="1.5" stroke-dasharray="4,3" x1="355" y1="130" x2="355" y2="148"/>
+  </svg>
+
+  <h3>Cấu trúc thư mục prompt điển hình</h3>
+  <pre><code>prompts/
+  summarization/
+    v2.1.0/
+      system.txt          <span class="cm"># system prompt</span>
+      few-shot.jsonl      <span class="cm"># few-shot examples</span>
+      config.json         <span class="cm"># model, temperature, max_tokens</span>
+    v2.0.0/               <span class="cm"># previous version, retained</span>
+  extraction/
+    v1.3.0/
+      system.txt
+      ...
+evals/
+  summarization/
+    golden-set.jsonl      <span class="cm"># input + expected output</span>
+    eval-config.json      <span class="cm"># grader, threshold</span></code></pre>
+
+  <h3>Prompt template language</h3>
+  <p>
+    Các công cụ như <strong>Jinja2</strong>, <strong>Handlebars</strong>, hoặc custom DSL giúp
+    inject context vào prompt mà không làm rối plain text. Một số team dùng YAML front-matter để
+    mô tả metadata (author, version, target-model) trước phần prompt content.
+  </p>
+
+  <div class="callout tip">
+    <div class="icon">★</div>
+    <div>
+      <div class="title">Best practice</div>
+      <p>
+        Treat prompt files như bạn treat database migrations: mỗi thay đổi là một version mới,
+        không edit in-place. Điều này cho phép rollback tức thời mà không cần redeploy code.
+      </p>
+    </div>
+  </div>
+
+  <h2 id="experiment-tracking">19.3 Experiment Tracking</h2>
+  <p>
+    Experiment tracking trong LLMOps theo dõi mọi thứ liên quan đến một "run": prompt version,
+    model version, temperature, eval results, latency, cost. Khi bạn chạy 50 biến thể prompt khác
+    nhau, bạn cần hệ thống để so sánh chúng một cách có hệ thống.
+  </p>
+
+  <h3>Các dimension cần track</h3>
+  <ul>
+    <li><strong>Inputs</strong>: Prompt version ID, model name + version, hyperparams (temperature, top-p, max_tokens)</li>
+    <li><strong>Outputs</strong>: Response text, latency (TTFT, TBT, total), token counts (input/output/cached)</li>
+    <li><strong>Eval scores</strong>: Per-metric scores (accuracy, faithfulness, coherence), overall pass rate</li>
+    <li><strong>Cost</strong>: Total cost per run, cost per test case</li>
+    <li><strong>Metadata</strong>: Git commit SHA, timestamp, environment, author</li>
+  </ul>
+
+  <h3>Regression detection</h3>
+  <p>
+    Regression xảy ra khi một thay đổi (prompt, model upgrade, context modification) làm giảm
+    chất lượng trên một subset test cases. Để phát hiện:
+  </p>
+  <ul>
+    <li>Duy trì <strong>baseline run</strong> cho mỗi major version — kết quả của version đang production</li>
+    <li>So sánh mỗi PR run với baseline: nếu score giảm quá X%, flag regression</li>
+    <li>Chú ý <strong>per-category regression</strong> — overall score có thể ổn nhưng một loại input cụ thể tệ hơn</li>
+    <li>Dùng <strong>statistical significance</strong> nếu eval set nhỏ để tránh false positive</li>
+  </ul>
+
+  <div class="callout warn">
+    <div class="icon">!</div>
+    <div>
+      <div class="title">Model upgrade regression</div>
+      <p>
+        Khi provider release model version mới (ví dụ GPT-4o-mini → GPT-4o-mini-2025), hành vi
+        thường thay đổi. Luôn chạy full eval trước khi migrate production traffic sang model version mới,
+        ngay cả khi provider tuyên bố "backward compatible".
+      </p>
+    </div>
+  </div>
+
+  <h2 id="model-registry">19.4 Model Registry &amp; Artifact Storage</h2>
+  <p>
+    Nếu bạn fine-tune model, bạn cần nơi lưu và quản lý model artifacts. Ngay cả với API-only
+    workflow, bạn vẫn cần track: model versions đang dùng, khi nào switch, performance của từng version.
+  </p>
+
+  <h3>Các lựa chọn phổ biến</h3>
+  <ul>
+    <li>
+      <strong>Hugging Face Hub</strong>: Nơi host và share model weights. Private repos cho internal
+      fine-tuned models. Model cards document training details, intended use, limitations.
+    </li>
+    <li>
+      <strong>MLflow Model Registry</strong>: Stage-based workflow (Staging → Production → Archived).
+      Tích hợp với experiment tracking. Self-hosted hoặc managed (Databricks).
+    </li>
+    <li>
+      <strong>Weights &amp; Biases Artifacts</strong>: Lưu model checkpoints, datasets, eval results
+      với versioning và lineage tracking.
+    </li>
+    <li>
+      <strong>Custom S3/GCS</strong>: Đơn giản nhất — lưu artifacts theo path convention
+      <code>s3://models/{name}/{version}/</code>. Dễ dùng nhưng thiếu UI và query.
+    </li>
+  </ul>
+
+  <h3>Model Card best practices</h3>
+  <p>
+    Mỗi model (kể cả fine-tuned variant) nên có model card documenting:
+    training data, intended use cases, known limitations, evaluation results,
+    và người chịu trách nhiệm. Model card giúp tránh "ai cũng dùng model nhưng không ai biết
+    nó được train trên data gì."
+  </p>
+
+  <h2 id="eval-driven-ci">19.5 Eval-driven CI</h2>
+  <p>
+    Eval-driven CI là thực hành chạy automated evaluation trên mỗi Pull Request và dùng kết quả
+    để gate merge. Đây là cột sống của LLMOps — không có nó, bạn không biết liệu thay đổi của
+    mình có cải thiện hay làm tệ hơn behavior của hệ thống.
+  </p>
+
+  <h3>Thiết lập pipeline</h3>
+  <ol>
+    <li>
+      <strong>Eval set</strong>: Một tập test cases cố định với input và expected behavior.
+      Ít nhất 50–200 cases để có statistical reliability. Có <em>golden set</em> (cases quan trọng
+      nhất, không bao giờ được fail) và <em>regression set</em> (cases từng có vấn đề).
+    </li>
+    <li>
+      <strong>Grader</strong>: Cơ chế chấm điểm mỗi output. Có thể là exact match, regex,
+      LLM-as-judge (dùng model khác chấm điểm), hoặc custom code.
+    </li>
+    <li>
+      <strong>Threshold</strong>: Điểm tối thiểu cần đạt. Ví dụ: ≥90% pass rate overall,
+      100% pass rate trên golden set.
+    </li>
+    <li>
+      <strong>CI integration</strong>: GitHub Actions/GitLab CI chạy eval, post comment với kết quả,
+      block merge nếu fail.
+    </li>
+  </ol>
+
+  <h3>Chi phí eval trong CI</h3>
+  <p>
+    Chạy eval trên mỗi PR có thể tốn kém nếu dùng expensive models. Chiến lược giảm cost:
+  </p>
+  <ul>
+    <li>Dùng <strong>cheaper model</strong> cho grading (không nhất thiết phải dùng model tốt nhất)</li>
+    <li>Chạy <strong>fast eval set</strong> nhỏ hơn trên PR; full eval chỉ chạy trước merge vào main</li>
+    <li>Dùng <strong>caching</strong> cho responses giống nhau (same prompt + same input)</li>
+    <li>Batch API (50% cheaper) cho eval pipeline không cần real-time</li>
+  </ul>
+
+  <h2 id="canary-deployment">19.6 Canary, Shadow, A/B Deployment</h2>
+  <p>
+    Deploy LLM features an toàn hơn bằng cách không đẩy thay đổi lên 100% traffic ngay lập tức.
+    Ba strategies phổ biến:
+  </p>
+
+  <div class="tabs" data-tabs>
+    <div class="tab-buttons">
+      <button class="active">Canary</button>
+      <button>Shadow</button>
+      <button>A/B Test</button>
+    </div>
+    <div class="tab-panel active">
+      <h4>Canary Deployment</h4>
+      <p>
+        Đưa version mới cho một tỉ lệ nhỏ traffic (ví dụ 5%), monitor metrics, rồi tăng dần
+        (5% → 20% → 50% → 100%) nếu mọi thứ ổn. Nếu có vấn đề, rollback chỉ ảnh hưởng nhóm nhỏ.
+      </p>
+      <p>Metrics cần monitor trong canary: latency, error rate, user satisfaction scores (thumbs up/down),
+      cost per request, output length distribution.</p>
+      <p class="label-sm" style="color:var(--text-mute)">Phù hợp khi: thay đổi prompt lớn, upgrade model version, thay đổi RAG pipeline</p>
+    </div>
+    <div class="tab-panel">
+      <h4>Shadow Deployment</h4>
+      <p>
+        Chạy version mới song song với production: user thấy kết quả từ production, nhưng
+        request cũng được gửi tới version mới để so sánh. Không có rủi ro user impact — chỉ
+        dùng để validate trước khi switch.
+      </p>
+      <p>Shadow mode tốn gấp đôi cost vì phải call model hai lần. Nhưng rất an toàn để
+      validate behavior của version mới trên real traffic patterns.</p>
+      <p class="label-sm" style="color:var(--text-mute)">Phù hợp khi: thay đổi rủi ro cao, migration sang model hoàn toàn khác</p>
+    </div>
+    <div class="tab-panel">
+      <h4>A/B Testing</h4>
+      <p>
+        Chia user thành nhóm A và B, mỗi nhóm dùng một variant khác nhau. Đo kết quả theo
+        business metrics thực sự (task completion, user engagement, churn). Phân tích sau
+        một thời gian đủ dài để có statistical significance.
+      </p>
+      <p>Khác canary ở chỗ: A/B có mục đích <em>học</em> (variant nào tốt hơn?) còn
+      canary có mục đích <em>an toàn</em> (rollout không gây sự cố).</p>
+      <p class="label-sm" style="color:var(--text-mute)">Phù hợp khi: so sánh hai hướng thiết kế khác nhau, validate product hypothesis</p>
+    </div>
+  </div>
+
+  <h2 id="rollback">19.7 Rollback Strategies</h2>
+  <p>
+    Khi phát hiện vấn đề (regression, cost spike, latency tăng, output quality giảm), cần rollback
+    nhanh. LLMOps có nhiều "knobs" để rollback:
+  </p>
+
+  <svg class="diagram" viewBox="0 0 760 280" role="img" aria-label="LLM rollback paths">
+    <defs>
+      <marker id="arrowhead2" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#6f7c92"/>
+      </marker>
+    </defs>
+
+    <!-- Central node -->
+    <rect class="node-accent" x="290" y="100" width="180" height="60" rx="10"/>
+    <text x="380" y="128" text-anchor="middle" font-weight="700" font-size="14">Production</text>
+    <text x="380" y="148" text-anchor="middle" class="label-sm">Version mới bị vấn đề</text>
+
+    <!-- Rollback option 1 -->
+    <rect class="node-blue" x="30" y="20" width="170" height="55" rx="8"/>
+    <text x="115" y="43" text-anchor="middle" font-weight="600" font-size="12">Feature Flag OFF</text>
+    <text x="115" y="61" text-anchor="middle" class="label-sm">Tắt feature hoàn toàn</text>
+    <line class="arrow" marker-end="url(#arrowhead2)" x1="200" y1="47" x2="288" y2="115"/>
+
+    <!-- Rollback option 2 -->
+    <rect class="node-blue" x="30" y="110" width="170" height="55" rx="8"/>
+    <text x="115" y="133" text-anchor="middle" font-weight="600" font-size="12">Prompt Version ↩</text>
+    <text x="115" y="151" text-anchor="middle" class="label-sm">Switch sang v_prev</text>
+    <line class="arrow" marker-end="url(#arrowhead2)" x1="200" y1="137" x2="288" y2="137"/>
+
+    <!-- Rollback option 3 -->
+    <rect class="node-blue" x="30" y="200" width="170" height="55" rx="8"/>
+    <text x="115" y="223" text-anchor="middle" font-weight="600" font-size="12">Model Routing ↩</text>
+    <text x="115" y="241" text-anchor="middle" class="label-sm">Route sang model cũ</text>
+    <line class="arrow" marker-end="url(#arrowhead2)" x1="200" y1="227" x2="288" y2="160"/>
+
+    <!-- Rollback option 4 -->
+    <rect class="node-green" x="560" y="20" width="170" height="55" rx="8"/>
+    <text x="645" y="43" text-anchor="middle" font-weight="600" font-size="12">Canary Reduce</text>
+    <text x="645" y="61" text-anchor="middle" class="label-sm">5% → 0% traffic</text>
+    <line class="arrow" marker-end="url(#arrowhead2)" x1="470" y1="115" x2="558" y2="47"/>
+
+    <!-- Rollback option 5 -->
+    <rect class="node-green" x="560" y="110" width="170" height="55" rx="8"/>
+    <text x="645" y="133" text-anchor="middle" font-weight="600" font-size="12">Config Rollback</text>
+    <text x="645" y="151" text-anchor="middle" class="label-sm">temperature, top-p, etc.</text>
+    <line class="arrow" marker-end="url(#arrowhead2)" x1="470" y1="137" x2="558" y2="137"/>
+
+    <!-- Rollback option 6 -->
+    <rect class="node-green" x="560" y="200" width="170" height="55" rx="8"/>
+    <text x="645" y="223" text-anchor="middle" font-weight="600" font-size="12">RAG Config ↩</text>
+    <text x="645" y="241" text-anchor="middle" class="label-sm">top-k, reranker, filters</text>
+    <line class="arrow" marker-end="url(#arrowhead2)" x1="470" y1="160" x2="558" y2="227"/>
+  </svg>
+
+  <h3>Implement rollback infrastructure</h3>
+  <p>
+    Để rollback thực sự nhanh (dưới 5 phút), cần chuẩn bị sẵn:
+  </p>
+  <ul>
+    <li><strong>Feature flags</strong>: LaunchDarkly, Unleash, hoặc custom — toggle features không cần deploy</li>
+    <li><strong>Prompt routing config</strong>: File hoặc DB record quy định "prompt X version Y cho endpoint Z"
+    — thay đổi config là switch prompt ngay</li>
+    <li><strong>Model routing config</strong>: Tương tự — quy định "model A cho task X, model B cho task Y"</li>
+    <li><strong>Monitoring alerts</strong>: Phát hiện vấn đề tự động trước khi user report</li>
+  </ul>
+
+  <h2 id="dataset-versioning">19.8 Dataset Versioning</h2>
+  <p>
+    Datasets trong LLMOps có nhiều loại, mỗi loại cần chiến lược versioning riêng:
+  </p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Dataset type</th><th>Mô tả</th><th>Versioning approach</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Training data</strong></td>
+          <td>Data dùng để fine-tune model</td>
+          <td>DVC, Weights &amp; Biases Artifacts, S3 với date prefix</td>
+        </tr>
+        <tr>
+          <td><strong>Eval set</strong></td>
+          <td>Test cases dùng trong CI eval pipeline</td>
+          <td>Git (nếu nhỏ), DVC hoặc Git LFS (nếu lớn)</td>
+        </tr>
+        <tr>
+          <td><strong>Golden set</strong></td>
+          <td>Curated cases must-never-fail, thường từ real bugs</td>
+          <td>Git, strict review trước khi thay đổi</td>
+        </tr>
+        <tr>
+          <td><strong>Preference data</strong></td>
+          <td>Human feedback (A vs B) cho RLHF/DPO</td>
+          <td>Dedicated DB hoặc JSONL với metadata</td>
+        </tr>
+        <tr>
+          <td><strong>Production logs</strong></td>
+          <td>Real inputs từ production để mine new test cases</td>
+          <td>Append-only log storage (S3, BigQuery)</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>DVC — Data Version Control</h3>
+  <p>
+    DVC (dvc.org) là tool phổ biến nhất cho data versioning. Hoạt động như Git nhưng cho data:
+    lưu metadata trong Git, actual data trong remote storage (S3, GCS). Lệnh
+    <code>dvc pull</code> để download data, <code>dvc push</code> để upload.
+  </p>
+
+  <div class="callout tip">
+    <div class="icon">★</div>
+    <div>
+      <div class="title">Grow eval set từ production</div>
+      <p>
+        Mining production logs để thêm test cases là chiến lược rất hiệu quả: khi user gặp
+        edge case mới, thêm nó vào golden set. Theo thời gian, eval set của bạn cover
+        nhiều real-world scenarios hơn bất kỳ tập synthetic nào.
+      </p>
+    </div>
+  </div>
+
+  <h2 id="tooling">19.9 Tooling: Braintrust, Langfuse, LangSmith và các công cụ khác</h2>
+  <p>
+    Ecosystem LLMOps tooling đang phát triển nhanh. Dưới đây là các công cụ chính:
+  </p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Tool</th><th>Loại</th><th>Điểm mạnh</th><th>Hạn chế</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Braintrust</strong></td>
+          <td>Eval + tracing</td>
+          <td>Eval framework mạnh, score comparison, CI integration, dataset management</td>
+          <td>Paid product, vendor lock-in</td>
+        </tr>
+        <tr>
+          <td><strong>Langfuse</strong></td>
+          <td>Observability + eval</td>
+          <td>Open-source, self-hostable, tracing chi tiết, datasets, SDK cho nhiều ngôn ngữ</td>
+          <td>Eval capabilities ít hơn Braintrust</td>
+        </tr>
+        <tr>
+          <td><strong>LangSmith</strong></td>
+          <td>Tracing + eval</td>
+          <td>Tight integration với LangChain, UI debug traces dễ dùng</td>
+          <td>Phụ thuộc hệ sinh thái LangChain, pricing</td>
+        </tr>
+        <tr>
+          <td><strong>PromptLayer</strong></td>
+          <td>Prompt management</td>
+          <td>Prompt versioning, A/B testing built-in, non-technical friendly UI</td>
+          <td>Ít eval capability hơn</td>
+        </tr>
+        <tr>
+          <td><strong>Helicone</strong></td>
+          <td>Observability + caching</td>
+          <td>Proxy-based (zero code change), semantic caching, rate limiting, cost tracking</td>
+          <td>Proxy thêm latency nhỏ</td>
+        </tr>
+        <tr>
+          <td><strong>MLflow</strong></td>
+          <td>Experiment tracking</td>
+          <td>Mature, open-source, model registry, có LLM extensions</td>
+          <td>LLM-specific features còn đang phát triển</td>
+        </tr>
+        <tr>
+          <td><strong>Weights &amp; Biases</strong></td>
+          <td>Experiment tracking</td>
+          <td>Excellent UI, artifact versioning, team collaboration</td>
+          <td>Expensive at scale, less LLM-native</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Lựa chọn tooling</h3>
+  <p>
+    Không có "best tool" — phụ thuộc vào use case:
+  </p>
+  <ul>
+    <li>Nếu ưu tiên <strong>eval & CI integration</strong>: Braintrust hoặc LangSmith</li>
+    <li>Nếu ưu tiên <strong>self-host + open source</strong>: Langfuse</li>
+    <li>Nếu cần <strong>observability với zero code change</strong>: Helicone</li>
+    <li>Nếu đang dùng <strong>LangChain/LangGraph</strong>: LangSmith tích hợp tự nhiên nhất</li>
+    <li>Nếu cần <strong>prompt management cho non-engineers</strong>: PromptLayer</li>
+  </ul>
+
+  <h2 id="org-practices">19.10 Org Practices: Ai Owns Prompts?</h2>
+  <p>
+    Câu hỏi "ai sở hữu prompts" là câu hỏi tổ chức quan trọng hơn vẻ ngoài của nó. Prompts
+    là giao điểm của <strong>engineering</strong> (implementation, testing, deployment),
+    <strong>product</strong> (tone, behavior, user experience), và
+    <strong>domain expertise</strong> (accuracy, compliance).
+  </p>
+
+  <h3>Ba model tổ chức</h3>
+  <div class="tabs" data-tabs>
+    <div class="tab-buttons">
+      <button class="active">Engineering-led</button>
+      <button>Product-led</button>
+      <button>Shared ownership</button>
+    </div>
+    <div class="tab-panel active">
+      <p>
+        Engineers sở hữu và maintain prompts như code. Thay đổi đi qua PR process.
+        Product team request changes qua tickets.
+      </p>
+      <p><strong>Pro</strong>: Consistency, testability, version control tốt</p>
+      <p><strong>Con</strong>: Chậm iteration vì phải qua engineer, product team mất autonomy</p>
+      <p class="label-sm" style="color:var(--text-mute)">Tốt cho: hệ thống critical, regulated industries, teams nhỏ</p>
+    </div>
+    <div class="tab-panel">
+      <p>
+        Product/content team có thể edit prompts trực tiếp qua tool như PromptLayer.
+        Engineers chỉ setup infrastructure.
+      </p>
+      <p><strong>Pro</strong>: Nhanh, product team autonomy cao</p>
+      <p><strong>Con</strong>: Khó đảm bảo quality, có thể break things không có test</p>
+      <p class="label-sm" style="color:var(--text-mute)">Tốt cho: marketing copy, content features ít critical</p>
+    </div>
+    <div class="tab-panel">
+      <p>
+        Hybrid: Product team draft và review prompts trong UI, nhưng changes phải pass
+        automated eval và được engineer approve trước khi deploy.
+      </p>
+      <p><strong>Pro</strong>: Balance giữa tốc độ và safety</p>
+      <p><strong>Con</strong>: Phức tạp về process, cần tooling tốt</p>
+      <p class="label-sm" style="color:var(--text-mute)">Tốt cho: teams lớn với nhiều features, mature LLMOps setup</p>
+    </div>
+  </div>
+
+  <h3>Checklist LLMOps maturity</h3>
+  <ul>
+    <li>☐ Prompts được version-controlled trong Git</li>
+    <li>☐ Có eval set với ≥50 test cases</li>
+    <li>☐ CI chạy eval trên mỗi PR</li>
+    <li>☐ Có metrics dashboard (latency, cost, quality score)</li>
+    <li>☐ Có feature flags cho LLM features</li>
+    <li>☐ Rollback procedure documented và tested</li>
+    <li>☐ Canary deployment cho major changes</li>
+    <li>☐ Ownership và on-call rõ ràng</li>
+  </ul>
+
+  <h2 id="tom-tat">Tóm tắt</h2>
+  <ol>
+    <li><strong>LLMOps focus vào prompt/eval lifecycle</strong> thay vì training pipeline — vòng lặp iteration từ tuần xuống còn phút.</li>
+    <li><strong>Prompt as code</strong>: version control, code review, automated testing là nền tảng.</li>
+    <li><strong>Eval-driven CI</strong> là cột sống — chạy eval trên mỗi PR, gate merge trên score threshold.</li>
+    <li><strong>Canary + feature flags</strong> cho phép deploy an toàn và rollback nhanh mà không cần redeploy code.</li>
+    <li><strong>Tooling ecosystem</strong> còn non: Braintrust, Langfuse, LangSmith đang cạnh tranh — chọn theo use case.</li>
+    <li><strong>Ownership của prompts</strong> cần được define rõ ràng — shared model thường hiệu quả nhất cho teams trưởng thành.</li>
+  </ol>
+
+  <nav class="section-footer">
+    <a href="18-code-generating-ai.html" class="prev">
+      <div class="label">← trước</div>
+      <div class="title">18 — Code-Generating AI</div>
+    </a>
+    <a href="20-cost-finops.html" class="next">
+      <div class="label">tiếp theo →</div>
+      <div class="title">20 — Cost &amp; FinOps cho AI</div>
+    </a>
+  </nav>
+
+</main>
+
+<script src="../assets/script.js"></script>
+</body>
+</html>

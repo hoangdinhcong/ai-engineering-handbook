@@ -1,0 +1,1166 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>38 · Inference-time Compute Scaling — AI Engineering</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<nav class="top-nav">
+  <div class="brand"><span class="dot"></span> AI Engineering</div>
+  <div class="crumbs"><a href="../index.html">Mục lục</a> › Phần 12 · <span>38 — Inference-time Compute Scaling</span></div>
+  <div class="nav-actions">
+    <a href="37-continuous-eval.html">← Trước</a>
+    <a href="../index.html">Index</a>
+    <a href="39-computer-use-agents.html">Tiếp →</a>
+  </div>
+</nav>
+
+<main class="page">
+
+  <section class="hero">
+    <span class="eyebrow">Phần 12 · §38</span>
+    <h1>Inference-time Compute Scaling</h1>
+    <p class="lede">
+      Paradigm shift từ "train to be smarter" sang "think longer at runtime": Best-of-N, self-consistency,
+      Tree-of-Thought, MCTS, và reasoning models thế hệ 2025–2026 — cách kiểm soát compute budget
+      và khi nào nên bật chế độ suy nghĩ sâu.
+    </p>
+    <img class="hero-image" src="../images/38-inference-compute-scaling.png" alt="Inference-time compute scaling illustration" onerror="this.style.display='none'">
+  </section>
+
+  <aside class="toc">
+    <div class="toc-title">Trong trang này</div>
+    <ul>
+      <li><a href="#paradigm-shift">38.1 Paradigm shift: train-time → inference-time</a></li>
+      <li><a href="#theory">38.2 Lý thuyết: nhiều compute → chất lượng cao hơn</a></li>
+      <li><a href="#best-of-n">38.3 Best-of-N sampling</a></li>
+      <li><a href="#self-consistency">38.4 Self-consistency &amp; majority vote</a></li>
+      <li><a href="#tree-of-thought">38.5 Tree-of-Thought (ToT)</a></li>
+      <li><a href="#graph-forest">38.6 Graph-of-Thought, Forest-of-Thought</a></li>
+      <li><a href="#mcts">38.7 MCTS cho LLM reasoning</a></li>
+      <li><a href="#reasoning-models">38.8 Reasoning models 2025–2026</a></li>
+      <li><a href="#long-cot-vs-search">38.9 Long CoT vs structured search</a></li>
+      <li><a href="#cost-quality">38.10 Cost vs quality curves</a></li>
+      <li><a href="#provider-apis">38.11 Provider APIs: thinking budget knobs</a></li>
+      <li><a href="#when-helps">38.12 Khi nào inference scaling giúp được</a></li>
+      <li><a href="#engineering">38.13 Engineering implications</a></li>
+      <li><a href="#old-vs-new">38.14 Cách cũ vs Cách hiện tại</a></li>
+      <li><a href="#tom-tat">Tóm tắt</a></li>
+    </ul>
+  </aside>
+
+  <!-- ─────────────────────────────────────────────────────────── -->
+  <h2 id="paradigm-shift">38.1 Paradigm shift: Train-time scaling → Inference-time scaling</h2>
+  <p>
+    Từ khoảng 2017 đến 2023, giới nghiên cứu LLM tuân theo một niềm tin cốt lõi:
+    <strong>muốn model thông minh hơn, hãy train nó nhiều hơn</strong> — nhiều tham số, nhiều dữ liệu,
+    nhiều GPU-giờ. Scaling laws của Kaplan (2020) và Chinchilla (2022) là kim chỉ nam:
+    tăng compute → tăng model size + data đúng tỷ lệ → loss giảm đều đặn.
+  </p>
+  <p>
+    Đến 2024–2025, một hướng đi bổ sung nổi lên và nhanh chóng trở thành mainstream:
+    <strong>inference-time compute scaling</strong>. Thay vì đổ thêm tài nguyên vào quá trình train,
+    ta cho model <em>nghĩ lâu hơn lúc chạy</em> — generate nhiều bước trung gian, khám phá nhiều
+    nhánh giải pháp, và tự đánh giá lại kết quả trước khi đưa ra câu trả lời cuối.
+  </p>
+
+  <div class="tabs" data-tabs>
+    <div class="tab-buttons">
+      <button class="active">Trước 2024 — Train-time</button>
+      <button>2024–2026 — Inference-time</button>
+    </div>
+    <div class="tab-panel active">
+      <p>
+        Model lớn hơn = model thông minh hơn. Để cải thiện một task khó (toán IMO, code competition),
+        cách tiếp cận là train thêm trên dữ liệu liên quan, scale model lên, hoặc fine-tune chuyên biệt.
+        Mỗi cải tiến đòi hỏi một chu kỳ train mới — thường mất hàng tuần và hàng triệu đô.
+      </p>
+      <p class="label-sm" style="color:var(--text-mute)">→ Compute đổ vào lúc train; inference nhanh, nhất quán, but limited</p>
+    </div>
+    <div class="tab-panel">
+      <p>
+        Một model đã train sẵn có thể cải thiện đáng kể chất lượng trên bài toán khó bằng cách
+        dùng thêm compute lúc inference: sinh ra nhiều lời giải, chọn lời giải tốt nhất, duyệt cây
+        giải pháp, hay chạy vòng lặp tự sửa lỗi. OpenAI o1/o3, Claude extended thinking,
+        DeepSeek-R1 là hiện thân của paradigm này.
+      </p>
+      <p class="label-sm" style="color:var(--text-mute)">→ Compute tiêu thụ lúc runtime; quality scale theo budget; latency tăng</p>
+    </div>
+  </div>
+
+  <div class="callout note">
+    <div class="icon">≡</div>
+    <div>
+      <div class="title">Hai chiều scaling không loại trừ nhau</div>
+      <p>
+        Inference-time scaling không thay thế train-time scaling — chúng <em>bổ sung</em> nhau.
+        Một model được train tốt (large, high-quality data) khi kết hợp với inference-time compute
+        cho kết quả tốt nhất. Điểm mấu chốt là: bây giờ AI Engineer có <strong>một nút điều chỉnh mới</strong>
+        — computing budget lúc runtime — và phải biết khi nào nên xoay nút đó.
+      </p>
+    </div>
+  </div>
+
+  <!-- ─────────────────────────────────────────────────────────── -->
+  <h2 id="theory">38.2 Lý thuyết: tại sao nhiều compute hơn lại cải thiện chất lượng?</h2>
+  <p>
+    Câu trả lời cơ bản nằm ở bản chất của <strong>autoregressive generation</strong>.
+    Mỗi token tiếp theo được chọn bằng cách sample từ distribution có điều kiện trên toàn bộ
+    context đã có. Với các bài toán đơn giản, greedy decoding (chọn token xác suất cao nhất) thường đủ.
+    Nhưng với bài toán phức tạp nhiều bước, một lựa chọn token sai ở giữa chuỗi reasoning
+    có thể dẫn đến toàn bộ hướng đi sai.
+  </p>
+  <p>
+    Nghiên cứu của Snell et al. (2024) <em>"Scaling LLM Test-Time Compute Optimally"</em> chỉ ra rằng
+    với <strong>các bài toán có độ khó vừa phải</strong>, phân bổ thêm compute lúc inference
+    (thay vì dùng model lớn hơn) cho cost-efficiency cao hơn. Nói cách khác:
+  </p>
+
+  <blockquote>
+    Đôi khi tốt hơn nếu dùng model nhỏ hơn suy nghĩ lâu hơn, thay vì model lớn hơn suy nghĩ nhanh.
+  </blockquote>
+
+  <p>
+    Cơ chế chính là: nhiều compute → nhiều "nhánh suy nghĩ" được khám phá →
+    xác suất tìm được đường đi đúng đến đáp án tăng lên. Đây là lý do tại sao các kỹ thuật như
+    Best-of-N, self-consistency, hay MCTS đều hoạt động được.
+  </p>
+
+  <!-- ─────────────────────────────────────────────────────────── -->
+  <h2 id="best-of-n">38.3 Best-of-N Sampling</h2>
+  <p>
+    Kỹ thuật đơn giản nhất của inference-time scaling: <strong>sinh ra N câu trả lời độc lập</strong>
+    (với temperature &gt; 0 để có diversity), sau đó chọn câu trả lời tốt nhất dựa trên một
+    hàm đánh giá (verifier).
+  </p>
+
+  <!-- SVG: Best-of-N flow -->
+  <svg class="diagram" viewBox="0 0 760 260" role="img" aria-label="Best-of-N sampling flow">
+    <defs>
+      <marker id="arrow-bon" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#6f7c92"/>
+      </marker>
+    </defs>
+
+    <!-- Input -->
+    <rect class="node-bg" x="10" y="100" width="120" height="52" rx="8"/>
+    <text x="70" y="121" text-anchor="middle" font-weight="600" font-size="13">Prompt</text>
+    <text x="70" y="140" text-anchor="middle" class="label-sm">bài toán đầu vào</text>
+
+    <!-- Arrow to model -->
+    <line class="arrow" marker-end="url(#arrow-bon)" x1="132" y1="126" x2="168" y2="126"/>
+
+    <!-- Model box -->
+    <rect class="node-blue" x="170" y="88" width="120" height="76" rx="8"/>
+    <text x="230" y="114" text-anchor="middle" font-weight="600" font-size="13">LLM</text>
+    <text x="230" y="133" text-anchor="middle" class="label-sm">sample N lần</text>
+    <text x="230" y="150" text-anchor="middle" class="label-sm">temperature &gt; 0</text>
+
+    <!-- Arrows to outputs -->
+    <line class="arrow" marker-end="url(#arrow-bon)" x1="292" y1="106" x2="328" y2="60"/>
+    <line class="arrow" marker-end="url(#arrow-bon)" x1="292" y1="120" x2="328" y2="120"/>
+    <line class="arrow" marker-end="url(#arrow-bon)" x1="292" y1="134" x2="328" y2="180"/>
+
+    <!-- N outputs -->
+    <rect class="node-bg" x="330" y="36" width="130" height="44" rx="6"/>
+    <text x="395" y="53" text-anchor="middle" font-size="12" font-weight="600">Sample 1</text>
+    <text x="395" y="70" text-anchor="middle" class="label-sm">CoT + answer</text>
+
+    <rect class="node-bg" x="330" y="98" width="130" height="44" rx="6"/>
+    <text x="395" y="115" text-anchor="middle" font-size="12" font-weight="600">Sample 2</text>
+    <text x="395" y="132" text-anchor="middle" class="label-sm">CoT + answer</text>
+
+    <rect class="node-bg" x="330" y="160" width="130" height="44" rx="6"/>
+    <text x="395" y="177" text-anchor="middle" font-size="12" font-weight="600">Sample N</text>
+    <text x="395" y="194" text-anchor="middle" class="label-sm">CoT + answer</text>
+
+    <!-- Arrows to verifier -->
+    <line class="arrow" marker-end="url(#arrow-bon)" x1="462" y1="58" x2="498" y2="100"/>
+    <line class="arrow" marker-end="url(#arrow-bon)" x1="462" y1="120" x2="498" y2="120"/>
+    <line class="arrow" marker-end="url(#arrow-bon)" x1="462" y1="182" x2="498" y2="140"/>
+
+    <!-- Verifier -->
+    <rect class="node-accent" x="500" y="86" width="120" height="68" rx="8"/>
+    <text x="560" y="108" text-anchor="middle" font-weight="600" font-size="13">Verifier</text>
+    <text x="560" y="127" text-anchor="middle" class="label-sm">reward model</text>
+    <text x="560" y="142" text-anchor="middle" class="label-sm">hoặc self-eval</text>
+
+    <!-- Arrow to best -->
+    <line class="arrow" marker-end="url(#arrow-bon)" x1="622" y1="120" x2="658" y2="120"/>
+
+    <!-- Best answer -->
+    <rect class="node-green" x="660" y="98" width="90" height="44" rx="8"/>
+    <text x="705" y="116" text-anchor="middle" font-weight="600" font-size="12">Best</text>
+    <text x="705" y="132" text-anchor="middle" class="label-sm">answer</text>
+
+    <!-- dots for N -->
+    <text x="395" y="148" text-anchor="middle" font-size="16" fill="#6f7c92">···</text>
+
+    <text x="380" y="248" text-anchor="middle" class="label-sm">N tăng → accuracy tăng nhưng cost × N; cần verifier tốt để chọn đúng</text>
+  </svg>
+
+  <p>
+    <strong>Verifier</strong> là mấu chốt của Best-of-N. Có hai loại chính:
+  </p>
+  <ul>
+    <li><strong>Outcome Reward Model (ORM)</strong>: chấm điểm toàn bộ câu trả lời cuối — đơn giản hơn, ít tốn compute hơn.</li>
+    <li><strong>Process Reward Model (PRM)</strong>: chấm điểm từng bước trong chuỗi reasoning — phức tạp hơn, nhưng phát hiện được sai lầm sớm hơn và hướng dẫn search hiệu quả hơn.</li>
+  </ul>
+  <p>
+    Best-of-N là baseline hữu ích: dễ implement, song song hoá được hoàn toàn (N samples độc lập),
+    nhưng tốn kém vì cost tăng tuyến tính theo N và không tận dụng được thông tin từ các samples để
+    cải thiện lẫn nhau.
+  </p>
+
+  <!-- ─────────────────────────────────────────────────────────── -->
+  <h2 id="self-consistency">38.4 Self-Consistency: Majority Vote trên CoT</h2>
+  <p>
+    Wang et al. (2022) giới thiệu <strong>self-consistency</strong>: sinh ra nhiều chuỗi
+    chain-of-thought (CoT) khác nhau, sau đó chọn câu trả lời cuối cùng bằng <em>majority vote</em>.
+    Ý tưởng là: nếu nhiều "đường suy nghĩ" khác nhau đều dẫn đến cùng một đáp án, đáp án đó
+    nhiều khả năng đúng hơn là một đường suy nghĩ duy nhất.
+  </p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Sample</th><th>Chuỗi reasoning</th><th>Đáp án cuối</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>1</td><td>Tính tổng theo cách A → trung gian X → …</td><td><strong>42</strong></td></tr>
+        <tr><td>2</td><td>Thử chia nhỏ bài toán → bước Y → …</td><td><strong>42</strong></td></tr>
+        <tr><td>3</td><td>Dùng công thức khác → bước Z → …</td><td>37</td></tr>
+        <tr><td>4</td><td>Kiểm tra trường hợp đặc biệt → …</td><td><strong>42</strong></td></tr>
+        <tr><td>5</td><td>Phân tích trực tiếp → …</td><td><strong>42</strong></td></tr>
+        <tr><td colspan="2" style="text-align:right"><strong>Majority vote →</strong></td><td><strong style="color:var(--accent-3)">42 ✓ (4/5)</strong></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>
+    Self-consistency đặc biệt mạnh với các bài toán <strong>có đáp án dạng rời rạc</strong>
+    (toán học, code output, true/false, multiple choice) — nơi dễ aggregate bằng voting.
+    Với câu hỏi mở hay creative writing, majority vote ít ý nghĩa hơn.
+  </p>
+
+  <div class="callout tip">
+    <div class="icon">★</div>
+    <div>
+      <div class="title">Self-consistency vs Best-of-N</div>
+      <p>
+        Self-consistency không cần verifier ngoài — chính các samples tự vote cho nhau.
+        Best-of-N cần một verifier/reward model riêng. Trong thực tế, self-consistency là
+        lựa chọn mặc định khi không có verifier; Best-of-N hiệu quả hơn khi có PRM tốt.
+      </p>
+    </div>
+  </div>
+
+  <!-- ─────────────────────────────────────────────────────────── -->
+  <h2 id="tree-of-thought">38.5 Tree-of-Thought (ToT)</h2>
+  <p>
+    Yao et al. (2023) mở rộng CoT từ <em>chuỗi tuyến tính</em> thành <em>cây tìm kiếm</em>:
+    mỗi bước suy nghĩ có thể <strong>phân nhánh</strong> thành nhiều hướng tiếp theo, sau đó
+    một hàm đánh giá (evaluator) quyết định nhánh nào đáng mở rộng tiếp, nhánh nào cắt bỏ.
+  </p>
+
+  <!-- SVG: CoT vs ToT vs MCTS -->
+  <svg class="diagram" viewBox="0 0 760 340" role="img" aria-label="So sánh CoT, ToT và MCTS">
+    <defs>
+      <marker id="arrow-cmp" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#6f7c92"/>
+      </marker>
+    </defs>
+
+    <!-- === CoT === -->
+    <text x="110" y="22" text-anchor="middle" font-weight="700" font-size="14" fill="#aab4c5">Chain-of-Thought</text>
+    <text x="110" y="38" text-anchor="middle" class="label-sm">chuỗi tuyến tính</text>
+
+    <rect class="node-blue" x="70" y="50" width="80" height="32" rx="6"/>
+    <text x="110" y="71" text-anchor="middle" font-size="12">Prompt</text>
+
+    <line class="arrow" marker-end="url(#arrow-cmp)" x1="110" y1="84" x2="110" y2="108"/>
+    <rect class="node-bg" x="70" y="110" width="80" height="32" rx="6"/>
+    <text x="110" y="131" text-anchor="middle" font-size="12">Step 1</text>
+
+    <line class="arrow" marker-end="url(#arrow-cmp)" x1="110" y1="144" x2="110" y2="168"/>
+    <rect class="node-bg" x="70" y="170" width="80" height="32" rx="6"/>
+    <text x="110" y="191" text-anchor="middle" font-size="12">Step 2</text>
+
+    <line class="arrow" marker-end="url(#arrow-cmp)" x1="110" y1="204" x2="110" y2="228"/>
+    <rect class="node-bg" x="70" y="230" width="80" height="32" rx="6"/>
+    <text x="110" y="251" text-anchor="middle" font-size="12">Step 3</text>
+
+    <line class="arrow" marker-end="url(#arrow-cmp)" x1="110" y1="264" x2="110" y2="288"/>
+    <rect class="node-green" x="70" y="290" width="80" height="32" rx="6"/>
+    <text x="110" y="311" text-anchor="middle" font-size="12" font-weight="600">Answer</text>
+
+    <!-- separator -->
+    <line stroke="var(--line)" stroke-width="1" x1="210" y1="20" x2="210" y2="335"/>
+
+    <!-- === ToT === -->
+    <text x="390" y="22" text-anchor="middle" font-weight="700" font-size="14" fill="#aab4c5">Tree-of-Thought</text>
+    <text x="390" y="38" text-anchor="middle" class="label-sm">phân nhánh + prune</text>
+
+    <rect class="node-blue" x="350" y="50" width="80" height="32" rx="6"/>
+    <text x="390" y="71" text-anchor="middle" font-size="12">Prompt</text>
+
+    <!-- Branch 1 -->
+    <line class="arrow" marker-end="url(#arrow-cmp)" x1="370" y1="84" x2="300" y2="114"/>
+    <rect class="node-bg" x="255" y="116" width="90" height="30" rx="6"/>
+    <text x="300" y="135" text-anchor="middle" font-size="11">Nhánh A</text>
+
+    <!-- Branch 2 -->
+    <line class="arrow" marker-end="url(#arrow-cmp)" x1="390" y1="84" x2="390" y2="114"/>
+    <rect class="node-bg" x="345" y="116" width="90" height="30" rx="6"/>
+    <text x="390" y="135" text-anchor="middle" font-size="11">Nhánh B</text>
+
+    <!-- Branch 3 -->
+    <line class="arrow" marker-end="url(#arrow-cmp)" x1="410" y1="84" x2="480" y2="114"/>
+    <rect class="node-bg" x="435" y="116" width="90" height="30" rx="6"/>
+    <text x="480" y="135" text-anchor="middle" font-size="11">Nhánh C</text>
+
+    <!-- Evaluate -->
+    <text x="300" y="160" text-anchor="middle" class="label-sm" fill="#ffb86b">✗ prune</text>
+    <text x="390" y="160" text-anchor="middle" class="label-sm" fill="#b4e07a">✓ expand</text>
+    <text x="480" y="160" text-anchor="middle" class="label-sm" fill="#ffb86b">✗ prune</text>
+
+    <!-- Expand B -->
+    <line class="arrow" marker-end="url(#arrow-cmp)" x1="370" y1="164" x2="340" y2="186"/>
+    <rect class="node-bg" x="295" y="188" width="90" height="30" rx="6"/>
+    <text x="340" y="207" text-anchor="middle" font-size="11">B-1</text>
+
+    <line class="arrow" marker-end="url(#arrow-cmp)" x1="410" y1="164" x2="440" y2="186"/>
+    <rect class="node-bg" x="395" y="188" width="90" height="30" rx="6"/>
+    <text x="440" y="207" text-anchor="middle" font-size="11">B-2</text>
+
+    <text x="340" y="232" text-anchor="middle" class="label-sm" fill="#ffb86b">✗ prune</text>
+    <text x="440" y="232" text-anchor="middle" class="label-sm" fill="#b4e07a">✓ expand</text>
+
+    <line class="arrow" marker-end="url(#arrow-cmp)" x1="440" y1="236" x2="440" y2="262"/>
+    <rect class="node-green" x="395" y="264" width="90" height="32" rx="6"/>
+    <text x="440" y="285" text-anchor="middle" font-size="12" font-weight="600">Answer</text>
+
+    <!-- separator -->
+    <line stroke="var(--line)" stroke-width="1" x1="565" y1="20" x2="565" y2="335"/>
+
+    <!-- === MCTS === -->
+    <text x="660" y="22" text-anchor="middle" font-weight="700" font-size="14" fill="#aab4c5">MCTS</text>
+    <text x="660" y="38" text-anchor="middle" class="label-sm">select → expand → simulate → backprop</text>
+
+    <rect class="node-blue" x="620" y="50" width="80" height="32" rx="6"/>
+    <text x="660" y="71" text-anchor="middle" font-size="12">Root</text>
+
+    <line class="arrow" marker-end="url(#arrow-cmp)" x1="645" y1="84" x2="620" y2="112"/>
+    <rect class="node-bg" x="585" y="114" width="70" height="28" rx="5"/>
+    <text x="620" y="132" text-anchor="middle" font-size="11">Node A</text>
+
+    <line class="arrow" marker-end="url(#arrow-cmp)" x1="675" y1="84" x2="700" y2="112"/>
+    <rect class="node-bg" x="665" y="114" width="70" height="28" rx="5"/>
+    <text x="700" y="132" text-anchor="middle" font-size="11">Node B</text>
+
+    <!-- rollout arrows -->
+    <line class="arrow" marker-end="url(#arrow-cmp)" x1="620" y1="144" x2="610" y2="168"/>
+    <rect class="node-accent" x="578" y="170" width="64" height="26" rx="4"/>
+    <text x="610" y="187" text-anchor="middle" font-size="10">rollout</text>
+
+    <line class="arrow" marker-end="url(#arrow-cmp)" x1="700" y1="144" x2="700" y2="168"/>
+    <rect class="node-accent" x="668" y="170" width="64" height="26" rx="4"/>
+    <text x="700" y="187" text-anchor="middle" font-size="10">rollout</text>
+
+    <!-- backprop -->
+    <text x="630" y="214" text-anchor="middle" font-size="11" fill="#aab4c5">backpropagate</text>
+    <text x="630" y="228" text-anchor="middle" font-size="11" fill="#aab4c5">reward scores</text>
+
+    <!-- UCT formula hint -->
+    <text x="660" y="258" text-anchor="middle" class="label-sm">UCT: exploitation + exploration</text>
+    <text x="660" y="273" text-anchor="middle" class="label-sm" font-style="italic">score = Q + c·√(ln N / n)</text>
+
+    <rect class="node-green" x="618" y="285" width="84" height="30" rx="6"/>
+    <text x="660" y="305" text-anchor="middle" font-size="12" font-weight="600">Best Path</text>
+  </svg>
+
+  <p>
+    Ba thành phần cốt lõi của ToT:
+  </p>
+  <ul>
+    <li><strong>Thought decomposition</strong>: chia bài toán thành các "thought steps" đủ nhỏ để đánh giá được.</li>
+    <li><strong>Thought generator</strong>: sinh ra k candidates cho bước tiếp theo từ trạng thái hiện tại.</li>
+    <li><strong>State evaluator</strong>: đánh giá mỗi partial solution (LLM tự đánh giá hoặc heuristic).</li>
+    <li><strong>Search algorithm</strong>: BFS hoặc DFS để duyệt cây, với pruning để tiết kiệm compute.</li>
+  </ul>
+  <p>
+    ToT vượt trội so với CoT đơn thuần trên các bài toán cần <strong>backtracking</strong> —
+    tức là khi bạn cần thử một hướng, nhận ra sai, quay lại và thử hướng khác.
+    Ví dụ điển hình: Game of 24, crossword puzzle generation, creative writing với ràng buộc cứng.
+  </p>
+
+  <!-- ─────────────────────────────────────────────────────────── -->
+  <h2 id="graph-forest">38.6 Graph-of-Thought, Forest-of-Thought và các biến thể</h2>
+  <p>
+    Sau ToT, cộng đồng nghiên cứu nhanh chóng mở rộng cấu trúc tìm kiếm:
+  </p>
+  <ul>
+    <li>
+      <strong>Graph-of-Thought (GoT)</strong>: Cho phép các nhánh suy nghĩ <em>hợp nhất</em> lại
+      với nhau — không chỉ là cây mà là DAG (directed acyclic graph). Hữu ích khi hai hướng giải
+      khác nhau có thể combine để tạo ra giải pháp tốt hơn (e.g., sorting: merge pieces from different branches).
+    </li>
+    <li>
+      <strong>Forest-of-Thought (FoT)</strong>: Chạy nhiều cây ToT song song với budget khác nhau,
+      sau đó aggregate kết quả — kết hợp tính parallel của Best-of-N với tính structured của ToT.
+    </li>
+    <li>
+      <strong>Algorithm-of-Thought (AoT)</strong>: Embed thuật toán tìm kiếm (DFS, A*) trực tiếp vào
+      trong chuỗi CoT, để model tự điều hướng search thay vì cần external search controller.
+    </li>
+    <li>
+      <strong>Recursive CoT (RCoT)</strong>: Model tự decompose bài toán thành sub-problems, giải
+      đệ quy, rồi combine — phù hợp cho hierarchical problems như math proof hay code generation.
+    </li>
+  </ul>
+
+  <div class="callout note">
+    <div class="icon">≡</div>
+    <div>
+      <div class="title">Overhead vs benefit</div>
+      <p>
+        Các phương pháp nâng cao như GoT, FoT thường cần nhiều API calls hơn và orchestration phức tạp hơn.
+        Trong practice 2025–2026, reasoning models (o3, Claude extended thinking) internalize nhiều trong số
+        này — bạn không cần tự code ToT/GoT nếu dùng reasoning model. Tự implement các kỹ thuật này
+        vẫn có giá trị với open-source models hoặc khi cần kiểm soát chi tiết quá trình tìm kiếm.
+      </p>
+    </div>
+  </div>
+
+  <!-- ─────────────────────────────────────────────────────────── -->
+  <h2 id="mcts">38.7 Monte Carlo Tree Search (MCTS) cho LLM Reasoning</h2>
+  <p>
+    MCTS là thuật toán tìm kiếm cổ điển trong game AI (AlphaGo, chess engines) — nay được áp dụng
+    cho LLM reasoning. Ý tưởng cốt lõi: thay vì duyệt exhaustive hay dùng heuristic đơn giản,
+    MCTS <strong>cân bằng exploration và exploitation</strong> bằng công thức UCT (Upper Confidence
+    Bound for Trees) để quyết định nút nào cần mở rộng tiếp theo.
+  </p>
+
+  <h3>Vòng lặp MCTS cho LLM</h3>
+  <ol>
+    <li><strong>Selection</strong>: Từ root (bài toán gốc), đi xuống cây theo UCT score đến nút lá.</li>
+    <li><strong>Expansion</strong>: Từ nút lá, LLM sinh ra k reasoning steps tiếp theo.</li>
+    <li><strong>Simulation (Rollout)</strong>: Từ nút mới, LLM "hoàn thành" bài toán đến cuối bằng một policy (có thể là greedy decode).</li>
+    <li><strong>Backpropagation</strong>: Reward của rollout được truyền ngược lên các nút tổ tiên, cập nhật Q-value và visit count.</li>
+  </ol>
+
+  <!-- SVG: PRM-guided MCTS search -->
+  <svg class="diagram" viewBox="0 0 760 300" role="img" aria-label="PRM-guided MCTS search">
+    <defs>
+      <marker id="arrow-mcts" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#6f7c92"/>
+      </marker>
+    </defs>
+
+    <!-- Title -->
+    <text x="380" y="22" text-anchor="middle" font-weight="700" font-size="13" fill="#aab4c5">PRM-Guided MCTS: một iteration</text>
+
+    <!-- Root -->
+    <rect class="node-blue" x="310" y="34" width="140" height="40" rx="8"/>
+    <text x="380" y="53" text-anchor="middle" font-weight="600" font-size="13">Root State</text>
+    <text x="380" y="68" text-anchor="middle" class="label-sm">Q=0.72  N=47</text>
+
+    <!-- Selection arrows (thicker) -->
+    <line stroke="#7cc4ff" stroke-width="2" marker-end="url(#arrow-mcts)" x1="340" y1="76" x2="250" y2="110"/>
+    <line stroke="#7cc4ff" stroke-width="2" marker-end="url(#arrow-mcts)" x1="420" y1="76" x2="510" y2="110"/>
+
+    <!-- Node A (selected) -->
+    <rect class="node-accent" x="175" y="112" width="150" height="40" rx="8"/>
+    <text x="250" y="131" text-anchor="middle" font-weight="600" font-size="12">Step 1-A ★</text>
+    <text x="250" y="146" text-anchor="middle" class="label-sm">Q=0.81  N=23  ← selected</text>
+
+    <!-- Node B -->
+    <rect class="node-bg" x="435" y="112" width="150" height="40" rx="8"/>
+    <text x="510" y="131" text-anchor="middle" font-weight="600" font-size="12">Step 1-B</text>
+    <text x="510" y="146" text-anchor="middle" class="label-sm">Q=0.61  N=24</text>
+
+    <!-- Expansion from A -->
+    <line stroke="#ffb86b" stroke-width="2" marker-end="url(#arrow-mcts)" x1="220" y1="154" x2="160" y2="190"/>
+    <line stroke="#ffb86b" stroke-width="2" marker-end="url(#arrow-mcts)" x1="280" y1="154" x2="340" y2="190"/>
+
+    <!-- New nodes (expanded) -->
+    <rect class="node-bg" x="90" y="192" width="140" height="38" rx="6"/>
+    <text x="160" y="210" text-anchor="middle" font-size="12">Step 2-A1</text>
+    <text x="160" y="224" class="label-sm" text-anchor="middle">new, unvisited</text>
+
+    <rect class="node-bg" x="265" y="192" width="140" height="38" rx="6"/>
+    <text x="335" y="210" text-anchor="middle" font-size="12">Step 2-A2</text>
+    <text x="335" y="224" class="label-sm" text-anchor="middle">new, unvisited</text>
+
+    <!-- PRM scores the new nodes -->
+    <text x="160" y="246" text-anchor="middle" font-size="11" fill="#ffb86b">PRM score: 0.74</text>
+    <text x="335" y="246" text-anchor="middle" font-size="11" fill="#b4e07a">PRM score: 0.88 ← expand</text>
+
+    <!-- Rollout from A2 -->
+    <line stroke="#b4e07a" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arrow-mcts)" x1="335" y1="232" x2="335" y2="262"/>
+    <rect x="265" y="264" width="140" height="28" rx="6" fill="rgba(180,224,122,0.08)" stroke="var(--accent-3)" stroke-width="1"/>
+    <text x="335" y="282" text-anchor="middle" font-size="11" fill="#b4e07a">rollout → reward = 1.0</text>
+
+    <!-- Backprop label -->
+    <text x="580" y="130" text-anchor="middle" font-size="12" fill="#aab4c5">Backpropagate:</text>
+    <text x="580" y="148" text-anchor="middle" font-size="11" fill="#7cc4ff">reward 1.0 ngược lên</text>
+    <text x="580" y="164" text-anchor="middle" font-size="11" fill="#7cc4ff">cập nhật Q, N của</text>
+    <text x="580" y="180" text-anchor="middle" font-size="11" fill="#7cc4ff">Step 2-A2, Step 1-A,</text>
+    <text x="580" y="196" text-anchor="middle" font-size="11" fill="#7cc4ff">và Root</text>
+  </svg>
+
+  <h3>rStar-Math và AlphaProof</h3>
+  <p>
+    Hai ứng dụng nổi bật của MCTS cho LLM reasoning:
+  </p>
+  <ul>
+    <li>
+      <strong>rStar-Math</strong> (Microsoft Research, 2024): Dùng MCTS với PRM để giải toán
+      MATH benchmark. Model nhỏ (7B) kết hợp với MCTS và PRM có thể cạnh tranh với model lớn hơn
+      nhiều dùng greedy decoding.
+    </li>
+    <li>
+      <strong>AlphaProof</strong> (Google DeepMind, 2024): Giải bài toán Olympic toán học (IMO)
+      bằng cách kết hợp LLM với symbolic solver (Lean) và MCTS-style search. Đạt silver medal
+      level performance lần đầu tiên cho AI trên IMO 2024.
+    </li>
+  </ul>
+
+  <!-- ─────────────────────────────────────────────────────────── -->
+  <h2 id="reasoning-models">38.8 Reasoning Models 2025–2026: Internals và Landscape</h2>
+  <p>
+    Từ giữa 2024, các lab lớn lần lượt phát hành <strong>reasoning models</strong> —
+    model được train đặc biệt để nội tại hoá quá trình suy nghĩ dài trước khi trả lời.
+    Điểm khác biệt so với dùng CoT prompt thông thường: <em>reasoning là một phần của quá trình
+    train bằng RL, không chỉ là kỹ thuật prompting runtime</em>.
+  </p>
+
+  <h3>Kiến trúc và training internals</h3>
+  <p>
+    Mặc dù các lab không công khai toàn bộ chi tiết, pattern chung được suy ra từ papers và
+    technical reports:
+  </p>
+  <ul>
+    <li>
+      <strong>RL on reasoning chains</strong>: Model được train bằng reinforcement learning
+      (thường dựa trên GRPO, PPO hoặc variants) với reward signal từ độ đúng của đáp án cuối.
+      Model học "kiếm điểm" bằng cách sinh ra thinking tokens hữu ích.
+    </li>
+    <li>
+      <strong>PRM-guided training</strong>: Process Reward Model được dùng để cung cấp
+      dense reward signal — thay vì chỉ biết đáp án cuối đúng hay sai, model nhận phản hồi
+      về từng bước suy nghĩ.
+    </li>
+    <li>
+      <strong>Emergent reasoning behaviors</strong>: DeepSeek-R1 paper báo cáo các hành vi
+      "aha moment" nổi lên tự nhiên: model tự nhận ra sai lầm và backtrack, tự verify lời giải,
+      suy nghĩ theo nhiều góc độ — chỉ nhờ RL training, không cần supervised examples về cách thinking.
+    </li>
+  </ul>
+
+  <h3>Bảng so sánh reasoning models</h3>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Model</th>
+          <th>Provider</th>
+          <th>Thinking knob</th>
+          <th>Max thinking</th>
+          <th>Visibility</th>
+          <th>Đặc điểm nổi bật</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>o3 / o4-mini</strong></td>
+          <td>OpenAI</td>
+          <td><code>reasoning_effort</code><br><span class="label-sm">(low/medium/high)</span></td>
+          <td>~100k tokens thinking</td>
+          <td>Ẩn (summary only)</td>
+          <td>Mạnh nhất về coding &amp; math; o4-mini cost hiệu quả hơn</td>
+        </tr>
+        <tr>
+          <td><strong>Claude 3.7+ Extended Thinking</strong></td>
+          <td>Anthropic</td>
+          <td><code>thinking.budget_tokens</code><br><span class="label-sm">(số tokens)</span></td>
+          <td>~64k tokens thinking</td>
+          <td>Có thể inspect thinking blocks</td>
+          <td>Thinking có thể đọc được; interleaved thinking + tool use</td>
+        </tr>
+        <tr>
+          <td><strong>DeepSeek-R1</strong></td>
+          <td>DeepSeek / self-host</td>
+          <td>Temperature + max_tokens</td>
+          <td>Không giới hạn cứng</td>
+          <td>Toàn bộ &lt;think&gt; block hiển thị</td>
+          <td>Open weights; cost rất thấp; training pipeline công khai</td>
+        </tr>
+        <tr>
+          <td><strong>QwQ-32B / QwQ-Plus</strong></td>
+          <td>Alibaba (Qwen)</td>
+          <td>Temperature + sampling</td>
+          <td>Không giới hạn cứng</td>
+          <td>&lt;think&gt; block hiển thị</td>
+          <td>Open source; cạnh tranh với proprietary; mạnh về toán</td>
+        </tr>
+        <tr>
+          <td><strong>Gemini 2.x Thinking</strong></td>
+          <td>Google</td>
+          <td><code>thinking_config.thinking_budget</code><br><span class="label-sm">(số tokens)</span></td>
+          <td>~32k tokens thinking</td>
+          <td>Thinking summaries</td>
+          <td>Tích hợp tốt với Google tools; multimodal reasoning</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ─────────────────────────────────────────────────────────── -->
+  <h2 id="long-cot-vs-search">38.9 Long CoT vs Structured Search — Khi nào cái nào thắng?</h2>
+  <p>
+    Hai hướng tiếp cận chính của inference-time scaling có trade-off khác nhau:
+  </p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Tiêu chí</th>
+          <th>Long CoT (reasoning models)</th>
+          <th>Structured Search (ToT/MCTS + external)</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Cách hoạt động</strong></td>
+          <td>Model tự sinh chuỗi suy nghĩ nội tại dài trước khi trả lời</td>
+          <td>External controller điều phối nhiều LLM calls theo cấu trúc cây/đồ thị</td>
+        </tr>
+        <tr>
+          <td><strong>Phù hợp với</strong></td>
+          <td>Bài toán liên tục cần reasoning dài; khi latency tổng thể quan trọng hơn throughput</td>
+          <td>Bài toán cần explicit backtracking; khi có verifier/oracle tốt; khi parallelism quan trọng</td>
+        </tr>
+        <tr>
+          <td><strong>Overhead</strong></td>
+          <td>Latency cao hơn (sequential thinking); một API call</td>
+          <td>Nhiều API calls song song; phức tạp hơn để implement và debug</td>
+        </tr>
+        <tr>
+          <td><strong>Interpretability</strong></td>
+          <td>Claude: thinking blocks có thể đọc; OpenAI: thinking ẩn</td>
+          <td>Mỗi bước là một API call riêng, dễ log và trace hơn</td>
+        </tr>
+        <tr>
+          <td><strong>Cost model</strong></td>
+          <td>Trả cho thinking tokens (thường rẻ hơn output tokens); một lần</td>
+          <td>N × cost per call; cần cân nhắc cẩn thận với N lớn</td>
+        </tr>
+        <tr>
+          <td><strong>Điểm yếu</strong></td>
+          <td>Không thể "thực sự" backtrack; có thể hallucinate trong thinking</td>
+          <td>Context passing phức tạp; cần verifier chất lượng cao để có lợi ích</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout tip">
+    <div class="icon">★</div>
+    <div>
+      <div class="title">Nguyên tắc chọn lựa thực tế</div>
+      <p>
+        Bắt đầu với reasoning model (o3/Claude extended thinking) — nó internalize cả Long CoT lẫn
+        một dạng search nội tại. Chỉ tự implement ToT/MCTS khi: (1) bạn cần verifier mạnh chạy
+        parallel, (2) bạn dùng open-source model không có built-in reasoning, hoặc (3) task của bạn
+        cần explicit symbolic verification (như theorem proving, constraint satisfaction).
+      </p>
+    </div>
+  </div>
+
+  <!-- ─────────────────────────────────────────────────────────── -->
+  <h2 id="cost-quality">38.10 Cost vs Quality Curves — Compute Budget Knob</h2>
+  <p>
+    Một trong những tính chất thú vị nhất của inference-time scaling là <strong>tính liên tục</strong>:
+    bạn có thể chọn điểm trên đường cong cost–quality phù hợp với yêu cầu từng use case.
+  </p>
+
+  <!-- SVG: Cost vs Quality curve -->
+  <svg class="diagram" viewBox="0 0 720 340" role="img" aria-label="Cost vs Quality curve với diminishing returns">
+    <defs>
+      <marker id="arrow-cq" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#6f7c92"/>
+      </marker>
+    </defs>
+
+    <!-- Axes -->
+    <line stroke="var(--line)" stroke-width="2" x1="60" y1="270" x2="660" y2="270"/>
+    <line stroke="var(--line)" stroke-width="2" x1="60" y1="30" x2="60" y2="270"/>
+    <line class="arrow" marker-end="url(#arrow-cq)" x1="658" y1="270" x2="672" y2="270"/>
+    <line class="arrow" marker-end="url(#arrow-cq)" x1="60" y1="32" x2="60" y2="18"/>
+
+    <text x="665" y="286" text-anchor="start" font-size="12" fill="#aab4c5">Compute budget</text>
+    <text x="30" y="15" text-anchor="middle" font-size="12" fill="#aab4c5" transform="rotate(-90,30,150)">Quality</text>
+
+    <!-- Quality curve (concave, logarithmic shape) -->
+    <!-- Points: (60,270) → steep rise → (660,80) with diminishing returns -->
+    <path d="M 80 265 C 120 220, 160 160, 220 120 C 280 85, 360 72, 460 65 C 540 60, 600 58, 660 57"
+          stroke="#b4e07a" stroke-width="2.5" fill="none"/>
+
+    <!-- Zone annotations -->
+    <!-- Zone 1: cheap zone -->
+    <rect x="72" y="200" width="100" height="60" rx="6" fill="rgba(180,224,122,0.08)" stroke="var(--accent-3)" stroke-width="1" stroke-dasharray="4,3"/>
+    <text x="122" y="222" text-anchor="middle" font-size="11" fill="#b4e07a">Vùng hiệu quả</text>
+    <text x="122" y="238" text-anchor="middle" class="label-sm">ROI cao nhất</text>
+    <text x="122" y="252" text-anchor="middle" class="label-sm">simple tasks</text>
+
+    <!-- Zone 2: mid zone -->
+    <rect x="240" y="100" width="130" height="55" rx="6" fill="rgba(124,196,255,0.08)" stroke="var(--accent-2)" stroke-width="1" stroke-dasharray="4,3"/>
+    <text x="305" y="120" text-anchor="middle" font-size="11" fill="#7cc4ff">Vùng lý tưởng</text>
+    <text x="305" y="136" text-anchor="middle" class="label-sm">hard reasoning tasks</text>
+    <text x="305" y="150" text-anchor="middle" class="label-sm">medium effort</text>
+
+    <!-- Zone 3: diminishing returns -->
+    <rect x="490" y="45" width="160" height="55" rx="6" fill="rgba(255,138,138,0.07)" stroke="var(--danger)" stroke-width="1" stroke-dasharray="4,3"/>
+    <text x="570" y="65" text-anchor="middle" font-size="11" fill="#ff8a8a">Diminishing returns</text>
+    <text x="570" y="81" text-anchor="middle" class="label-sm">cost tăng &gt;&gt; quality</text>
+    <text x="570" y="95" text-anchor="middle" class="label-sm">không worth it</text>
+
+    <!-- Operating points -->
+    <circle cx="122" cy="230" r="6" fill="#b4e07a"/>
+    <text x="122" y="297" text-anchor="middle" font-size="11" fill="#b4e07a">low effort</text>
+    <text x="122" y="310" text-anchor="middle" class="label-sm">1–4k think tokens</text>
+
+    <circle cx="305" cy="100" r="6" fill="#7cc4ff"/>
+    <text x="305" y="297" text-anchor="middle" font-size="11" fill="#7cc4ff">medium effort</text>
+    <text x="305" y="310" text-anchor="middle" class="label-sm">8–20k think tokens</text>
+
+    <circle cx="510" cy="63" r="6" fill="#ffb86b"/>
+    <text x="510" y="297" text-anchor="middle" font-size="11" fill="#ffb86b">high effort</text>
+    <text x="510" y="310" text-anchor="middle" class="label-sm">40k+ think tokens</text>
+
+    <!-- Vertical lines to axis -->
+    <line stroke="#b4e07a" stroke-width="1" stroke-dasharray="3,3" x1="122" y1="236" x2="122" y2="270"/>
+    <line stroke="#7cc4ff" stroke-width="1" stroke-dasharray="3,3" x1="305" y1="106" x2="305" y2="270"/>
+    <line stroke="#ffb86b" stroke-width="1" stroke-dasharray="3,3" x1="510" y1="69" x2="510" y2="270"/>
+
+    <!-- Note -->
+    <text x="380" y="328" text-anchor="middle" class="label-sm">Curve thực tế phụ thuộc vào task difficulty — task dễ: plateau sớm; task khó: curve dốc hơn</text>
+  </svg>
+
+  <p>
+    Điểm quan trọng cần nhớ về cost–quality curve:
+  </p>
+  <ul>
+    <li><strong>Task difficulty quyết định hình dạng curve</strong>: Bài toán toán học khó có curve
+    dốc đều; bài toán đơn giản plateau rất nhanh sau một lượng thinking nhỏ.</li>
+    <li><strong>Thinking tokens rẻ hơn output tokens</strong>: Với Anthropic, thinking tokens được
+    tính là output tokens nhưng không tốn kém bằng final output tokens khi dùng extended thinking.
+    OpenAI tính reasoning tokens riêng, thường ít hơn output tokens.</li>
+    <li><strong>Có inflection point</strong>: Mỗi task có một mức compute optimal — dưới đó quality
+    chưa đủ tốt, trên đó chi phí không xứng đáng với cải tiến thêm.</li>
+  </ul>
+
+  <!-- ─────────────────────────────────────────────────────────── -->
+  <h2 id="provider-apis">38.11 Provider APIs: Thinking Budget Knobs</h2>
+  <p>
+    Ba provider chính đều expose thinking budget qua API, nhưng với interface khác nhau.
+    Dưới đây là cách sử dụng chi tiết kèm code example:
+  </p>
+
+  <h3>OpenAI — <code>reasoning_effort</code></h3>
+  <pre><code><span class="kw">import</span> OpenAI <span class="kw">from</span> <span class="str">'openai'</span>;
+
+<span class="kw">const</span> client = <span class="kw">new</span> <span class="fn">OpenAI</span>();
+
+<span class="cm">// reasoning_effort: 'low' | 'medium' | 'high'</span>
+<span class="cm">// 'low'    → ~1k reasoning tokens, nhanh, rẻ, dùng cho simple tasks</span>
+<span class="cm">// 'medium' → ~8k reasoning tokens, balanced (default)</span>
+<span class="cm">// 'high'   → ~25k+ reasoning tokens, chậm, đắt, dùng cho hard problems</span>
+<span class="kw">const</span> response = <span class="kw">await</span> client.chat.completions.<span class="fn">create</span>({
+  model: <span class="str">'o3'</span>,
+  reasoning_effort: <span class="str">'high'</span>,         <span class="cm">// ← nút điều chỉnh</span>
+  messages: [
+    { role: <span class="str">'user'</span>, content: <span class="str">'Prove that √2 is irrational.'</span> }
+  ],
+});
+
+<span class="cm">// Xem usage: bao nhiêu reasoning tokens đã dùng</span>
+console.<span class="fn">log</span>(response.usage.completion_tokens_details.reasoning_tokens);
+</code></pre>
+
+  <h3>Anthropic — <code>thinking.budget_tokens</code></h3>
+  <pre><code><span class="kw">import</span> Anthropic <span class="kw">from</span> <span class="str">'@anthropic-ai/sdk'</span>;
+
+<span class="kw">const</span> client = <span class="kw">new</span> <span class="fn">Anthropic</span>();
+
+<span class="cm">// budget_tokens: số thinking tokens tối đa (min 1024, recommended ≥ 10000 cho hard tasks)</span>
+<span class="cm">// Thinking blocks xuất hiện trong response.content trước TextBlock</span>
+<span class="kw">const</span> response = <span class="kw">await</span> client.messages.<span class="fn">create</span>({
+  model: <span class="str">'claude-opus-4-5'</span>,
+  max_tokens: <span class="num">16000</span>,
+  thinking: {
+    type: <span class="str">'enabled'</span>,
+    budget_tokens: <span class="num">10000</span>,          <span class="cm">// ← nút điều chỉnh</span>
+  },
+  messages: [
+    { role: <span class="str">'user'</span>, content: <span class="str">'Solve this competitive programming problem...'</span> }
+  ],
+});
+
+<span class="cm">// Thinking blocks có thể inspect</span>
+<span class="kw">for</span> (<span class="kw">const</span> block <span class="kw">of</span> response.content) {
+  <span class="kw">if</span> (block.type === <span class="str">'thinking'</span>) {
+    console.<span class="fn">log</span>(<span class="str">'Thinking:'</span>, block.thinking);   <span class="cm">// readable CoT</span>
+  } <span class="kw">else if</span> (block.type === <span class="str">'text'</span>) {
+    console.<span class="fn">log</span>(<span class="str">'Answer:'</span>, block.text);
+  }
+}
+</code></pre>
+
+  <h3>Google Gemini — <code>thinkingConfig.thinkingBudget</code></h3>
+  <pre><code><span class="kw">import</span> { GoogleGenerativeAI } <span class="kw">from</span> <span class="str">'@google/generative-ai'</span>;
+
+<span class="kw">const</span> genAI = <span class="kw">new</span> <span class="fn">GoogleGenerativeAI</span>(process.env.GEMINI_API_KEY);
+
+<span class="cm">// thinkingBudget: 0 = thinking tắt; -1 = dynamic (model tự quyết)</span>
+<span class="cm">// Giá trị cụ thể (e.g. 8192) = budget tokens tối đa</span>
+<span class="kw">const</span> model = genAI.<span class="fn">getGenerativeModel</span>({
+  model: <span class="str">'gemini-2.0-flash-thinking-exp'</span>,
+  generationConfig: {
+    thinkingConfig: {
+      thinkingBudget: <span class="num">8192</span>,               <span class="cm">// ← nút điều chỉnh</span>
+    },
+  },
+});
+
+<span class="kw">const</span> result = <span class="kw">await</span> model.<span class="fn">generateContent</span>(<span class="str">'Plan a multi-agent research workflow...'</span>);
+console.<span class="fn">log</span>(result.response.<span class="fn">text</span>());
+</code></pre>
+
+  <div class="callout warn">
+    <div class="icon">!</div>
+    <div>
+      <div class="title">Thinking tokens không đi qua system prompt bình thường</div>
+      <p>
+        Với Claude extended thinking, nếu bạn muốn instruct model về cách thinking (e.g., "think step by step"),
+        hãy đặt hướng dẫn đó trong <code>user</code> message, không phải <code>system</code>.
+        Thinking tokens không thể cache được với standard prompt caching — lưu ý khi thiết kế pipeline
+        để tránh tốn kém không cần thiết.
+      </p>
+    </div>
+  </div>
+
+  <!-- ─────────────────────────────────────────────────────────── -->
+  <h2 id="when-helps">38.12 Khi nào Inference Scaling giúp được — và khi nào không</h2>
+
+  <h3>Giúp được đáng kể</h3>
+  <ul>
+    <li>
+      <strong>Toán học và logic hình thức</strong>: Competition math (AMC, AIME, IMO), theorem proving,
+      logic puzzles. Kết quả cải thiện mạnh nhất vì có oracle verification (đáp án đúng/sai rõ ràng).
+    </li>
+    <li>
+      <strong>Competitive programming</strong>: LeetCode Hard, Codeforces Div.1. Reasoning model có
+      thể xem xét multiple approaches, catch off-by-one errors, handle edge cases tốt hơn.
+    </li>
+    <li>
+      <strong>Multi-step planning</strong>: Lập kế hoạch phức tạp với nhiều dependencies,
+      ràng buộc, và tradeoffs cần cân nhắc kỹ.
+    </li>
+    <li>
+      <strong>Code review và debugging phức tạp</strong>: Tracing bug qua nhiều files, hiểu side effects,
+      đề xuất fix toàn diện thay vì patch surface.
+    </li>
+    <li>
+      <strong>Scientific reasoning</strong>: Phân tích paper, thiết kế thí nghiệm, clinical reasoning.
+    </li>
+  </ul>
+
+  <h3>Không giúp được nhiều (hoặc không đáng)</h3>
+  <ul>
+    <li>
+      <strong>Simple conversational chat</strong>: Trả lời câu hỏi thông thường, chitchat, FAQ.
+      Standard model đủ tốt với latency thấp hơn nhiều và cost thấp hơn.
+    </li>
+    <li>
+      <strong>Retrieval-based Q&amp;A</strong>: Khi câu trả lời chủ yếu từ retrieved documents,
+      chất lượng phụ thuộc vào retrieval, không phải reasoning. Reasoning model không cải thiện
+      được nếu context không đủ.
+    </li>
+    <li>
+      <strong>Formatting và data extraction</strong>: Parse JSON, reformat, extract fields —
+      task deterministic, reasoning không thêm giá trị.
+    </li>
+    <li>
+      <strong>Creative writing thuần túy</strong>: Không có "đúng/sai" để suy luận đến —
+      thinking tokens bị "lãng phí" vào meta-commentary về task thay vì cải thiện output.
+    </li>
+    <li>
+      <strong>High-throughput, low-latency applications</strong>: Chatbot real-time với &lt;1s latency
+      requirement, classification pipeline với hàng nghìn requests/giây. Latency của reasoning model
+      (5–60s) không phù hợp.
+    </li>
+  </ul>
+
+  <!-- ─────────────────────────────────────────────────────────── -->
+  <h2 id="engineering">38.13 Engineering Implications: Latency, Cost, Observability</h2>
+  <p>
+    Inference-time scaling đặt ra những thách thức engineering mới mà không tồn tại với standard models:
+  </p>
+
+  <h3>Latency management</h3>
+  <ul>
+    <li>
+      <strong>Time-to-First-Token (TTFT)</strong> tăng đáng kể — model phải finish thinking trước
+      khi generate output token đầu tiên (với most implementations). Thiết kế UX phải tính đến
+      "loading" state dài hơn.
+    </li>
+    <li>
+      <strong>Streaming thinking</strong>: Anthropic cho phép stream thinking blocks — có thể hiển thị
+      thinking progress realtime cho user experience tốt hơn. Ví dụ: "Đang suy nghĩ... (3.2s)"
+    </li>
+    <li>
+      <strong>Timeout thích hợp</strong>: Với high-effort queries, response có thể mất 30–60s.
+      Tăng HTTP timeout, dùng async patterns, và cân nhắc background job cho long-running queries.
+    </li>
+    <li>
+      <strong>Parallel queries</strong>: Nếu latency của thinking quá cao cho user-facing flow,
+      có thể kick off query sớm (optimistic pre-fetch) hoặc dùng Best-of-N với parallel calls thay vì
+      một call với high budget.
+    </li>
+  </ul>
+
+  <h3>Cost monitoring</h3>
+  <ul>
+    <li>
+      <strong>Thinking tokens cần track riêng</strong>: Chúng không xuất hiện trong output tokens
+      thông thường. Dùng <code>usage.completion_tokens_details.reasoning_tokens</code> (OpenAI) hoặc
+      <code>usage.cache_read_input_tokens</code> / thinking block metrics (Anthropic).
+    </li>
+    <li>
+      <strong>Budget guard</strong>: Implement hard cap trên thinking budget cho production —
+      nếu user gửi deliberately expensive query, không để nó tiêu hết budget tháng.
+    </li>
+    <li>
+      <strong>Tiered reasoning</strong>: Dùng classifier đơn giản để route: câu hỏi đơn giản →
+      standard model; câu hỏi phức tạp → low reasoning effort; câu hỏi rất khó → high effort.
+      Giảm cost tổng thể xuống đáng kể.
+    </li>
+  </ul>
+
+  <h3>Observability cho thinking tokens</h3>
+  <ul>
+    <li>
+      <strong>Log thinking tokens separately</strong>: Với Anthropic (thinking blocks visible), log
+      thinking text vào observability system — cho phép debug "tại sao model suy nghĩ theo hướng này?"
+    </li>
+    <li>
+      <strong>Track thinking efficiency</strong>: Số thinking tokens per task type, correlation với
+      output quality — để calibrate budget setting.
+    </li>
+    <li>
+      <strong>Eval với thinking budget levels</strong>: Trong eval pipeline, test cả low/medium/high
+      effort để tìm điểm sweet spot cho từng task category.
+    </li>
+  </ul>
+
+  <div class="callout note">
+    <div class="icon">≡</div>
+    <div>
+      <div class="title">Thinking tokens và prompt caching</div>
+      <p>
+        Thinking tokens không được cache với standard prompt caching. Điều này có ý nghĩa quan trọng
+        với architecture: nếu bạn dùng extended thinking trong agentic pipeline với nhiều turns,
+        mỗi turn sẽ chạy thinking từ đầu. Thiết kế context window management cẩn thận hơn so với
+        standard models.
+      </p>
+    </div>
+  </div>
+
+  <!-- ─────────────────────────────────────────────────────────── -->
+  <h2 id="old-vs-new">38.14 Cách cũ vs Cách hiện tại</h2>
+  <p>
+    Tổng kết sự thay đổi workflow từ era single-shot CoT prompting sang era reasoning models
+    và inference-time compute control:
+  </p>
+
+  <div class="tabs" data-tabs>
+    <div class="tab-buttons">
+      <button class="active">Cách cũ — Single-shot CoT Prompting</button>
+      <button>Cách hiện tại — Reasoning Loop + Provider Knob + Verifier</button>
+    </div>
+    <div class="tab-panel active">
+      <h4 style="margin-top:8px">Workflow</h4>
+      <p>
+        Viết prompt với hướng dẫn "hãy suy nghĩ từng bước" (<em>chain-of-thought prompting</em>),
+        gọi model một lần, nhận về output. Nếu output sai, viết lại prompt và thử lại thủ công.
+      </p>
+      <pre><code><span class="cm">// Cách cũ — 2022–2023</span>
+<span class="kw">const</span> response = <span class="kw">await</span> openai.chat.completions.<span class="fn">create</span>({
+  model: <span class="str">'gpt-4'</span>,
+  messages: [{
+    role: <span class="str">'user'</span>,
+    content: <span class="str">`Let's think step by step.\n\n${problem}`</span>
+  }],
+  temperature: <span class="num">0</span>,   <span class="cm">// greedy, deterministic</span>
+});
+<span class="cm">// Nhận về một câu trả lời. Đúng hay sai — không biết.</span>
+</code></pre>
+      <p><strong>Hạn chế:</strong></p>
+      <ul>
+        <li>Model có thể "viết CoT nhưng không thực sự suy nghĩ" — các bước CoT là cosmetic</li>
+        <li>Không có backtracking — nếu bước 2 sai, các bước sau đều sai theo</li>
+        <li>Không có cơ chế verify kết quả — output nhận được là final</li>
+        <li>Không có compute budget control — tất cả queries được xử lý như nhau</li>
+      </ul>
+    </div>
+    <div class="tab-panel">
+      <h4 style="margin-top:8px">Workflow</h4>
+      <p>
+        Dùng reasoning model với <strong>explicit thinking budget</strong>. Model tự điều hướng
+        internal search loop (backtrack, verify, refine). Optionally, một external verifier/PRM
+        đánh giá kết quả. Budget được điều chỉnh theo task complexity.
+      </p>
+      <pre><code><span class="cm">// Cách hiện tại — 2025–2026</span>
+
+<span class="cm">// 1. Route bởi task complexity</span>
+<span class="kw">const</span> effort = taskComplexity === <span class="str">'hard'</span> ? <span class="str">'high'</span> : <span class="str">'low'</span>;
+
+<span class="cm">// 2. Gọi reasoning model với budget</span>
+<span class="kw">const</span> response = <span class="kw">await</span> anthropic.messages.<span class="fn">create</span>({
+  model: <span class="str">'claude-opus-4-5'</span>,
+  max_tokens: <span class="num">16000</span>,
+  thinking: {
+    type: <span class="str">'enabled'</span>,
+    budget_tokens: effort === <span class="str">'high'</span> ? <span class="num">20000</span> : <span class="num">2000</span>,
+  },
+  messages: [{ role: <span class="str">'user'</span>, content: problem }],
+});
+
+<span class="cm">// 3. Extract answer</span>
+<span class="kw">const</span> answer = response.content
+  .<span class="fn">filter</span>(b => b.type === <span class="str">'text'</span>)
+  .<span class="fn">map</span>(b => b.text)
+  .<span class="fn">join</span>(<span class="str">''</span>);
+
+<span class="cm">// 4. Optionally: verify với external verifier hoặc Best-of-N</span>
+<span class="kw">const</span> verified = <span class="kw">await</span> <span class="fn">verifyAnswer</span>(problem, answer);
+<span class="kw">if</span> (!verified) {
+  <span class="cm">// retry với higher budget hoặc different approach</span>
+}
+</code></pre>
+      <p><strong>Cải tiến:</strong></p>
+      <ul>
+        <li>Reasoning là genuine — được train bằng RL, không phải cosmetic text</li>
+        <li>Model tự backtrack và verify nội tại khi reasoning</li>
+        <li>Compute budget là explicit, controllable, và observable</li>
+        <li>Có thể kết hợp với external verifier cho higher confidence</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3>So sánh trực quan: tư duy cũ vs mới</h3>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Khía cạnh</th><th>Cách cũ (2022–2023)</th><th>Cách hiện tại (2025–2026)</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>CoT là gì?</td>
+          <td>Kỹ thuật prompting — text hướng dẫn model "viết các bước"</td>
+          <td>Internal computation — model thực sự iterate trước khi output</td>
+        </tr>
+        <tr>
+          <td>Compute control</td>
+          <td>Không có — mọi query đều tốn lượng compute tương đương</td>
+          <td>Explicit budget knob (<code>reasoning_effort</code>, <code>budget_tokens</code>)</td>
+        </tr>
+        <tr>
+          <td>Backtracking</td>
+          <td>Không — sequential, một chiều</td>
+          <td>Yes — reasoning model có thể thay đổi hướng suy nghĩ nội tại</td>
+        </tr>
+        <tr>
+          <td>Verification</td>
+          <td>Tự verify qua prompt ("hãy kiểm tra lại") — unreliable</td>
+          <td>Model tự verify trong thinking; optionally + external verifier/PRM</td>
+        </tr>
+        <tr>
+          <td>Observability</td>
+          <td>Chỉ thấy output text</td>
+          <td>Thinking blocks visible (Anthropic, DeepSeek-R1, QwQ); token count metrics</td>
+        </tr>
+        <tr>
+          <td>Cost model</td>
+          <td>Tỉ lệ với output length</td>
+          <td>Tỉ lệ với thinking + output; thinking thường rẻ hơn output tokens</td>
+        </tr>
+        <tr>
+          <td>Latency</td>
+          <td>1–5s điển hình</td>
+          <td>5–60s với high thinking budget; cần design UX phù hợp</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ─────────────────────────────────────────────────────────── -->
+  <h2 id="tom-tat">Tóm tắt</h2>
+  <ol>
+    <li>
+      <strong>Paradigm shift 2024–2025</strong>: Inference-time compute scaling bổ sung cho train-time scaling —
+      cho phép cải thiện chất lượng tại runtime bằng cách đầu tư thêm compute lúc generate.
+    </li>
+    <li>
+      <strong>Best-of-N và self-consistency</strong> là những kỹ thuật nền tảng:
+      đơn giản, dễ implement, hiệu quả khi có verifier tốt (Best-of-N) hoặc không cần verifier (self-consistency).
+    </li>
+    <li>
+      <strong>Tree-of-Thought và MCTS</strong> cho phép backtracking và structured search —
+      vượt trội so với CoT tuyến tính khi bài toán cần khám phá nhiều hướng và phát hiện sai lầm sớm.
+    </li>
+    <li>
+      <strong>Reasoning models 2025–2026</strong> (o3/o4-mini, Claude extended thinking, DeepSeek-R1, QwQ, Gemini Thinking)
+      internalize reasoning qua RL training, không chỉ là prompting tricks.
+      Mỗi provider expose thinking budget qua API khác nhau.
+    </li>
+    <li>
+      <strong>Long CoT vs structured search</strong>: Dùng reasoning model trước (đơn giản hơn, ít API calls);
+      tự implement ToT/MCTS khi cần verifier mạnh, parallelism, hoặc dùng open-source models.
+    </li>
+    <li>
+      <strong>Cost–quality curve có diminishing returns</strong>: Mỗi task có sweet spot —
+      calibrate budget theo task complexity, không set high effort cho mọi query.
+    </li>
+    <li>
+      <strong>Engineering implications</strong>: Latency cao hơn (5–60s), cần track thinking tokens riêng,
+      implement tiered routing, và thiết kế UX phù hợp với "thinking in progress" state.
+    </li>
+    <li>
+      <strong>Khi nào nên dùng</strong>: Math, code, planning, multi-step reasoning — yes.
+      Simple chat, retrieval, formatting, high-throughput low-latency — no.
+    </li>
+  </ol>
+
+  <nav class="section-footer">
+    <a href="37-continuous-eval.html" class="prev">
+      <div class="label">← trước</div>
+      <div class="title">37 — Continuous Evaluation</div>
+    </a>
+    <a href="39-computer-use-agents.html" class="next">
+      <div class="label">tiếp theo →</div>
+      <div class="title">39 — Computer-Use Agents</div>
+    </a>
+  </nav>
+
+</main>
+
+<script src="../assets/script.js"></script>
+</body>
+</html>

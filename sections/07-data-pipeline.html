@@ -1,0 +1,530 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>07 · Data Pipeline cho AI — AI Engineering</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<nav class="top-nav">
+  <div class="brand"><span class="dot"></span> AI Engineering</div>
+  <div class="crumbs"><a href="../index.html">Mục lục</a> › Phần 3 · <span>07 — Data Pipeline cho AI</span></div>
+  <div class="nav-actions">
+    <a href="06-fine-tuning.html">← 13</a>
+    <a href="08-vector-search.html">Tiếp →</a>
+  </div>
+</nav>
+
+<main class="page">
+
+  <section class="hero">
+    <span class="eyebrow">Phần 3 · §07</span>
+    <h1>Data Pipeline cho AI</h1>
+    <p class="lede">
+      Từ raw document đến knowledge store sẵn sàng phục vụ RAG: ingestion, parsing, cleaning, enrichment, annotation, và continuous refresh.
+    </p>
+    <img class="hero-image" src="../images/07-data-pipeline.png" alt="Data pipeline hero illustration" onerror="this.style.display='none'">
+  </section>
+
+  <aside class="toc">
+    <div class="toc-title">Trong trang này</div>
+    <ul>
+      <li><a href="#so-sanh">14.1 Khác data pipeline truyền thống</a></li>
+      <li><a href="#sources">14.2 Document ingestion sources</a></li>
+      <li><a href="#parsing">14.3 Parsing</a></li>
+      <li><a href="#cleaning">14.4 Cleaning</a></li>
+      <li><a href="#enrichment">14.5 Enrichment</a></li>
+      <li><a href="#synthetic">14.6 Synthetic data generation</a></li>
+      <li><a href="#annotation">14.7 Annotation workflows</a></li>
+      <li><a href="#refresh">14.8 Refresh strategy</a></li>
+      <li><a href="#privacy">14.9 Privacy &amp; PII</a></li>
+      <li><a href="#quality">14.10 Quality monitoring</a></li>
+      <li><a href="#tom-tat">Tóm tắt</a></li>
+    </ul>
+  </aside>
+
+  <!-- Full pipeline SVG -->
+  <svg class="diagram" viewBox="0 0 820 130" role="img" aria-label="Full data pipeline: sources → parse → clean → enrich → store">
+    <defs>
+      <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#6f7c92"/>
+      </marker>
+    </defs>
+    <!-- Sources -->
+    <rect class="node-accent" x="10" y="30" width="120" height="60" rx="8"/>
+    <text x="70" y="56" text-anchor="middle" font-weight="600">Sources</text>
+    <text x="70" y="74" text-anchor="middle" class="label-sm">PDF · HTML · DB · API</text>
+    <!-- Arrow -->
+    <line class="arrow" x1="132" y1="60" x2="162" y2="60"/>
+    <!-- Parse -->
+    <rect class="node-blue" x="164" y="30" width="120" height="60" rx="8"/>
+    <text x="224" y="56" text-anchor="middle" font-weight="600">Parse</text>
+    <text x="224" y="74" text-anchor="middle" class="label-sm">PyMuPDF · Unstructured</text>
+    <!-- Arrow -->
+    <line class="arrow" x1="286" y1="60" x2="316" y2="60"/>
+    <!-- Clean -->
+    <rect class="node-green" x="318" y="30" width="120" height="60" rx="8"/>
+    <text x="378" y="56" text-anchor="middle" font-weight="600">Clean</text>
+    <text x="378" y="74" text-anchor="middle" class="label-sm">dedup · normalize · filter</text>
+    <!-- Arrow -->
+    <line class="arrow" x1="440" y1="60" x2="470" y2="60"/>
+    <!-- Enrich -->
+    <rect class="node-accent" x="472" y="30" width="120" height="60" rx="8"/>
+    <text x="532" y="56" text-anchor="middle" font-weight="600">Enrich</text>
+    <text x="532" y="74" text-anchor="middle" class="label-sm">metadata · tags · summary</text>
+    <!-- Arrow -->
+    <line class="arrow" x1="594" y1="60" x2="624" y2="60"/>
+    <!-- Store -->
+    <rect class="node-blue" x="626" y="30" width="120" height="60" rx="8"/>
+    <text x="686" y="56" text-anchor="middle" font-weight="600">Store</text>
+    <text x="686" y="74" text-anchor="middle" class="label-sm">vector DB · object store</text>
+    <!-- Labels below -->
+    <text x="70"  y="108" text-anchor="middle" class="label-sm">①</text>
+    <text x="224" y="108" text-anchor="middle" class="label-sm">②</text>
+    <text x="378" y="108" text-anchor="middle" class="label-sm">③</text>
+    <text x="532" y="108" text-anchor="middle" class="label-sm">④</text>
+    <text x="686" y="108" text-anchor="middle" class="label-sm">⑤</text>
+  </svg>
+
+  <h2 id="so-sanh">14.1 Data pipeline cho LLM apps khác với data engineering truyền thống như thế nào</h2>
+  <p>
+    Trong data engineering truyền thống, pipeline thường xử lý <strong>dữ liệu có cấu trúc rõ ràng</strong>: rows, columns, schemas cố định. Mục tiêu là tính toán aggregate, load vào data warehouse, feed vào dashboard hoặc ML model.
+  </p>
+  <p>
+    Data pipeline cho LLM applications có những điểm khác biệt căn bản:
+  </p>
+  <ul>
+    <li><strong>Unstructured &amp; semi-structured content là trọng tâm</strong> — PDF, HTML, email, code, audio transcripts. Không phải rows.</li>
+    <li><strong>Semantic fidelity quan trọng hơn byte fidelity</strong> — nội dung sau parse phải giữ đúng ý nghĩa để model hiểu, không chỉ cần đúng ký tự.</li>
+    <li><strong>Chunking là một quyết định thiết kế</strong> — cách chia văn bản thành chunks ảnh hưởng trực tiếp đến recall trong RAG.</li>
+    <li><strong>Metadata là first-class citizen</strong> — nguồn gốc tài liệu, ngày tạo, author, section title đều là context quý giá khi retrieve.</li>
+    <li><strong>Pipeline không chỉ chạy một lần</strong> — tài liệu thay đổi, knowledge base phải được refresh liên tục.</li>
+    <li><strong>Privacy là constraint cứng</strong> — PII không thể leak vào vector store rồi được retrieve vào prompt.</li>
+  </ul>
+
+  <div class="callout note">
+    <div class="icon">≡</div>
+    <div>
+      <div class="title">Garbage in, garbage out — nhưng đặc biệt hơn với LLMs</div>
+      <p>Với ML truyền thống, dữ liệu xấu làm model dự đoán sai. Với RAG, dữ liệu xấu khiến model tự tin nói sai điều — và còn trích dẫn nguồn xấu đó. Đây là lý do pipeline quality quan trọng hơn nhiều người nghĩ.</p>
+    </div>
+  </div>
+
+  <h2 id="sources">14.2 Document ingestion sources</h2>
+  <p>
+    Một hệ thống RAG thực tế thường phải xử lý nhiều loại nguồn cùng lúc. Mỗi loại có đặc thù riêng:
+  </p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Source type</th><th>Format điển hình</th><th>Thách thức</th><th>Tool / approach</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Documents</td><td>PDF, DOCX, PPTX</td><td>Layout phức tạp, bảng, hình ảnh, cột</td><td>PyMuPDF, pdfplumber, Unstructured</td></tr>
+        <tr><td>Web / HTML</td><td>HTML, sitemap</td><td>Navigation, ads, cookie banners phải loại</td><td>Playwright + readability, trafilatura</td></tr>
+        <tr><td>Code repos</td><td>.py, .ts, .java, .md</td><td>Syntax-aware chunking, dependencies</td><td>tree-sitter, langchain code splitter</td></tr>
+        <tr><td>Databases</td><td>SQL tables, NoSQL docs</td><td>Joins, schema, null values</td><td>Custom SQL queries → serialised text</td></tr>
+        <tr><td>APIs</td><td>JSON/XML REST, GraphQL</td><td>Pagination, auth, rate limits</td><td>Custom connectors, Airbyte</td></tr>
+        <tr><td>Audio / Video</td><td>MP3, WAV, MP4, MKV</td><td>Latency, speaker diarisation, accuracy</td><td>Whisper, Deepgram, AssemblyAI</td></tr>
+        <tr><td>Scanned docs / images</td><td>PNG, TIFF, scanned PDF</td><td>OCR errors, rotated pages, low res</td><td>Tesseract, AWS Textract, Azure DI</td></tr>
+        <tr><td>Emails / Slack</td><td>.eml, API</td><td>Threading, quoted replies, noise</td><td>Custom parsers, connector platforms</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Connector architecture</h3>
+  <p>
+    Khi số nguồn tăng lên, nên thiết kế một <strong>connector abstraction</strong>: mỗi source type có một connector implement interface chung (<code>fetch() → RawDocument[]</code>). Pipeline downstream không cần biết nguồn là gì — chỉ cần nhận <code>RawDocument</code>.
+  </p>
+  <p>
+    Các platform như <em>Airbyte</em>, <em>Fivetran</em>, <em>Nango</em> cung cấp connector có sẵn cho hàng trăm SaaS — đặc biệt hữu ích khi cần kết nối Salesforce, HubSpot, Notion, Google Drive.
+  </p>
+
+  <h2 id="parsing">14.3 Parsing</h2>
+  <p>
+    Parsing là bước biến raw bytes thành <strong>semantic text có cấu trúc</strong>. Đây thường là bước khó nhất và ảnh hưởng nhiều nhất đến chất lượng downstream.
+  </p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Tool</th><th>Mạnh nhất ở</th><th>Điểm yếu</th><th>License</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><strong>PyMuPDF (fitz)</strong></td><td>PDF text extraction nhanh, chính xác với text-based PDF</td><td>Yếu với scanned/complex layout</td><td>AGPL / commercial</td></tr>
+        <tr><td><strong>pdfplumber</strong></td><td>Table extraction từ PDF, toạ độ ký tự</td><td>Chậm hơn PyMuPDF</td><td>MIT</td></tr>
+        <tr><td><strong>Unstructured.io</strong></td><td>Multi-format (PDF, DOCX, HTML, email...), layout detection, element classification</td><td>Phụ thuộc nhiều, model detection tốn tài nguyên</td><td>Apache 2 / hosted</td></tr>
+        <tr><td><strong>LlamaParse</strong></td><td>LLM-powered parsing, bảng phức tạp, charts → markdown</td><td>Có chi phí API, latency cao hơn</td><td>Commercial API</td></tr>
+        <tr><td><strong>Apache Tika</strong></td><td>Hàng trăm format, Java ecosystem</td><td>Java dependency, khó containerise nhẹ</td><td>Apache 2</td></tr>
+        <tr><td><strong>Docling (IBM)</strong></td><td>Layout-aware PDF, bảng → JSON chuẩn</td><td>Còn mới, community nhỏ</td><td>MIT</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Layout-aware parsing</h3>
+  <p>
+    PDF không phải là format có semantic structure — nó là tập hợp các lệnh vẽ. Một heading có thể chỉ là text được in đậm và to hơn, không có tag <code>&lt;h2&gt;</code>. Layout-aware parser dùng <strong>bounding box, font size, spacing</strong> để suy ra cấu trúc.
+  </p>
+  <p>
+    Với tài liệu multi-column (báo cáo tài chính, paper khoa học), parser phải nhận ra reading order đúng — không đọc cột trái-phải trái-phải mà đọc hết cột trái rồi mới sang cột phải.
+  </p>
+
+  <h3>Xử lý bảng (tables)</h3>
+  <p>
+    Tables là một trong những thứ khó parse nhất. Các approach:
+  </p>
+  <ul>
+    <li><strong>Cell-by-cell extraction</strong> (pdfplumber): tốt với bảng đơn giản, tự căn chỉnh</li>
+    <li><strong>Table detection model</strong> (Unstructured, Docling): dùng CV để detect bảng rồi OCR từng cell</li>
+    <li><strong>LLM-based</strong> (LlamaParse): gửi page image cho vision model, yêu cầu trả về markdown table — kết quả tốt nhất nhưng tốn tiền</li>
+    <li><strong>Serialization strategy</strong>: chuyển bảng thành Markdown hoặc JSON trước khi chunk — đừng để bảng bị cắt ngang giữa chunk</li>
+  </ul>
+
+  <h3>Chunking strategy</h3>
+
+  <pre><code><span class="cm"># Example: recursive character splitter với metadata preservation</span>
+<span class="kw">from</span> langchain.text_splitter <span class="kw">import</span> RecursiveCharacterTextSplitter
+
+splitter = RecursiveCharacterTextSplitter(
+    chunk_size=<span class="num">512</span>,
+    chunk_overlap=<span class="num">64</span>,
+    separators=[<span class="str">"\n\n"</span>, <span class="str">"\n"</span>, <span class="str">". "</span>, <span class="str">" "</span>]
+)
+
+<span class="kw">def</span> <span class="fn">chunk_document</span>(doc: RawDocument) -> list[Chunk]:
+
+    chunks = splitter.split_text(doc.text)
+    <span class="kw">return</span> [
+        Chunk(
+            text=c,
+            metadata={
+                <span class="str">"source"</span>: doc.source_id,
+                <span class="str">"page"</span>: doc.page_number,
+                <span class="str">"section"</span>: doc.inferred_section,
+                <span class="str">"chunk_index"</span>: i,
+            }
+        )
+        <span class="kw">for</span> i, c <span class="kw">in</span> <span class="fn">enumerate</span>(chunks)
+    ]</code></pre>
+
+  <div class="callout tip">
+    <div class="icon">★</div>
+    <div>
+      <div class="title">Chunk size không phải one-size-fits-all</div>
+      <p>512 tokens phù hợp với prose thông thường. Code nên giữ nguyên function-level (không cắt ngang function). FAQ/Q&amp;A nên giữ nguyên cặp Q&amp;A. Bảng tài chính nên giữ nguyên table. Rule: chunk phải có ý nghĩa khi đứng một mình.</p>
+    </div>
+  </div>
+
+  <h2 id="cleaning">14.4 Cleaning</h2>
+  <p>
+    Cleaning loại bỏ noise và chuẩn hóa data trước khi embed. Bỏ qua bước này sẽ gây ra retrieval quality thấp và tốn embedding cost.
+  </p>
+
+  <h3>HTML stripping</h3>
+  <p>
+    Với content từ web, phải loại toàn bộ HTML tags, navigation menus, cookie banners, footer boilerplate trước khi đưa vào pipeline. Thư viện <em>trafilatura</em> và <em>readability-lxml</em> làm việc này tốt hơn BeautifulSoup đơn thuần vì chúng hiểu "main content" của trang.
+  </p>
+
+  <h3>Deduplication</h3>
+  <p>
+    Duplicate chunks lãng phí storage, làm retrieval trả về kết quả lặp, và bias model về nội dung được lặp nhiều. Hai approach chính:
+  </p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Method</th><th>Cách hoạt động</th><th>Phù hợp với</th><th>Chi phí</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><strong>Exact hash</strong></td><td>SHA-256 của text sau normalize</td><td>Duplicate hoàn toàn</td><td>Rất thấp</td></tr>
+        <tr><td><strong>MinHash (LSH)</strong></td><td>Locality-sensitive hashing trên shingles</td><td>Near-duplicate (copy-paste với sửa nhỏ)</td><td>Thấp, scale tốt</td></tr>
+        <tr><td><strong>Embedding-based</strong></td><td>Cosine similarity giữa embedding vectors</td><td>Semantic duplicate (cùng ý khác từ)</td><td>Cao (cần embed trước)</td></tr>
+        <tr><td><strong>Simhash</strong></td><td>Fingerprint bit-level, Hamming distance</td><td>Near-duplicate, web-scale</td><td>Thấp</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Normalization</h3>
+  <ul>
+    <li>Unicode normalization (NFC/NFKC) — thống nhất cách biểu diễn ký tự</li>
+    <li>Whitespace collapse — loại tab, multiple spaces, non-breaking spaces</li>
+    <li>Encoding fix — latin1/windows-1252 được parse thành UTF-8 sai → <em>ftfy</em> library</li>
+    <li>Line ending normalize — <code>\r\n</code> → <code>\n</code></li>
+    <li>Boilerplate removal — "Page X of Y", header/footer lặp qua các trang</li>
+  </ul>
+
+  <h3>Language filter</h3>
+  <p>
+    Nếu knowledge base chỉ nên chứa tiếng Anh (hoặc tiếng Việt), dùng <em>langdetect</em>, <em>fastText lid.176</em>, hoặc <em>lingua-py</em> để lọc. Lưu ý: đoạn text rất ngắn (&lt;50 chars) thường bị detect sai — nên giữ lại khi uncertain thay vì loại nhầm.
+  </p>
+
+  <h2 id="enrichment">14.5 Enrichment</h2>
+  <p>
+    Enrichment bổ sung metadata vào chunk để retrieval thông minh hơn. Đây là bước phân biệt RAG "basic" và RAG "production-grade".
+  </p>
+
+  <h3>Metadata extraction với LLM</h3>
+
+  <pre><code><span class="cm"># Extract entities và generate summary cho mỗi chunk</span>
+<span class="kw">async def</span> <span class="fn">enrich_chunk</span>(chunk: Chunk, llm: LLMClient) -> EnrichedChunk:
+
+    prompt = <span class="str">f"""Analyze this text chunk and return JSON:
+{{
+  "summary": "1-sentence summary",
+  "entities": ["list", "of", "named entities"],
+  "topics": ["2-4 topic tags"],
+  "language": "vi or en",
+  "content_type": "prose|table|code|list|qa"
+}}
+
+Text: {chunk.text[:1000]}"""</span>
+
+    result = <span class="kw">await</span> llm.<span class="fn">complete</span>(prompt, response_format=<span class="str">"json"</span>)
+    <span class="kw">return</span> EnrichedChunk(
+        **chunk.__dict__,
+        summary=result[<span class="str">"summary"</span>],
+        entities=result[<span class="str">"entities"</span>],
+        topics=result[<span class="str">"topics"</span>],
+    )</code></pre>
+
+  <p>
+    Với large document sets, dùng <strong>batch API</strong> (OpenAI Batch, Anthropic Batch) để giảm cost enrichment xuống 50%. Enrichment không cần realtime.
+  </p>
+
+  <h3>Structural metadata</h3>
+  <p>
+    Nhiều metadata quan trọng không cần LLM — chỉ cần extract đúng từ source:
+  </p>
+  <ul>
+    <li><strong>Document-level</strong>: title, author, created_at, modified_at, source_url, doc_type, language</li>
+    <li><strong>Section-level</strong>: heading path (e.g. "Chapter 3 &gt; 3.2 Results"), page number, section depth</li>
+    <li><strong>Chunk-level</strong>: chunk index, char offset, token count, parent doc ID</li>
+  </ul>
+
+  <div class="callout tip">
+    <div class="icon">★</div>
+    <div>
+      <div class="title">Contextual chunk headers (Anthropic pattern)</div>
+      <p>Prepend một header ngắn vào mỗi chunk trước khi embed: <code>"[Doc: Q3 Report 2024 | Section: Revenue]"</code>. Giúp embedding capture context của chunk thay vì chỉ content. Kỹ thuật này được Anthropic gọi là "Contextual Retrieval" — cải thiện recall ~35% theo benchmark của họ.</p>
+    </div>
+  </div>
+
+  <h2 id="synthetic">14.6 Synthetic data generation</h2>
+  <p>
+    Synthetic data giải quyết vấn đề thiếu training data hoặc thiếu labeled examples. Có ba use case chính:
+  </p>
+
+  <h3>Fine-tuning data</h3>
+  <p>
+    Khi cần fine-tune model cho domain cụ thể nhưng không có đủ (instruction, response) pairs. Approach:
+  </p>
+  <ol>
+    <li>Lấy tài liệu domain làm "seed"</li>
+    <li>Dùng strong model (GPT-4o, Claude 3.5 Sonnet) để generate diverse questions từ tài liệu</li>
+    <li>Generate câu trả lời lý tưởng cho mỗi câu hỏi, có citation</li>
+    <li>Human review sample (không cần review 100%) để catch hallucination</li>
+    <li>Format thành instruction dataset (Alpaca, ShareGPT format)</li>
+  </ol>
+
+  <h3>Eval set generation</h3>
+  <p>
+    Để eval RAG pipeline, cần (question, expected_answer, relevant_chunk) triplets. Manual annotation tốn kém. Synthetic approach: dùng LLM generate câu hỏi từ existing chunks, dùng LLM khác generate "ground truth answer", rồi dùng LLM-as-judge để score. Framework: <em>RAGAS</em>, <em>DeepEval</em>, <em>TruLens</em>.
+  </p>
+
+  <h3>Data augmentation</h3>
+  <p>
+    Cho classification tasks, augment bằng cách paraphrase ví dụ hiện có. Đặc biệt hữu ích khi một class có ít examples hơn class khác (class imbalance).
+  </p>
+
+  <div class="callout warn">
+    <div class="icon">!</div>
+    <div>
+      <div class="title">Synthetic data không thay thế real data</div>
+      <p>Synthetic data capture distribution của strong model, không phải distribution thực. Nếu fine-tune model nhỏ chỉ bằng synthetic data từ GPT-4o, model nhỏ học cách "nghe giống GPT-4o" thay vì học task thực. Hãy mix với real data, và luôn eval trên real test set.</p>
+    </div>
+  </div>
+
+  <h2 id="annotation">14.7 Annotation workflows</h2>
+  <p>
+    Dù có synthetic data, human annotation vẫn không thể tránh hoàn toàn — đặc biệt cho việc tạo ground truth, đánh giá edge cases, và RLHF preference data.
+  </p>
+
+  <h3>Label Studio</h3>
+  <p>
+    Open-source annotation platform, self-hosted. Hỗ trợ NLP, CV, audio. Tích hợp được với ML backend để "pre-label" rồi human chỉ cần review/correct. Phù hợp với team nhỏ, data sensitive (không muốn gửi ra ngoài).
+  </p>
+
+  <h3>Argilla</h3>
+  <p>
+    Tập trung vào NLP/LLM annotation. Giao diện đẹp cho text annotation, có mode "human feedback" cho RLHF. Tích hợp tốt với HuggingFace datasets. Phù hợp hơn cho workflow AI-assisted annotation.
+  </p>
+
+  <h3>Human-in-the-loop patterns</h3>
+  <p>
+    Effective annotation không phải "human labels everything":
+  </p>
+  <ul>
+    <li><strong>Active learning</strong>: model tự identify những ví dụ mà nó uncertain nhất, chỉ gửi những ví dụ đó cho human — giảm annotation cost 5-10x</li>
+    <li><strong>LLM pre-label + human verify</strong>: LLM label tất cả, human chỉ review những label có confidence thấp hoặc sample ngẫu nhiên</li>
+    <li><strong>Adjudication workflow</strong>: với labeling khó (opinion, nuance), dùng ≥2 annotators + adjudicator khi disagree, track inter-annotator agreement (Cohen's kappa)</li>
+  </ul>
+
+  <h2 id="refresh">14.8 Refresh strategy</h2>
+  <p>
+    Knowledge base không static — tài liệu thay đổi, bị xóa, có tài liệu mới. Cần chiến lược refresh rõ ràng.
+  </p>
+
+  <h3>Incremental refresh</h3>
+  <p>
+    Chỉ xử lý tài liệu mới hoặc đã thay đổi kể từ lần chạy trước. Cần:
+  </p>
+  <ul>
+    <li><strong>Change detection</strong>: compare content hash, modified_at timestamp, hoặc ETag (với HTTP sources)</li>
+    <li><strong>Soft delete</strong>: khi document bị xóa từ source, mark chunk là deleted trong vector store thay vì xóa ngay (để có thể rollback)</li>
+    <li><strong>Document versioning</strong>: giữ nhiều version của cùng doc, có thể query theo version</li>
+  </ul>
+
+  <h3>Full re-index</h3>
+  <p>
+    Khi thay đổi embedding model, chunking strategy, hoặc enrichment logic, cần full re-index toàn bộ corpus. Best practice: build new index song song, validate chất lượng, rồi cutover (blue-green deployment cho vector store).
+  </p>
+
+  <h3>Event-driven ingestion</h3>
+  <p>
+    Với sources có webhook (Confluence, Notion, Google Drive), trigger ingestion ngay khi document thay đổi — latency từ edit đến searchable có thể dưới 1 phút. Dùng message queue (Kafka, SQS, RabbitMQ) để buffer và đảm bảo at-least-once processing.
+  </p>
+
+  <div class="tabs" data-tabs>
+    <div class="tab-buttons">
+      <button class="active">Batch (scheduled)</button>
+      <button>Event-driven</button>
+      <button>Hybrid</button>
+    </div>
+    <div class="tab-panel active">
+      <p><strong>Khi nào dùng:</strong> corpus lớn, tolerance cao với stale data (ví dụ: product docs update mỗi sprint).</p>
+      <p><strong>Cách làm:</strong> Cron job mỗi giờ/ngày. Scan source, compute hash, so với hash đã lưu, chỉ xử lý changed/new docs.</p>
+      <p><strong>Ưu điểm:</strong> Đơn giản, dễ debug, không cần infra phức tạp.</p>
+    </div>
+    <div class="tab-panel">
+      <p><strong>Khi nào dùng:</strong> tolerance thấp với stale data, source hỗ trợ webhook (Confluence, Notion, Slack).</p>
+      <p><strong>Cách làm:</strong> Webhook → SQS/Kafka → Lambda/consumer → parse + embed + upsert.</p>
+      <p><strong>Ưu điểm:</strong> Gần realtime, chỉ xử lý documents thực sự thay đổi.</p>
+    </div>
+    <div class="tab-panel">
+      <p><strong>Khi nào dùng:</strong> Mix sources — một số hỗ trợ webhook, một số không.</p>
+      <p><strong>Cách làm:</strong> Event-driven cho sources hỗ trợ, scheduled crawl cho sources không hỗ trợ. Unified processing queue cho cả hai.</p>
+      <p><strong>Ưu điểm:</strong> Best of both — realtime khi có thể, reliable fallback khi không.</p>
+    </div>
+  </div>
+
+  <h2 id="privacy">14.9 Privacy: PII detection &amp; redaction</h2>
+
+  <div class="callout danger">
+    <div class="icon">✕</div>
+    <div>
+      <div class="title">PII trong vector store = liability lớn</div>
+      <p>Một khi PII (tên, email, CCCD, số thẻ) được embed vào vector store, nó có thể được retrieved vào prompt của bất kỳ user nào. Với RAG system, không có row-level security như database — bất kỳ query nào cũng có thể retrieve chunk chứa PII của người khác.</p>
+    </div>
+  </div>
+
+  <h3>Microsoft Presidio</h3>
+  <p>
+    Open-source PII detection và anonymization. Hỗ trợ: tên, email, phone, địa chỉ, số thẻ tín dụng, SSN, IP, và nhiều loại entity khác. Có thể extend với custom recognizers cho PII đặc thù của domain.
+  </p>
+
+  <pre><code><span class="kw">from</span> presidio_analyzer <span class="kw">import</span> AnalyzerEngine
+<span class="kw">from</span> presidio_anonymizer <span class="kw">import</span> AnonymizerEngine
+
+analyzer = AnalyzerEngine()
+anonymizer = AnonymizerEngine()
+
+<span class="kw">def</span> <span class="fn">redact_pii</span>(text: str, language: str = <span class="str">"en"</span>) -> str:
+
+    results = analyzer.<span class="fn">analyze</span>(text=text, language=language)
+    anonymized = anonymizer.<span class="fn">anonymize</span>(text=text, analyzer_results=results)
+    <span class="kw">return</span> anonymized.text
+
+<span class="cm"># Input:  "Contact John Smith at john@example.com or +1-555-0123"</span>
+<span class="cm"># Output: "Contact &lt;PERSON&gt; at &lt;EMAIL_ADDRESS&gt; or &lt;PHONE_NUMBER&gt;"</span></code></pre>
+
+  <h3>Custom regex patterns</h3>
+  <p>
+    Presidio có thể miss PII domain-specific (mã hồ sơ bệnh án, số hợp đồng nội bộ). Bổ sung custom regex recognizer:
+  </p>
+  <ul>
+    <li>Số CCCD Việt Nam: <code>\b\d{9}|\d{12}\b</code></li>
+    <li>Số điện thoại VN: <code>(0|\+84)[3-9]\d{8}</code></li>
+    <li>Internal IDs: pattern riêng của từng hệ thống</li>
+  </ul>
+
+  <h3>Redaction strategy</h3>
+  <p>
+    Không phải lúc nào cũng muốn xóa — đôi khi muốn giữ PII trong secure store riêng và chỉ đưa vào prompt khi user có quyền. Approach: replace PII với placeholder reference (<code>[PII:uuid]</code>), lưu mapping trong encrypted store, resolve lại khi cần.
+  </p>
+
+  <h2 id="quality">14.10 Quality monitoring</h2>
+  <p>
+    Pipeline data chạy liên tục — cần monitor để detect degradation trước khi nó ảnh hưởng đến end users.
+  </p>
+
+  <h3>Data drift</h3>
+  <p>
+    Khi distribution của incoming documents thay đổi (ví dụ: source bắt đầu viết bằng tiếng khác, format thay đổi, content type shift), pipeline cũ có thể handle kém hơn. Monitor bằng cách track: language distribution, avg chunk length, parse error rate, enrichment confidence scores.
+  </p>
+
+  <h3>Missing và malformed data</h3>
+  <p>
+    Alert khi:
+  </p>
+  <ul>
+    <li>Parse success rate giảm đột ngột (source format đổi)</li>
+    <li>Chunk count per document quá thấp (parsing fail silent)</li>
+    <li>Embedding null rate tăng</li>
+    <li>Metadata fields bắt đầu xuất hiện null value nhiều hơn baseline</li>
+    <li>Dedup rate tăng bất thường (source đang gửi duplicate)</li>
+  </ul>
+
+  <h3>Retrieval quality metrics</h3>
+  <p>
+    Dùng test set (synthetic hoặc human-labeled) để track recall@k và MRR theo thời gian. Nếu metrics giảm mà pipeline code không đổi, nguyên nhân thường là data quality degradation.
+  </p>
+
+  <div class="callout note">
+    <div class="icon">≡</div>
+    <div>
+      <div class="title">Data quality dashboard tối thiểu</div>
+      <p>Track 5 metrics mỗi pipeline run: (1) documents_processed, (2) parse_error_rate, (3) avg_chunk_tokens, (4) pii_redacted_count, (5) dedup_rate. Nếu bất kỳ metric nào lệch &gt;2 sigma so với 7-day baseline, trigger alert.</p>
+    </div>
+  </div>
+
+  <h2 id="tom-tat">Tóm tắt</h2>
+  <ol>
+    <li><strong>Data pipeline cho LLM apps</strong> ưu tiên semantic fidelity, chunking strategy, và metadata — khác với pipeline truyền thống tập trung vào structured data transforms.</li>
+    <li><strong>Parsing</strong> là bước khó nhất — chọn tool phù hợp với source type (Unstructured cho đa dạng, LlamaParse cho bảng phức tạp, PyMuPDF cho speed).</li>
+    <li><strong>Cleaning</strong> bao gồm HTML strip, dedup (MinHash cho near-dup, embedding-based cho semantic dup), normalize, và language filter.</li>
+    <li><strong>Enrichment</strong> — metadata extraction, LLM-generated summaries, và contextual chunk headers — cải thiện retrieval recall đáng kể.</li>
+    <li><strong>Synthetic data</strong> hữu ích cho fine-tuning và eval, nhưng không thay thế real data hoàn toàn.</li>
+    <li><strong>Refresh strategy</strong>: event-driven cho realtime sources, scheduled batch cho bulk, hybrid cho production thực tế.</li>
+    <li><strong>PII redaction</strong> (Presidio + custom regex) phải là bước bắt buộc trước khi data vào vector store.</li>
+    <li><strong>Monitor</strong> parse error rate, dedup rate, chunk stats, và retrieval quality metrics liên tục để detect data degradation sớm.</li>
+  </ol>
+
+  <nav class="section-footer">
+    <a href="06-fine-tuning.html" class="prev">
+      <div class="label">← trước</div>
+      <div class="title">06 — Fine-tuning &amp; Customization</div>
+    </a>
+    <a href="08-vector-search.html" class="next">
+      <div class="label">tiếp theo →</div>
+      <div class="title">08 — Vector Search &amp; Knowledge Stores</div>
+    </a>
+  </nav>
+
+</main>
+
+<script src="../assets/script.js"></script>
+</body>
+</html>

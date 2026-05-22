@@ -1,0 +1,690 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>05 · Model Selection &amp; Evaluation — AI Engineering</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<nav class="top-nav">
+  <div class="brand"><span class="dot"></span> AI Engineering</div>
+  <div class="crumbs"><a href="../index.html">Mục lục</a> › Phần 2 · <span>05 — Model Selection &amp; Evaluation</span></div>
+  <div class="nav-actions">
+    <a href="04-prompt-engineering.html">← Prompt Engineering</a>
+    <a href="06-fine-tuning.html">Fine-tuning →</a>
+  </div>
+</nav>
+
+<main class="page">
+
+  <section class="hero">
+    <span class="eyebrow">Phần 2 · §05</span>
+    <h1>Model Selection &amp; Evaluation</h1>
+    <p class="lede">
+      Làm thế nào chọn đúng model cho use case của bạn — và quan trọng hơn, làm thế nào
+      <em>đo lường</em> xem model đó có thực sự hoạt động tốt trong production hay không.
+    </p>
+    <img class="hero-image" src="../images/05-model-selection.png" alt="Hero illustration" onerror="this.style.display='none'">
+  </section>
+
+  <aside class="toc">
+    <div class="toc-title">Trong trang này</div>
+    <ul>
+      <li><a href="#khung-lua-chon">5.1 Khung lựa chọn model</a></li>
+      <li><a href="#benchmarks">5.2 Benchmark công khai</a></li>
+      <li><a href="#custom-eval">5.3 Custom Eval</a></li>
+      <li><a href="#llm-judge">5.4 LLM-as-Judge</a></li>
+      <li><a href="#human-eval">5.5 Human Eval</a></li>
+      <li><a href="#ab-testing">5.6 A/B Testing production</a></li>
+      <li><a href="#rag-eval">5.7 Eval cho RAG</a></li>
+      <li><a href="#agent-eval">5.8 Eval cho Agents</a></li>
+      <li><a href="#tooling">5.9 Tooling</a></li>
+      <li><a href="#tom-tat">Tóm tắt</a></li>
+    </ul>
+  </aside>
+
+  <!-- ================================================================
+       5.1 Khung lựa chọn model
+  ================================================================ -->
+  <h2 id="khung-lua-chon">5.1 Khung lựa chọn model: Cost vs Latency vs Quality</h2>
+
+  <p>
+    Không có model "tốt nhất" — chỉ có model <strong>phù hợp nhất với use case</strong>.
+    Ba chiều cần trade-off:
+  </p>
+
+  <svg class="diagram" viewBox="0 0 760 340" role="img" aria-label="Cost-Latency-Quality triangle">
+    <defs>
+      <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#6f7c92"/>
+      </marker>
+    </defs>
+
+    <!-- Triangle vertices -->
+    <polygon points="380,30 120,290 640,290" fill="none" stroke="#2a3140" stroke-width="2"/>
+
+    <!-- Quality vertex (top) -->
+    <circle cx="380" cy="30" r="36" fill="rgba(255,184,107,0.15)" stroke="#ffb86b" stroke-width="2"/>
+    <text x="380" y="24" text-anchor="middle" font-weight="700" font-size="14" fill="#ffb86b">Quality</text>
+    <text x="380" y="40" text-anchor="middle" font-size="11" fill="#aab4c5">accuracy, reasoning</text>
+
+    <!-- Cost vertex (bottom-left) -->
+    <circle cx="120" cy="290" r="36" fill="rgba(180,224,122,0.15)" stroke="#b4e07a" stroke-width="2"/>
+    <text x="120" y="284" text-anchor="middle" font-weight="700" font-size="14" fill="#b4e07a">Cost</text>
+    <text x="120" y="300" text-anchor="middle" font-size="11" fill="#aab4c5">$/1M tokens</text>
+
+    <!-- Latency vertex (bottom-right) -->
+    <circle cx="640" cy="290" r="36" fill="rgba(124,196,255,0.15)" stroke="#7cc4ff" stroke-width="2"/>
+    <text x="640" y="284" text-anchor="middle" font-weight="700" font-size="14" fill="#7cc4ff">Latency</text>
+    <text x="640" y="300" text-anchor="middle" font-size="11" fill="#aab4c5">time to first token</text>
+
+    <!-- Center labels for trade-offs -->
+    <text x="220" y="170" text-anchor="middle" font-size="12" fill="#6f7c92">Budget-conscious</text>
+    <text x="220" y="185" text-anchor="middle" font-size="11" fill="#6f7c92">Gemini Flash, Haiku</text>
+
+    <text x="545" y="170" text-anchor="middle" font-size="12" fill="#6f7c92">Low-latency quality</text>
+    <text x="545" y="185" text-anchor="middle" font-size="11" fill="#6f7c92">Claude Haiku, GPT-4o-mini</text>
+
+    <text x="380" y="250" text-anchor="middle" font-size="12" fill="#6f7c92">Max quality</text>
+    <text x="380" y="265" text-anchor="middle" font-size="11" fill="#6f7c92">Claude Opus, GPT-4o, o3</text>
+
+    <!-- Sweet spot -->
+    <circle cx="380" cy="200" r="14" fill="rgba(211,164,255,0.3)" stroke="#d3a4ff" stroke-width="2"/>
+    <text x="410" y="198" font-size="12" fill="#d3a4ff">Sweet</text>
+    <text x="410" y="212" font-size="12" fill="#d3a4ff">spot</text>
+  </svg>
+
+  <h3>Framework chọn model</h3>
+  <ol>
+    <li><strong>Define task requirements:</strong> Accuracy threshold bao nhiêu? Latency SLA là gì? Budget/month tối đa?</li>
+    <li><strong>Bắt đầu với model mạnh nhất</strong> để biết quality ceiling có thể đạt được.</li>
+    <li><strong>Downgrade cho đến khi đạt threshold.</strong> Nếu GPT-4o mini đã đủ accuracy → dùng nó, không cần GPT-4o.</li>
+    <li><strong>Test trên real data.</strong> Benchmark công khai không phản ánh use case của bạn.</li>
+  </ol>
+
+  <div class="callout tip">
+    <div class="icon">★</div>
+    <div>
+      <div class="title">Rule of thumb về giá</div>
+      <p>
+        Nếu có 1 triệu requests/ngày, chênh lệch $0.001/request = $1000/ngày = $365K/năm.
+        Model selection ảnh hưởng trực tiếp đến P&amp;L — không chỉ là technical decision.
+      </p>
+    </div>
+  </div>
+
+  <!-- ================================================================
+       5.2 Benchmark công khai
+  ================================================================ -->
+  <h2 id="benchmarks">5.2 Benchmark Công Khai &amp; Giới Hạn</h2>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Benchmark</th>
+          <th>Đo lường gì</th>
+          <th>Format</th>
+          <th>Hạn chế chính</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>MMLU</strong></td>
+          <td>Knowledge breadth (57 subjects)</td>
+          <td>Multiple choice</td>
+          <td>Nhiều câu đã xuất hiện trong training data</td>
+        </tr>
+        <tr>
+          <td><strong>HumanEval</strong></td>
+          <td>Code generation Python</td>
+          <td>Pass@k (unit tests)</td>
+          <td>Chỉ Python, real-world code khác nhiều</td>
+        </tr>
+        <tr>
+          <td><strong>GPQA</strong></td>
+          <td>Expert-level reasoning (PhD)</td>
+          <td>Multiple choice</td>
+          <td>Narrow domain, không đại diện cho nhiều use case</td>
+        </tr>
+        <tr>
+          <td><strong>MATH</strong></td>
+          <td>Mathematical problem solving</td>
+          <td>Open-ended</td>
+          <td>Competition math, khác toán ứng dụng thực tế</td>
+        </tr>
+        <tr>
+          <td><strong>SWE-bench</strong></td>
+          <td>Real GitHub issue resolution</td>
+          <td>Code patches</td>
+          <td>Chỉ đo resolution rate, không đo code quality</td>
+        </tr>
+        <tr>
+          <td><strong>MT-Bench</strong></td>
+          <td>Multi-turn conversation quality</td>
+          <td>LLM-judged 1–10</td>
+          <td>Judge model có thể có bias</td>
+        </tr>
+        <tr>
+          <td><strong>LMSYS Chatbot Arena</strong></td>
+          <td>Human preference (ELO)</td>
+          <td>Pairwise human vote</td>
+          <td>Self-selected users, không representative</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout warn">
+    <div class="icon">⚠</div>
+    <div>
+      <div class="title">Benchmark không thay thế được custom eval</div>
+      <p>
+        <strong>Contamination:</strong> nhiều benchmark đã leak vào training data của models.
+        <strong>Không phản ánh use case:</strong> model top benchmark chưa chắc tốt hơn
+        cho task cụ thể của bạn. Luôn cần custom eval trên data thực.
+      </p>
+    </div>
+  </div>
+
+  <!-- ================================================================
+       5.3 Custom Eval
+  ================================================================ -->
+  <h2 id="custom-eval">5.3 Build Custom Eval — Eval-Driven Development</h2>
+
+  <p>
+    <strong>Custom eval</strong> là bộ test cases từ data thực của bạn, với criteria đo lường
+    quality theo đúng định nghĩa của business. Đây là nền tảng để cải thiện AI system một cách có hướng.
+  </p>
+
+  <svg class="diagram" viewBox="0 0 760 150" role="img" aria-label="Eval development cycle">
+    <defs>
+      <marker id="arrowhead3" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#6f7c92"/>
+      </marker>
+    </defs>
+
+    <rect class="node-accent" x="15" y="35" width="140" height="70" rx="10"/>
+    <text x="85" y="63" text-anchor="middle" font-weight="700" font-size="13">① Dataset</text>
+    <text x="85" y="80" text-anchor="middle" font-size="11" fill="#aab4c5">50–500 real examples</text>
+    <text x="85" y="95" text-anchor="middle" font-size="11" fill="#aab4c5">với expected outputs</text>
+
+    <line class="arrow" x1="158" y1="70" x2="183" y2="70" marker-end="url(#arrowhead3)"/>
+
+    <rect class="node-blue" x="185" y="35" width="140" height="70" rx="10"/>
+    <text x="255" y="63" text-anchor="middle" font-weight="700" font-size="13">② Criteria</text>
+    <text x="255" y="80" text-anchor="middle" font-size="11" fill="#aab4c5">Accuracy, format,</text>
+    <text x="255" y="95" text-anchor="middle" font-size="11" fill="#aab4c5">faithfulness, safety</text>
+
+    <line class="arrow" x1="328" y1="70" x2="353" y2="70" marker-end="url(#arrowhead3)"/>
+
+    <rect class="node-green" x="355" y="35" width="140" height="70" rx="10"/>
+    <text x="425" y="63" text-anchor="middle" font-weight="700" font-size="13">③ Scoring</text>
+    <text x="425" y="80" text-anchor="middle" font-size="11" fill="#aab4c5">Auto / LLM-judge</text>
+    <text x="425" y="95" text-anchor="middle" font-size="11" fill="#aab4c5">/ Human</text>
+
+    <line class="arrow" x1="498" y1="70" x2="523" y2="70" marker-end="url(#arrowhead3)"/>
+
+    <rect class="node-bg" x="525" y="35" width="140" height="70" rx="10"/>
+    <text x="595" y="63" text-anchor="middle" font-weight="700" font-size="13">④ Iterate</text>
+    <text x="595" y="80" text-anchor="middle" font-size="11" fill="#aab4c5">Prompt / model</text>
+    <text x="595" y="95" text-anchor="middle" font-size="11" fill="#aab4c5">/ data changes</text>
+
+    <path d="M 668 70 Q 705 70 705 128 Q 705 140 425 140 Q 145 140 85 140 Q 15 140 15 70" fill="none" stroke="#6f7c92" stroke-width="1.5" marker-end="url(#arrowhead3)"/>
+  </svg>
+
+  <h3>Xây dựng eval dataset</h3>
+  <pre><code><span class="cm"># Cấu trúc cơ bản của eval dataset (JSONL)</span>
+{
+  <span class="str">"id"</span>: <span class="str">"eval_001"</span>,
+  <span class="str">"input"</span>: {
+    <span class="str">"email_subject"</span>: <span class="str">"Invoice #1234 due tomorrow"</span>,
+    <span class="str">"email_body"</span>: <span class="str">"Please review and approve..."</span>
+  },
+  <span class="str">"expected_output"</span>: <span class="str">"important"</span>,
+  <span class="str">"metadata"</span>: {
+    <span class="str">"category"</span>: <span class="str">"finance"</span>,
+    <span class="str">"difficulty"</span>: <span class="str">"easy"</span>
+  }
+}
+
+<span class="cm"># Scoring function đơn giản</span>
+<span class="kw">def</span> <span class="fn">score_classification</span>(expected: str, actual: str) -> float:
+    <span class="kw">return</span> <span class="num">1.0</span> <span class="kw">if</span> expected == actual <span class="kw">else</span> <span class="num">0.0</span>
+
+<span class="cm"># Aggregated score</span>
+scores = [<span class="fn">score_classification</span>(e[<span class="str">"expected_output"</span>], <span class="fn">run_model</span>(e[<span class="str">"input"</span>]))
+          <span class="kw">for</span> e <span class="kw">in</span> eval_dataset]
+accuracy = <span class="fn">sum</span>(scores) / <span class="fn">len</span>(scores)
+<span class="fn">print</span>(<span class="fn">f</span><span class="str">"Accuracy: {accuracy:.1%}"</span>)  <span class="cm"># e.g., "Accuracy: 87.5%"</span></code></pre>
+
+  <h3>Eval-Driven Development workflow</h3>
+  <div class="card">
+    <p>Giống TDD cho software, <strong>Eval-Driven Development</strong> viết eval trước khi optimize:</p>
+    <ol>
+      <li>Define metric: "accuracy trên email classification phải ≥ 90%"</li>
+      <li>Build eval set: 200 emails đã labeled thủ công</li>
+      <li>Baseline: chạy zero-shot prompt → đo accuracy</li>
+      <li>Improve: thêm few-shot, CoT, fine-tune → đo lại</li>
+      <li>Ship khi đạt threshold</li>
+    </ol>
+  </div>
+
+  <!-- ================================================================
+       5.4 LLM-as-Judge
+  ================================================================ -->
+  <h2 id="llm-judge">5.4 LLM-as-Judge</h2>
+
+  <p>
+    Với open-ended tasks (summarization, creative writing, QA) không có "exact answer",
+    dùng một LLM mạnh hơn để <strong>đánh giá output</strong> của model cần test.
+  </p>
+
+  <div class="grid-2">
+    <div class="card">
+      <h4>Ưu điểm</h4>
+      <ul>
+        <li>Scalable — không cần human cho mỗi example</li>
+        <li>Consistent hơn human khi có rubric tốt</li>
+        <li>Có thể evaluate nhiều tiêu chí cùng lúc</li>
+        <li>Chi phí thấp hơn human annotation nhiều lần</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>Nhược điểm</h4>
+      <ul>
+        <li><strong>Positional bias:</strong> thích answer đặt trước trong pairwise</li>
+        <li><strong>Verbosity bias:</strong> thích answer dài hơn</li>
+        <li><strong>Self-enhancement bias:</strong> GPT-4 thích output từ GPT-4</li>
+        <li>Không detect factual errors nếu judge không có knowledge đó</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3>Các patterns LLM-as-Judge</h3>
+
+  <div class="tabs" data-tabs>
+    <div class="tab-buttons">
+      <button class="active">Reference-based</button>
+      <button>Reference-free</button>
+      <button>Pairwise</button>
+    </div>
+    <div class="tab-panel active">
+      <p>So sánh output với <strong>reference answer</strong> (ground truth):</p>
+      <pre><code><span class="kw">judge_prompt</span> = <span class="str">"""You are an expert evaluator.
+Compare the AI's answer to the reference answer.
+Score from 1-5 on each dimension:
+- Accuracy: does it match key facts in reference?
+- Completeness: does it cover all key points?
+- Conciseness: is there unnecessary information?
+
+Reference: {reference}
+AI Answer: {ai_answer}
+
+Return JSON: {{"accuracy": X, "completeness": X, "conciseness": X, "reasoning": "..."}}"</span></span></span></code></pre>
+    </div>
+    <div class="tab-panel">
+      <p>Đánh giá output dựa trên <strong>criteria tuyệt đối</strong>, không cần reference:</p>
+      <pre><code><span class="kw">judge_prompt</span> = <span class="str">"""Evaluate this customer support response.
+Score 1-5 on:
+- Helpfulness: does it solve the customer's problem?
+- Tone: professional and empathetic?
+- Accuracy: plausibly correct information?
+
+Response to evaluate: {response}
+Customer message: {customer_message}
+
+Return JSON: {{"helpfulness": X, "tone": X, "accuracy": X}}"</span></code></pre>
+    </div>
+    <div class="tab-panel">
+      <p>So sánh hai outputs và chọn output tốt hơn — <strong>pairwise comparison</strong>:</p>
+      <pre><code><span class="kw">judge_prompt</span> = <span class="str">"""Given a user question, which response is better?
+User Question: {question}
+
+Response A: {response_a}
+Response B: {response_b}
+
+Consider: accuracy, helpfulness, clarity.
+Output: "A" or "B" or "tie", then explain briefly."</span>
+
+<span class="cm"># Mitigation cho positional bias: swap A/B,
+# run 2 lần, only count nếu consistent</span></code></pre>
+    </div>
+  </div>
+
+  <div class="callout tip">
+    <div class="icon">★</div>
+    <div>
+      <div class="title">Best practices cho LLM judge</div>
+      <p>
+        (1) Dùng model mạnh hơn model được evaluate. (2) Provide rubric rõ ràng, không chỉ "rate 1-5".
+        (3) Validate judge quality bằng cách spot-check một số judgments với human.
+        (4) Randomize position trong pairwise để giảm positional bias.
+      </p>
+    </div>
+  </div>
+
+  <!-- ================================================================
+       5.5 Human Eval
+  ================================================================ -->
+  <h2 id="human-eval">5.5 Human Evaluation</h2>
+
+  <p>
+    Dù LLM-judge scalable, <strong>human evaluation</strong> vẫn không thể thay thế hoàn toàn —
+    đặc biệt cho safety-critical applications, rare edge cases, và khi calibrate judge quality.
+  </p>
+
+  <h3>Likert Scale Annotation</h3>
+  <div class="card">
+    <p>Annotators rate output trên scale 1–5 (hoặc 1–7) theo từng dimension:</p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Dimension</th><th>1 (Tệ)</th><th>3 (Trung bình)</th><th>5 (Tốt)</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Accuracy</td>
+            <td>Nhiều facts sai</td>
+            <td>Một số facts questionable</td>
+            <td>Chính xác hoàn toàn</td>
+          </tr>
+          <tr>
+            <td>Coherence</td>
+            <td>Khó theo dõi, mâu thuẫn</td>
+            <td>Ổn, vài chỗ unclear</td>
+            <td>Mạch lạc, dễ hiểu</td>
+          </tr>
+          <tr>
+            <td>Helpfulness</td>
+            <td>Không giải quyết vấn đề</td>
+            <td>Giải quyết một phần</td>
+            <td>Giải quyết hoàn toàn</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <h3>Khi nào bắt buộc dùng human eval</h3>
+  <ul>
+    <li><strong>Safety-critical:</strong> medical advice, legal, financial — LLM judge không đủ tin cậy</li>
+    <li><strong>Cultural nuance:</strong> humor, sarcasm, tone phụ thuộc văn hóa</li>
+    <li><strong>Initial calibration:</strong> trước khi dùng LLM-judge, human-validate sample để biết judge có accurate không</li>
+    <li><strong>Disagreement resolution:</strong> khi automated metrics disagree nhau</li>
+  </ul>
+
+  <!-- ================================================================
+       5.6 A/B Testing
+  ================================================================ -->
+  <h2 id="ab-testing">5.6 A/B Testing trong Production</h2>
+
+  <p>
+    Offline eval trên static dataset không đủ — cần validate trên real users với real behavior.
+    A/B testing cho phép đo <strong>business metrics</strong> thực sự (user satisfaction, task completion, retention).
+  </p>
+
+  <pre><code><span class="cm"># Routing logic đơn giản</span>
+<span class="kw">def</span> <span class="fn">get_model_for_user</span>(user_id: str) -> str:
+    <span class="cm"># 10% users vào treatment group (model B)</span>
+    <span class="kw">if</span> <span class="fn">hash</span>(user_id) % <span class="num">100</span> < <span class="num">10</span>:
+        <span class="kw">return</span> <span class="str">"gpt-4o"</span>   <span class="cm"># treatment: mới, đắt hơn</span>
+    <span class="kw">return</span> <span class="str">"gpt-4o-mini"</span>   <span class="cm"># control: hiện tại</span>
+
+<span class="cm"># Log để phân tích sau</span>
+<span class="fn">log_event</span>({
+    <span class="str">"user_id"</span>: user_id,
+    <span class="str">"variant"</span>: model_used,
+    <span class="str">"latency_ms"</span>: latency,
+    <span class="str">"user_thumbs_up"</span>: thumbs_up,
+    <span class="str">"task_completed"</span>: completed
+})</code></pre>
+
+  <div class="callout note">
+    <div class="icon">≡</div>
+    <div>
+      <div class="title">Statistical significance</div>
+      <p>
+        Cần ít nhất 1000+ samples per variant để đạt statistical significance (p &lt; 0.05).
+        Dùng chi-squared test cho categorical metrics, t-test cho continuous.
+        Đừng ship chỉ dựa trên gut feeling — measure!
+      </p>
+    </div>
+  </div>
+
+  <!-- ================================================================
+       5.7 Eval cho RAG
+  ================================================================ -->
+  <h2 id="rag-eval">5.7 Eval cho RAG (Preview)</h2>
+
+  <p>
+    RAG systems có thêm dimension cần evaluate — không chỉ final answer mà cả
+    <strong>retrieval quality</strong> và <strong>generation faithfulness</strong>.
+  </p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Metric</th>
+          <th>Đo lường</th>
+          <th>Tool</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Faithfulness</strong></td>
+          <td>Answer có supported bởi retrieved docs không?</td>
+          <td>RAGAS, TruLens</td>
+        </tr>
+        <tr>
+          <td><strong>Answer Relevance</strong></td>
+          <td>Answer có relevant với question không?</td>
+          <td>RAGAS</td>
+        </tr>
+        <tr>
+          <td><strong>Context Recall</strong></td>
+          <td>Retrieved docs có chứa info cần thiết không?</td>
+          <td>RAGAS, custom</td>
+        </tr>
+        <tr>
+          <td><strong>Context Precision</strong></td>
+          <td>Retrieved docs có nhiều noise không?</td>
+          <td>RAGAS</td>
+        </tr>
+        <tr>
+          <td><strong>Hallucination Rate</strong></td>
+          <td>% answers có claims không có trong docs</td>
+          <td>LLM-judge</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout note">
+    <div class="icon">≡</div>
+    <div>
+      <div class="title">Chi tiết trong phần RAG</div>
+      <p>RAG evals sẽ được cover sâu hơn trong §09 — RAG. Phần này chỉ giới thiệu để bạn có mental model khi thiết kế eval strategy.</p>
+    </div>
+  </div>
+
+  <!-- ================================================================
+       5.8 Eval cho Agents
+  ================================================================ -->
+  <h2 id="agent-eval">5.8 Eval cho Agents (Preview)</h2>
+
+  <p>
+    Agent evaluation phức tạp hơn nhiều vì phải đo cả <strong>process</strong> (các bước thực hiện)
+    lẫn <strong>outcome</strong> (kết quả cuối cùng).
+  </p>
+
+  <div class="grid-2">
+    <div class="card">
+      <h4>Task Completion Rate</h4>
+      <p>% tasks agent hoàn thành thành công. Cần define rõ "thành công" = gì cho từng task type.</p>
+      <pre><code>task_success_rate = successful_tasks / total_tasks</code></pre>
+    </div>
+    <div class="card">
+      <h4>Trajectory Quality</h4>
+      <p>Evaluate từng bước trong plan: agent có chọn đúng tool, đúng thứ tự, đúng parameters không?</p>
+      <pre><code>step_accuracy = correct_steps / total_steps</code></pre>
+    </div>
+  </div>
+
+  <ul>
+    <li><strong>Efficiency:</strong> số bước thực tế vs số bước tối thiểu cần thiết</li>
+    <li><strong>Safety:</strong> agent có thực hiện hành động nguy hiểm / không cho phép không?</li>
+    <li><strong>Robustness:</strong> agent xử lý errors và unexpected situations như thế nào?</li>
+  </ul>
+
+  <!-- ================================================================
+       5.9 Tooling
+  ================================================================ -->
+  <h2 id="tooling">5.9 Eval Tooling</h2>
+
+  <div class="tabs" data-tabs>
+    <div class="tab-buttons">
+      <button class="active">Braintrust</button>
+      <button>Langfuse</button>
+      <button>Arize / Phoenix</button>
+      <button>Promptfoo</button>
+    </div>
+    <div class="tab-panel active">
+      <h4>Braintrust</h4>
+      <p><span class="tag">Hosted</span> <span class="tag blue">Eval-focused</span></p>
+      <ul>
+        <li>Eval framework với versioning và experiment tracking</li>
+        <li>UI compare prompt versions, models side-by-side</li>
+        <li>LLM-as-judge built-in với nhiều scoring functions</li>
+        <li>GitHub integration — run evals on PR</li>
+        <li>Điểm mạnh: developer experience, prompt management</li>
+      </ul>
+    </div>
+    <div class="tab-panel">
+      <h4>Langfuse</h4>
+      <p><span class="tag">Open-source</span> <span class="tag green">Observability + Eval</span></p>
+      <ul>
+        <li>Self-hostable — tốt cho enterprise/compliance requirements</li>
+        <li>Tracing cho complex pipelines (RAG, agents)</li>
+        <li>Human annotation UI cho eval</li>
+        <li>Tích hợp tốt với LangChain, LlamaIndex</li>
+        <li>Điểm mạnh: observability + eval trong một platform</li>
+      </ul>
+    </div>
+    <div class="tab-panel">
+      <h4>Arize AI / Phoenix</h4>
+      <p><span class="tag">Enterprise</span> <span class="tag blue">ML Observability</span></p>
+      <ul>
+        <li>Arize: enterprise ML monitoring, drift detection</li>
+        <li>Phoenix: open-source, tốt cho RAG + agent tracing</li>
+        <li>Embedding visualization, clustering</li>
+        <li>Điểm mạnh: production monitoring, team collaboration</li>
+      </ul>
+    </div>
+    <div class="tab-panel">
+      <h4>Promptfoo</h4>
+      <p><span class="tag">Open-source</span> <span class="tag green">CLI-first</span></p>
+      <ul>
+        <li>CLI tool để test prompts — dễ integrate vào CI/CD</li>
+        <li>Config-as-code với YAML</li>
+        <li>Red-teaming và adversarial testing</li>
+        <li>So sánh nhiều models/providers cùng lúc</li>
+        <li>Điểm mạnh: developer workflow, fast iteration</li>
+      </ul>
+      <pre><code><span class="cm"># promptfoo config.yaml</span>
+prompts:
+  - prompts/classify_v1.txt
+  - prompts/classify_v2.txt
+
+providers:
+  - openai:gpt-4o-mini
+  - anthropic:claude-haiku-3-5
+
+tests:
+  - vars:
+      email: <span class="str">"Invoice due tomorrow"</span>
+    assert:
+      - type: equals
+        value: <span class="str">"important"</span></code></pre>
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Tool</th>
+          <th>Type</th>
+          <th>Best for</th>
+          <th>Pricing</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Braintrust</strong></td>
+          <td>SaaS</td>
+          <td>Eval-driven dev, prompt management</td>
+          <td>Free tier + paid</td>
+        </tr>
+        <tr>
+          <td><strong>Langfuse</strong></td>
+          <td>OSS / SaaS</td>
+          <td>Observability + eval, self-host</td>
+          <td>Free OSS, cloud paid</td>
+        </tr>
+        <tr>
+          <td><strong>Arize Phoenix</strong></td>
+          <td>OSS</td>
+          <td>RAG tracing, embedding viz</td>
+          <td>Free</td>
+        </tr>
+        <tr>
+          <td><strong>Promptfoo</strong></td>
+          <td>OSS CLI</td>
+          <td>CI/CD evals, red-teaming</td>
+          <td>Free</td>
+        </tr>
+        <tr>
+          <td><strong>OpenAI Evals</strong></td>
+          <td>OSS framework</td>
+          <td>OpenAI-centric eval</td>
+          <td>Free</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ================================================================
+       Tóm tắt
+  ================================================================ -->
+  <h2 id="tom-tat">Tóm tắt</h2>
+  <ol>
+    <li><strong>Không có model tốt nhất</strong> — chọn dựa trên cost/latency/quality trade-off của use case cụ thể.</li>
+    <li><strong>Public benchmarks</strong> là điểm tham khảo, không phải sự thật cuối cùng — contamination và distribution mismatch là vấn đề thực.</li>
+    <li><strong>Custom eval trên real data</strong> là investment quan trọng nhất — build ngay từ đầu, không phải sau khi có vấn đề.</li>
+    <li><strong>LLM-as-Judge</strong> scalable nhưng cần calibrate với human eval và biết các bias của nó.</li>
+    <li><strong>Human eval</strong> không thể bỏ qua cho safety-critical applications và cultural nuance.</li>
+    <li><strong>A/B test trong production</strong> để validate business metrics thực sự, không chỉ quality metrics.</li>
+    <li><strong>RAG và Agent eval</strong> cần thêm dimensions (faithfulness, trajectory quality) — sẽ cover chi tiết ở sections sau.</li>
+    <li><strong>Tooling:</strong> Braintrust hoặc Langfuse cho eval + observability; Promptfoo cho CI/CD integration.</li>
+  </ol>
+
+  <nav class="section-footer">
+    <a href="04-prompt-engineering.html" class="prev">
+      <div class="label">← trước đó</div>
+      <div class="title">04 — Prompt Engineering</div>
+    </a>
+    <a href="06-fine-tuning.html" class="next">
+      <div class="label">tiếp theo →</div>
+      <div class="title">06 — Fine-tuning &amp; Customization</div>
+    </a>
+  </nav>
+
+</main>
+
+<script src="../assets/script.js"></script>
+</body>
+</html>

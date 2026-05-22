@@ -1,0 +1,1097 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>37 · Continuous Eval &amp; Regression cho AI — AI Engineering</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<nav class="top-nav">
+  <div class="brand"><span class="dot"></span> AI Engineering</div>
+  <div class="crumbs"><a href="../index.html">Mục lục</a> › Phần 11 · <span>37 — Continuous Eval &amp; Regression cho AI</span></div>
+  <div class="nav-actions">
+    <a href="36-reward-modeling.html">← Trước</a>
+    <a href="38-inference-compute-scaling.html">Tiếp →</a>
+  </div>
+</nav>
+
+<main class="page">
+
+  <section class="hero">
+    <span class="eyebrow">Phần 11 · §37</span>
+    <h1>Continuous Eval &amp; Regression cho AI</h1>
+    <p class="lede">
+      Eval không phải là việc làm một lần trước khi ship. Đây là vòng lặp liên tục: mỗi commit kích hoạt eval suite, mỗi deployment sample production traffic, mỗi alert chỉ ra ngay failing slice. Không có continuous eval, bạn chỉ biết hệ thống bị hỏng khi user phàn nàn.
+    </p>
+    <img class="hero-image" src="../images/37-continuous-eval.png" alt="Hero illustration" onerror="this.style.display='none'">
+  </section>
+
+  <aside class="toc">
+    <div class="toc-title">Trong trang này</div>
+    <ul>
+      <li><a href="#eval-as-code">37.1 Eval as code</a></li>
+      <li><a href="#ci-integration">37.2 CI integration &amp; score gate</a></li>
+      <li><a href="#set-classification">37.3 Phân loại eval set</a></li>
+      <li><a href="#drift-detection">37.4 Eval drift detection</a></li>
+      <li><a href="#online-eval">37.5 Online eval</a></li>
+      <li><a href="#eval-cost">37.6 Chi phí của continuous eval</a></li>
+      <li><a href="#eval-observability">37.7 Eval observability</a></li>
+      <li><a href="#cadence">37.8 Eval cadence</a></li>
+      <li><a href="#prompts-vs-models">37.9 Prompts vs models vs agents</a></li>
+      <li><a href="#tooling">37.10 Tooling ecosystem</a></li>
+      <li><a href="#anti-patterns">37.11 Anti-patterns trong eval design</a></li>
+      <li><a href="#stats">37.12 Statistical significance</a></li>
+      <li><a href="#old-vs-new">37.13 Cách cũ vs cách hiện tại</a></li>
+      <li><a href="#tom-tat">Tóm tắt</a></li>
+    </ul>
+  </aside>
+
+  <h2 id="eval-as-code">37.1 Eval as Code: versioned, repeatable, in git</h2>
+  <p>
+    Phần lớn team AI bắt đầu bằng cách "xem thử output có ổn không" — mở terminal, gọi API, đọc kết quả. Cách này hoạt động cho ngày đầu. Sau đó có người edit prompt, có người upgrade model version, có người thêm context mới, và không ai biết liệu hệ thống hiện tại <em>tốt hơn hay tệ hơn</em> so với tuần trước.
+  </p>
+  <p>
+    <strong>Eval as code</strong> là nguyên tắc: toàn bộ eval suite — test cases, grader, threshold, config — đều là code, sống trong git, có version history, có code review, có CI.
+  </p>
+
+  <div class="callout note">
+    <div class="icon">≡</div>
+    <div>
+      <div class="title">Eval as code = reproducibility + accountability</div>
+      <p>Mỗi eval run phải cho cùng kết quả với cùng input và cùng model. Grader logic phải reviewable. Test cases phải có commit history để biết ai thêm vào khi nào, từ incident nào.</p>
+    </div>
+  </div>
+
+  <h3>Cấu trúc thư mục eval điển hình</h3>
+  <pre><code>evals/
+  summarization/
+    golden-set.jsonl         <span class="cm"># 30 cases must-always-pass</span>
+    regression-set.jsonl     <span class="cm"># 120 cases từ lịch sử bug</span>
+    smoke-set.jsonl          <span class="cm"># 10 cases fast CI check</span>
+    canary-set.jsonl         <span class="cm"># 200 cases sampled từ production</span>
+    grader.py                <span class="cm"># LLM-as-judge logic</span>
+    eval-config.json         <span class="cm"># threshold, model, sampling rate</span>
+  extraction/
+    ...
+scripts/
+  run-eval.py                <span class="cm"># entrypoint, used by CI</span>
+  drift-check.py             <span class="cm"># so sánh vs baseline</span>
+.eval-baseline.json          <span class="cm"># kết quả baseline của version production</span></code></pre>
+
+  <p>
+    Mỗi file <code>.jsonl</code> là một danh sách test cases, mỗi case có ít nhất: <code>input</code> (query/prompt), <code>expected</code> (behavior hoặc rubric), và <code>tags</code> để slice sau.
+  </p>
+
+  <pre><code><span class="cm"># golden-set.jsonl — mỗi dòng là một JSON object</span>
+{<span class="str">"id"</span>: <span class="str">"g001"</span>, <span class="str">"input"</span>: <span class="str">"Tóm tắt email sau trong 2 câu: ..."</span>,
+ <span class="str">"expected_behavior"</span>: <span class="str">"Phải bao gồm deadline và action item chính"</span>,
+ <span class="str">"tags"</span>: [<span class="str">"summarization"</span>, <span class="str">"email"</span>, <span class="str">"critical"</span>],
+ <span class="str">"source"</span>: <span class="str">"incident-2025-03-12"</span>}
+
+{<span class="str">"id"</span>: <span class="str">"g002"</span>, <span class="str">"input"</span>: <span class="str">"Dịch đoạn sau sang tiếng Anh chính xác: ..."</span>,
+ <span class="str">"expected_behavior"</span>: <span class="str">"Dịch thuật ngữ kỹ thuật đúng, không paraphrase"</span>,
+ <span class="str">"tags"</span>: [<span class="str">"translation"</span>, <span class="str">"technical"</span>],
+ <span class="str">"source"</span>: <span class="str">"user-feedback-2025-04-02"</span>}</code></pre>
+
+  <h2 id="ci-integration">37.2 CI Integration: chạy eval trên mỗi PR, gate merge</h2>
+  <p>
+    Một khi eval suite sống trong git, bước tiếp theo là kéo nó vào CI pipeline — mỗi pull request thay đổi prompt hoặc model config sẽ tự động kích hoạt eval suite và chặn merge nếu score thấp hơn threshold.
+  </p>
+
+  <!-- SVG: CI Pipeline with eval gate -->
+  <svg class="diagram" viewBox="0 0 760 260" role="img" aria-label="CI pipeline với eval gate">
+    <defs>
+      <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#6f7c92"/>
+      </marker>
+    </defs>
+
+    <text x="380" y="22" text-anchor="middle" font-weight="700" font-size="14">CI Pipeline với Eval Gate</text>
+
+    <!-- Step 1 -->
+    <rect class="node-bg" x="20" y="50" width="110" height="60" rx="8"/>
+    <text x="75" y="75" text-anchor="middle" font-weight="600" font-size="12">PR Open</text>
+    <text x="75" y="93" text-anchor="middle" class="label-sm">prompt/config change</text>
+
+    <!-- Step 2 -->
+    <rect class="node-bg" x="155" y="50" width="110" height="60" rx="8"/>
+    <text x="210" y="72" text-anchor="middle" font-weight="600" font-size="12">Smoke Eval</text>
+    <text x="210" y="88" text-anchor="middle" class="label-sm">10 cases</text>
+    <text x="210" y="103" text-anchor="middle" class="label-sm">~30s · $0.01</text>
+
+    <!-- Step 3 -->
+    <rect class="node-accent" x="290" y="50" width="130" height="60" rx="8"/>
+    <text x="355" y="72" text-anchor="middle" font-weight="600" font-size="12">Regression Eval</text>
+    <text x="355" y="88" text-anchor="middle" class="label-sm">150 cases</text>
+    <text x="355" y="103" text-anchor="middle" class="label-sm">~5 min · $0.15</text>
+
+    <!-- Step 4: Score Gate -->
+    <rect class="node-blue" x="445" y="50" width="110" height="60" rx="8"/>
+    <text x="500" y="72" text-anchor="middle" font-weight="600" font-size="12">Score Gate</text>
+    <text x="500" y="88" text-anchor="middle" class="label-sm">golden: 100%</text>
+    <text x="500" y="103" text-anchor="middle" class="label-sm">overall: ≥90%</text>
+
+    <!-- Step 5: Deploy -->
+    <rect class="node-green" x="580" y="50" width="110" height="60" rx="8"/>
+    <text x="635" y="75" text-anchor="middle" font-weight="600" font-size="12">Merge &amp; Deploy</text>
+    <text x="635" y="93" text-anchor="middle" class="label-sm">canary → rollout</text>
+
+    <!-- Arrows -->
+    <line class="arrow" x1="130" y1="80" x2="152" y2="80"/>
+    <line class="arrow" x1="265" y1="80" x2="287" y2="80"/>
+    <line class="arrow" x1="420" y1="80" x2="442" y2="80"/>
+    <line class="arrow" x1="555" y1="80" x2="577" y2="80"/>
+
+    <!-- Fail path from smoke -->
+    <line stroke="#ff8a8a" stroke-width="1.5" stroke-dasharray="4,3" x1="210" y1="110" x2="210" y2="145"/>
+    <text x="210" y="160" text-anchor="middle" font-size="11" fill="#ff8a8a">✗ fast-fail: PR blocked</text>
+
+    <!-- Fail path from gate -->
+    <line stroke="#ff8a8a" stroke-width="1.5" stroke-dasharray="4,3" x1="500" y1="110" x2="500" y2="145"/>
+    <text x="500" y="160" text-anchor="middle" font-size="11" fill="#ff8a8a">✗ score thấp: block merge</text>
+
+    <!-- Comment annotation -->
+    <rect fill="rgba(180,224,122,0.08)" stroke="#b4e07a" stroke-width="1" x="20" y="185" width="720" height="55" rx="8"/>
+    <text x="380" y="206" text-anchor="middle" font-weight="600" font-size="12" fill="#b4e07a">GitHub Actions comment tự động trên PR</text>
+    <text x="380" y="223" text-anchor="middle" font-size="11" fill="#aab4c5">Eval run: 148/150 passed · golden: 30/30 ✓ · regression: 118/120 · score: 92.3% (threshold: 90%)</text>
+    <text x="380" y="237" text-anchor="middle" font-size="11" fill="#aab4c5">2 failures: [r045] extraction-edge-case · [r091] multilingual-mix — click for details</text>
+  </svg>
+
+  <h3>GitHub Actions workflow mẫu</h3>
+  <pre><code><span class="cm"># .github/workflows/eval.yml</span>
+<span class="kw">name</span>: <span class="str">Eval Gate</span>
+<span class="kw">on</span>:
+  pull_request:
+    paths: [<span class="str">'prompts/**'</span>, <span class="str">'evals/**'</span>, <span class="str">'src/llm/**'</span>]
+
+<span class="kw">jobs</span>:
+  <span class="kw">smoke</span>:
+    <span class="kw">runs-on</span>: ubuntu-latest
+    <span class="kw">steps</span>:
+      - <span class="kw">uses</span>: actions/checkout@v4
+      - <span class="kw">name</span>: <span class="str">Run smoke eval</span>
+        <span class="kw">run</span>: python scripts/run-eval.py --set smoke --fail-fast
+        <span class="kw">env</span>:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+
+  <span class="kw">regression</span>:
+    <span class="kw">needs</span>: smoke
+    <span class="kw">runs-on</span>: ubuntu-latest
+    <span class="kw">steps</span>:
+      - <span class="kw">uses</span>: actions/checkout@v4
+      - <span class="kw">name</span>: <span class="str">Run regression eval</span>
+        <span class="kw">run</span>: |
+          python scripts/run-eval.py \
+            --set golden regression \
+            --threshold 0.90 \
+            --golden-threshold 1.00 \
+            --post-comment \
+            --compare-baseline .eval-baseline.json
+        <span class="kw">env</span>:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}</code></pre>
+
+  <div class="callout tip">
+    <div class="icon">★</div>
+    <div>
+      <div class="title">Dùng Batch API cho eval trong CI</div>
+      <p>
+        Anthropic và OpenAI đều cung cấp Batch API với giá thấp hơn 50%. Eval pipeline không cần real-time — gửi tất cả test cases dưới dạng batch, lấy kết quả sau vài phút. Đây là cách đơn giản nhất để giảm eval cost 50% ngay lập tức.
+      </p>
+    </div>
+  </div>
+
+  <h2 id="set-classification">37.3 Phân loại Eval Set: golden, regression, smoke, canary</h2>
+  <p>
+    Không phải mọi test case đều có tầm quan trọng như nhau. Phân loại thành 4 loại giúp balance giữa coverage, tốc độ, và chi phí.
+  </p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Set type</th>
+          <th>Số lượng</th>
+          <th>Mục đích</th>
+          <th>Pass threshold</th>
+          <th>Khi nào chạy</th>
+          <th>Nguồn cases</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="tag">golden</span></td>
+          <td>20–50</td>
+          <td>Must-never-fail. Các case quan trọng nhất, thường từ incidents thực tế hoặc user complaints</td>
+          <td><strong>100%</strong></td>
+          <td>Mọi PR, mọi deploy</td>
+          <td>Incidents, user feedback, sản phẩm critical path</td>
+        </tr>
+        <tr>
+          <td><span class="tag lilac">regression</span></td>
+          <td>100–500</td>
+          <td>Catch lại bugs đã từng xảy ra. Mỗi lần fix một issue, thêm case vào đây</td>
+          <td>≥ 90–95%</td>
+          <td>Mọi PR vào main, nightly</td>
+          <td>Past bugs, edge cases được phát hiện</td>
+        </tr>
+        <tr>
+          <td><span class="tag blue">smoke</span></td>
+          <td>10–20</td>
+          <td>Fast sanity check. Subset nhỏ nhất có thể, chạy trong &lt;60 giây, fail-fast</td>
+          <td>100%</td>
+          <td>Mọi PR (pre-check), pre-deploy</td>
+          <td>Chọn cases phổ biến nhất từ golden set</td>
+        </tr>
+        <tr>
+          <td><span class="tag green">canary</span></td>
+          <td>200–1000</td>
+          <td>Sampled từ real production traffic. Phản ánh distribution thực của user queries</td>
+          <td>≥ 85%</td>
+          <td>Nightly, sau major change</td>
+          <td>Production logs (sampled &amp; anonymized)</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Quy trình thêm case vào eval set</h3>
+  <ol>
+    <li><strong>Production issue xảy ra</strong> — model trả lời sai, user complain, alert fire</li>
+    <li><strong>Reproduce bằng eval</strong> — viết case trong file <code>.jsonl</code> để capture behavior sai đó</li>
+    <li><strong>Verify case fail</strong> trên version hiện tại — đảm bảo case thực sự catch được issue</li>
+    <li><strong>Fix issue</strong> — update prompt, model, hoặc code</li>
+    <li><strong>Verify case pass</strong> — đảm bảo fix thực sự hoạt động</li>
+    <li><strong>Commit cả fix lẫn test case cùng một PR</strong> — case này giờ là regression guard</li>
+  </ol>
+
+  <div class="callout warn">
+    <div class="icon">⚠</div>
+    <div>
+      <div class="title">Đừng để eval set chỉ là synthetic examples</div>
+      <p>
+        Eval set xây dựng bằng tay thường không reflect được sự đa dạng của production traffic. Ít nhất 30–40% cases nên đến từ real user queries (sampled và anonymized). Canary set đặc biệt quan trọng vì nó liên tục được refresh từ production.
+      </p>
+    </div>
+  </div>
+
+  <h2 id="drift-detection">37.4 Eval Drift Detection: input shift, quality drop, cost anomaly</h2>
+  <p>
+    Ngay cả khi không có code change nào, hệ thống AI có thể xuống chất lượng. Eval drift detection là cơ chế phát hiện sự thay đổi này sớm, trước khi user nhận ra.
+  </p>
+
+  <h3>Ba chiều cần theo dõi</h3>
+
+  <div class="grid-2">
+    <div class="card">
+      <h4>Input distribution shift</h4>
+      <p>User queries thay đổi chủ đề, ngôn ngữ, độ phức tạp. Phát hiện bằng: embedding clustering (so sánh centroid distribution theo tuần), phân phối query length, topic model trên sample 1k queries/ngày.</p>
+      <p><em>Tại sao quan trọng:</em> prompt được tune cho một distribution, khi distribution thay đổi, performance suy giảm ngay cả khi không có gì thay đổi trong code.</p>
+    </div>
+    <div class="card">
+      <h4>Output quality drop</h4>
+      <p>Eval score trung bình giảm theo thời gian. Thường do: provider silent-upgrade model (behavior thay đổi), context stale trong RAG index, prompt được edit không có test coverage.</p>
+      <p><em>Alert khi:</em> rolling 7-day eval score drops &gt;5% so với baseline, hoặc bất kỳ ngày nào score &lt; 3σ dưới mean lịch sử.</p>
+    </div>
+    <div class="card">
+      <h4>Cost/latency anomaly</h4>
+      <p>Cost/request tăng đột biến có thể là dấu hiệu: prompt injection khiến output quá dài, bug nhồi context window, hoặc model upgrade lên tier đắt hơn silently.</p>
+      <p><em>Alert khi:</em> cost/request hoặc P95 latency tăng &gt;2x so với rolling 7-day baseline.</p>
+    </div>
+    <div class="card">
+      <h4>Score slice drift</h4>
+      <p>Overall score ổn nhưng một subset cụ thể (theo tag, user segment, ngôn ngữ) lại xuống chất. Aggregate metric có thể che giấu vấn đề nghiêm trọng với một nhóm user cụ thể.</p>
+      <p><em>Luôn slice:</em> theo input language, feature area, user type, request complexity.</p>
+    </div>
+  </div>
+
+  <pre><code><span class="cm"># Drift detection đơn giản — chạy nightly</span>
+<span class="kw">import</span> numpy <span class="kw">as</span> np
+
+<span class="kw">def</span> <span class="fn">detect_eval_drift</span>(baseline_scores: list[float], current_scores: list[float], threshold_pct: float = <span class="num">0.05</span>) -> dict:
+
+  baseline_mean = np.mean(baseline_scores)
+  current_mean  = np.mean(current_scores)
+  delta_pct     = (current_mean - baseline_mean) / baseline_mean
+
+  <span class="cm"># Mann-Whitney U test để check statistical significance</span>
+  <span class="kw">from</span> scipy.stats <span class="kw">import</span> mannwhitneyu
+  stat, p_value = mannwhitneyu(baseline_scores, current_scores, alternative=<span class="str">'greater'</span>)
+
+  <span class="kw">return</span> {
+    <span class="str">"drift_detected"</span>: delta_pct < -threshold_pct <span class="kw">and</span> p_value < <span class="num">0.05</span>,
+    <span class="str">"delta_pct"</span>: delta_pct,
+    <span class="str">"p_value"</span>: p_value,
+    <span class="str">"baseline_mean"</span>: baseline_mean,
+    <span class="str">"current_mean"</span>: current_mean,
+  }</code></pre>
+
+  <h2 id="online-eval">37.5 Online Eval: sample N% production, score với LLM-judge</h2>
+  <p>
+    Offline eval chạy trên dataset cố định — nó chỉ catch những gì bạn đã biết có thể hỏng. <strong>Online eval</strong> là chấm điểm một mẫu ngẫu nhiên từ traffic production thực, cho phép phát hiện vấn đề mới nổi mà bạn chưa nghĩ đến.
+  </p>
+
+  <h3>Architecture của online eval pipeline</h3>
+
+  <!-- SVG: Online eval pipeline -->
+  <svg class="diagram" viewBox="0 0 760 220" role="img" aria-label="Online eval pipeline">
+    <defs>
+      <marker id="arrowhead2" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#6f7c92"/>
+      </marker>
+    </defs>
+
+    <text x="380" y="22" text-anchor="middle" font-weight="700" font-size="14">Online Eval Pipeline (Production)</text>
+
+    <!-- Production request -->
+    <rect class="node-bg" x="20" y="60" width="110" height="55" rx="8"/>
+    <text x="75" y="83" text-anchor="middle" font-weight="600" font-size="12">Production</text>
+    <text x="75" y="100" text-anchor="middle" class="label-sm">Request N</text>
+
+    <!-- Sample decision -->
+    <rect class="node-accent" x="165" y="60" width="110" height="55" rx="8"/>
+    <text x="220" y="80" text-anchor="middle" font-weight="600" font-size="12">Sample?</text>
+    <text x="220" y="96" text-anchor="middle" class="label-sm">5–10% random</text>
+    <text x="220" y="111" text-anchor="middle" class="label-sm">+ 100% low-score</text>
+
+    <!-- Async queue -->
+    <rect class="node-bg" x="310" y="60" width="110" height="55" rx="8"/>
+    <text x="365" y="83" text-anchor="middle" font-weight="600" font-size="12">Async Queue</text>
+    <text x="365" y="100" text-anchor="middle" class="label-sm">non-blocking</text>
+
+    <!-- LLM Judge -->
+    <rect class="node-blue" x="455" y="60" width="110" height="55" rx="8"/>
+    <text x="510" y="80" text-anchor="middle" font-weight="600" font-size="12">LLM Judge</text>
+    <text x="510" y="96" text-anchor="middle" class="label-sm">cheap model</text>
+    <text x="510" y="111" text-anchor="middle" class="label-sm">relevance+quality</text>
+
+    <!-- Store + alert -->
+    <rect class="node-green" x="600" y="60" width="120" height="55" rx="8"/>
+    <text x="660" y="80" text-anchor="middle" font-weight="600" font-size="12">Store &amp; Alert</text>
+    <text x="660" y="96" text-anchor="middle" class="label-sm">time-series DB</text>
+    <text x="660" y="111" text-anchor="middle" class="label-sm">alert if &lt; threshold</text>
+
+    <!-- Arrows -->
+    <line class="arrow" x1="130" y1="87" x2="162" y2="87"/>
+    <line class="arrow" x1="275" y1="87" x2="307" y2="87"/>
+    <line class="arrow" x1="420" y1="87" x2="452" y2="87"/>
+    <line class="arrow" x1="565" y1="87" x2="597" y2="87"/>
+
+    <!-- Skip path -->
+    <text x="220" y="145" text-anchor="middle" font-size="11" fill="#6f7c92">90%+ không sample → skip, user không bị delay</text>
+    <line stroke="#6f7c92" stroke-width="1" stroke-dasharray="3,3" x1="220" y1="115" x2="220" y2="138"/>
+
+    <!-- Note on user -->
+    <rect fill="rgba(255,184,107,0.06)" stroke="#ffb86b" stroke-width="1" x="20" y="165" width="720" height="40" rx="8"/>
+    <text x="380" y="181" text-anchor="middle" font-size="11" fill="#aab4c5">User response trả về ngay lập tức (async eval) — eval score được ghi lại sau vài giây</text>
+    <text x="380" y="197" text-anchor="middle" font-size="11" fill="#aab4c5">100% low-score alert: nếu judge trả về &lt;2/5, pagerduty/slack ngay</text>
+  </svg>
+
+  <h3>LLM-as-judge template cho online eval</h3>
+  <pre><code>ONLINE_JUDGE_PROMPT = <span class="str">"""Bạn là evaluator cho AI assistant.
+
+Input của user: {user_query}
+Response của AI: {ai_response}
+{context_block}
+
+Đánh giá theo các tiêu chí sau, thang điểm 1–5:
+
+1. RELEVANCE: Response có trả lời đúng câu hỏi không?
+   1=không liên quan, 3=liên quan một phần, 5=trả lời trực tiếp và đầy đủ
+
+2. QUALITY: Response có chính xác và hữu ích không?
+   1=sai hoặc vô ích, 3=chấp nhận được, 5=xuất sắc
+
+3. SAFETY: Response có an toàn và phù hợp không?
+   1=có hại, 3=trung lập, 5=an toàn hoàn toàn
+
+Trả về JSON:
+{{"relevance": N, "quality": N, "safety": N,
+  "overall": N, "flag": false, "reason": "..."}}
+
+flag=true nếu cần human review ngay (safety issue, hallucination rõ ràng).
+"""</span>
+
+<span class="kw">async def</span> <span class="fn">online_eval_sample</span>(query: str, response: str, context: str = <span class="str">""</span>, sample_rate: float = <span class="num">0.08</span>) -> <span class="kw">None</span>:
+
+  <span class="kw">import</span> random
+  <span class="kw">if</span> random.random() > sample_rate:
+    <span class="kw">return</span>  <span class="cm"># skip — most requests bypass eval</span>
+
+  context_block = <span class="str">f"Context retrieved: {context}"</span> <span class="kw">if</span> context <span class="kw">else</span> <span class="str">""</span>
+  judge_resp = <span class="kw">await</span> llm.complete(
+    ONLINE_JUDGE_PROMPT.format(user_query=query, ai_response=response, context_block=context_block),
+    model=<span class="str">"claude-haiku-4-5"</span>,  <span class="cm"># cheap judge</span>
+    max_tokens=<span class="num">200</span>,
+  )
+  scores = json.loads(judge_resp)
+  metrics.record(<span class="str">"online_eval"</span>, scores, tags={<span class="str">"endpoint"</span>: endpoint, <span class="str">"model_version"</span>: model_version})
+
+  <span class="kw">if</span> scores[<span class="str">"flag"</span>] <span class="kw">or</span> scores[<span class="str">"overall"</span>] <= <span class="num">2</span>:
+    alerts.send_urgent(f<span class="str">"Low eval score: {scores['overall']}/5 — {scores['reason']}"</span>)</code></pre>
+
+  <h2 id="eval-cost">37.6 Chi phí của Continuous Eval</h2>
+  <p>
+    Eval không miễn phí. Mỗi test case gọi model để score, tốn token và latency. Quản lý eval budget là phần không thể thiếu của continuous eval strategy.
+  </p>
+
+  <h3>Ước tính chi phí eval</h3>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Scenario</th>
+          <th>Cases</th>
+          <th>Model judge</th>
+          <th>Token/case (est.)</th>
+          <th>Cost/run</th>
+          <th>Tần suất</th>
+          <th>Chi phí/tháng</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Smoke (per-PR)</td>
+          <td>10</td>
+          <td>Haiku</td>
+          <td>1.5k</td>
+          <td>~$0.002</td>
+          <td>50 PR/tháng</td>
+          <td><strong>~$0.10</strong></td>
+        </tr>
+        <tr>
+          <td>Regression (per-PR)</td>
+          <td>200</td>
+          <td>Haiku</td>
+          <td>2k</td>
+          <td>~$0.05</td>
+          <td>50 PR/tháng</td>
+          <td><strong>~$2.50</strong></td>
+        </tr>
+        <tr>
+          <td>Full nightly</td>
+          <td>500</td>
+          <td>Sonnet</td>
+          <td>3k</td>
+          <td>~$0.90</td>
+          <td>30 lần/tháng</td>
+          <td><strong>~$27</strong></td>
+        </tr>
+        <tr>
+          <td>Online eval (8% sample)</td>
+          <td>~1,000/ngày</td>
+          <td>Haiku</td>
+          <td>1k</td>
+          <td>~$0.25/ngày</td>
+          <td>30 ngày</td>
+          <td><strong>~$7.50</strong></td>
+        </tr>
+        <tr>
+          <td><strong>Tổng cộng</strong></td>
+          <td>—</td>
+          <td>—</td>
+          <td>—</td>
+          <td>—</td>
+          <td>—</td>
+          <td><strong>~$37/tháng</strong></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>
+    37 USD/tháng là eval budget rất hợp lý cho một team nhỏ-vừa. Áp dụng các tối ưu sau để giảm thêm:
+  </p>
+  <ul>
+    <li><strong>Batch API</strong>: Dùng Batch API của Anthropic/OpenAI cho mọi eval run không cần real-time → giảm 50% chi phí ngay lập tức</li>
+    <li><strong>Judge model cheaper</strong>: Dùng Haiku/GPT-4o-mini làm judge thay vì Sonnet/GPT-4 — calibrate trước để đảm bảo judge quality đủ tốt</li>
+    <li><strong>Cache identical inputs</strong>: Nếu input không đổi giữa runs, cache response của judge để không phải gọi lại</li>
+    <li><strong>Dynamic sample size</strong>: Tăng sample rate khi có change mới, giảm xuống 1–2% khi hệ thống ổn định</li>
+  </ul>
+
+  <div class="callout note">
+    <div class="icon">≡</div>
+    <div>
+      <div class="title">Eval budget như một SLO</div>
+      <p>
+        Treat eval budget như một SLO: quyết định trước "chúng ta sẵn sàng chi X USD/tháng cho eval". Từ đó back-calculate: sample rate online eval bao nhiêu, test set lớn đến đâu, judge model nào. Đừng để eval cost "mọc" không kiểm soát — nhưng cũng đừng cắt quá nhiều đến mức eval không còn ý nghĩa.
+      </p>
+    </div>
+  </div>
+
+  <h2 id="eval-observability">37.7 Eval Observability: từ aggregate score đến failing slice đến individual example</h2>
+  <p>
+    Một dashboard cho thấy "eval score hôm nay: 87%" không hữu ích nếu không drill-down được. Eval observability nghĩa là có khả năng đi từ số tổng → slice → case cụ thể trong vài click.
+  </p>
+
+  <!-- SVG: Eval observability dashboard -->
+  <svg class="diagram" viewBox="0 0 760 340" role="img" aria-label="Eval observability dashboard mockup">
+    <defs>
+      <marker id="arrowhead3" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#6f7c92"/>
+      </marker>
+    </defs>
+
+    <text x="380" y="22" text-anchor="middle" font-weight="700" font-size="14">Eval Observability Dashboard</text>
+
+    <!-- Top KPIs -->
+    <rect class="node-bg" x="20" y="36" width="135" height="60" rx="8"/>
+    <text x="87" y="57" text-anchor="middle" font-size="11" fill="#6f7c92">Overall Score</text>
+    <text x="87" y="79" text-anchor="middle" font-size="22" font-weight="700" fill="#ffb86b">87.2%</text>
+    <text x="87" y="92" text-anchor="middle" font-size="11" fill="#ff8a8a">↓ 2.1% vs last week</text>
+
+    <rect class="node-bg" x="168" y="36" width="135" height="60" rx="8"/>
+    <text x="235" y="57" text-anchor="middle" font-size="11" fill="#6f7c92">Golden Pass Rate</text>
+    <text x="235" y="79" text-anchor="middle" font-size="22" font-weight="700" fill="#b4e07a">100%</text>
+    <text x="235" y="92" text-anchor="middle" font-size="11" fill="#6f7c92">30/30 ✓</text>
+
+    <rect class="node-bg" x="316" y="36" width="135" height="60" rx="8"/>
+    <text x="383" y="57" text-anchor="middle" font-size="11" fill="#6f7c92">Regression Pass</text>
+    <text x="383" y="79" text-anchor="middle" font-size="22" font-weight="700" fill="#ffb86b">91.8%</text>
+    <text x="383" y="92" text-anchor="middle" font-size="11" fill="#6f7c92">184/200 cases</text>
+
+    <rect class="node-bg" x="464" y="36" width="135" height="60" rx="8"/>
+    <text x="531" y="57" text-anchor="middle" font-size="11" fill="#6f7c92">Online Eval (7d avg)</text>
+    <text x="531" y="79" text-anchor="middle" font-size="22" font-weight="700" fill="#7cc4ff">4.1/5</text>
+    <text x="531" y="92" text-anchor="middle" font-size="11" fill="#6f7c92">~8k samples</text>
+
+    <rect class="node-bg" x="612" y="36" width="130" height="60" rx="8"/>
+    <text x="677" y="57" text-anchor="middle" font-size="11" fill="#6f7c92">Eval Cost (month)</text>
+    <text x="677" y="79" text-anchor="middle" font-size="22" font-weight="700" fill="#d3a4ff">$34</text>
+    <text x="677" y="92" text-anchor="middle" font-size="11" fill="#6f7c92">budget: $50 ✓</text>
+
+    <!-- Score over time chart -->
+    <rect class="node-bg" x="20" y="115" width="360" height="150" rx="8"/>
+    <text x="200" y="133" text-anchor="middle" font-size="12" font-weight="600">Eval Score Trend (30 ngày)</text>
+
+    <polyline points="50,230 80,225 110,228 140,220 170,215 200,222 230,210 260,215 290,205 320,208 350,200" fill="none" stroke="#ffb86b" stroke-width="2"/>
+    <circle cx="50" cy="230" r="3" fill="#ffb86b"/>
+    <circle cx="110" cy="228" r="3" fill="#ffb86b"/>
+    <circle cx="170" cy="215" r="3" fill="#ffb86b"/>
+    <circle cx="230" cy="210" r="3" fill="#ff8a8a"/>
+    <circle cx="290" cy="205" r="3" fill="#ff8a8a"/>
+    <circle cx="350" cy="200" r="3" fill="#ffb86b"/>
+
+    <line x1="30" y1="240" x2="370" y2="240" stroke="#6f7c92" stroke-width="0.5"/>
+    <line x1="30" y1="220" x2="370" y2="220" stroke="#6f7c92" stroke-width="0.5" stroke-dasharray="3,3"/>
+    <line x1="30" y1="200" x2="370" y2="200" stroke="#6f7c92" stroke-width="0.5" stroke-dasharray="3,3"/>
+    <text x="27" y="244" text-anchor="end" font-size="9" fill="#6f7c92">80%</text>
+    <text x="27" y="224" text-anchor="end" font-size="9" fill="#6f7c92">85%</text>
+    <text x="27" y="204" text-anchor="end" font-size="9" fill="#6f7c92">90%</text>
+    <line x1="30" y1="215" x2="370" y2="215" stroke="#b4e07a" stroke-width="1.5" stroke-dasharray="5,3"/>
+    <text x="372" y="219" font-size="9" fill="#b4e07a">SLO</text>
+
+    <!-- Slice breakdown -->
+    <rect class="node-bg" x="400" y="115" width="340" height="150" rx="8"/>
+    <text x="570" y="133" text-anchor="middle" font-size="12" font-weight="600">Score by Slice (failing first)</text>
+
+    <rect fill="rgba(255,138,138,0.3)" x="420" y="143" width="200" height="18" rx="3"/>
+    <text x="420" y="156" font-size="11" fill="#ff8a8a">multilingual-mix</text>
+    <text x="625" y="156" font-size="11" fill="#ff8a8a">61.2%</text>
+
+    <rect fill="rgba(255,184,107,0.3)" x="420" y="167" width="230" height="18" rx="3"/>
+    <text x="420" y="180" font-size="11" fill="#ffb86b">extraction-edge-case</text>
+    <text x="625" y="180" font-size="11" fill="#ffb86b">73.5%</text>
+
+    <rect fill="rgba(180,224,122,0.3)" x="420" y="191" width="280" height="18" rx="3"/>
+    <text x="420" y="204" font-size="11" fill="#b4e07a">summarization</text>
+    <text x="625" y="204" font-size="11" fill="#b4e07a">93.1%</text>
+
+    <rect fill="rgba(180,224,122,0.3)" x="420" y="215" width="295" height="18" rx="3"/>
+    <text x="420" y="228" font-size="11" fill="#b4e07a">qa-factual</text>
+    <text x="625" y="228" font-size="11" fill="#b4e07a">95.8%</text>
+
+    <rect fill="rgba(124,196,255,0.3)" x="420" y="239" width="310" height="18" rx="3"/>
+    <text x="420" y="252" font-size="11" fill="#7cc4ff">translation</text>
+    <text x="625" y="252" font-size="11" fill="#7cc4ff">97.0%</text>
+
+    <!-- Drill down arrows -->
+    <text x="380" y="288" text-anchor="middle" font-size="12" font-weight="600" fill="#d3a4ff">Level 3: Failing individual examples</text>
+    <rect fill="rgba(211,164,255,0.08)" stroke="#d3a4ff" stroke-width="1" x="20" y="295" width="720" height="35" rx="6"/>
+    <text x="380" y="311" text-anchor="middle" font-size="11" fill="#aab4c5">Input: "Summarize this email..." → Score: 1.8/5 · Judge: "Missing action items, wrong date" · trace_id: ab12cd34</text>
+    <text x="380" y="325" text-anchor="middle" font-size="11" fill="#6f7c92">Click → xem full prompt + completion + judge reasoning + span tree</text>
+  </svg>
+
+  <h3>Three levels of drill-down</h3>
+  <ol>
+    <li><strong>Level 1 — Aggregate score</strong>: Overall pass rate, trend theo thời gian, so sánh vs baseline và SLO. Alert khi có drop.</li>
+    <li><strong>Level 2 — Slice breakdown</strong>: Score theo từng tag (by task type, language, user segment). Tìm slice nào đang kéo tổng xuống. Có thể tự động rank "worst performing slices".</li>
+    <li><strong>Level 3 — Individual example</strong>: Xem exact input, output, judge score, judge reasoning. Link tới trace trong Langfuse/Braintrust để xem full span tree. Đây là nơi bạn thực sự hiểu issue.</li>
+  </ol>
+
+  <h2 id="cadence">37.8 Eval Cadence: per-PR, nightly, continuous</h2>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Cadence</th>
+          <th>Trigger</th>
+          <th>Eval set</th>
+          <th>Mục tiêu</th>
+          <th>Time budget</th>
+          <th>Cost/run</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="tag">per-PR (smoke)</span></td>
+          <td>Mỗi push vào PR</td>
+          <td>Smoke (10–20 cases)</td>
+          <td>Fast fail trước khi reviewer mất time</td>
+          <td>&lt;60s</td>
+          <td>&lt;$0.01</td>
+        </tr>
+        <tr>
+          <td><span class="tag">per-PR (full)</span></td>
+          <td>PR ready-for-review, trước merge</td>
+          <td>Golden + Regression</td>
+          <td>Gate merge — đảm bảo không có regression</td>
+          <td>&lt;10 min</td>
+          <td>&lt;$0.20</td>
+        </tr>
+        <tr>
+          <td><span class="tag blue">nightly</span></td>
+          <td>Cron 2:00 AM hàng đêm</td>
+          <td>Full suite incl. canary</td>
+          <td>Catch drift không liên quan đến code change</td>
+          <td>&lt;30 min</td>
+          <td>&lt;$1</td>
+        </tr>
+        <tr>
+          <td><span class="tag green">continuous</span></td>
+          <td>Mỗi production request (sampled)</td>
+          <td>Online eval (LLM judge)</td>
+          <td>Real-time quality monitoring</td>
+          <td>Async, non-blocking</td>
+          <td>~$7–15/tháng</td>
+        </tr>
+        <tr>
+          <td><span class="tag lilac">pre-deploy</span></td>
+          <td>Trước canary rollout</td>
+          <td>Full suite + canary set</td>
+          <td>Final gate trước khi user nhìn thấy thay đổi</td>
+          <td>&lt;20 min</td>
+          <td>&lt;$0.50</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout tip">
+    <div class="icon">★</div>
+    <div>
+      <div class="title">Nightly eval catch những gì per-PR không thể</div>
+      <p>
+        Model provider có thể silently upgrade model minor version. RAG index của bạn có thể bị stale. Distribution của user queries có thể shift. Tất cả những điều này không có code change nào cả — chỉ nightly eval mới phát hiện được. Đừng bỏ cadence này ngay cả khi team không ship code hàng ngày.
+      </p>
+    </div>
+  </div>
+
+  <h2 id="prompts-vs-models">37.9 Eval cho Prompts vs Models vs Agents: format và cadence khác nhau</h2>
+
+  <div class="tabs" data-tabs>
+    <div class="tab-buttons">
+      <button class="active">Prompt eval</button>
+      <button>Model eval</button>
+      <button>Agent eval</button>
+    </div>
+    <div class="tab-panel active">
+      <h4>Eval cho Prompt changes</h4>
+      <p>
+        Mỗi prompt edit là một tiềm năng regression. Eval cần chạy nhanh (per-PR) và đủ granular để biết phần nào của prompt gây ra vấn đề.
+      </p>
+      <ul>
+        <li><strong>Grader:</strong> LLM-as-judge với rubric cụ thể cho task. Exact match hiếm khi đủ tốt cho open-ended output.</li>
+        <li><strong>Cadence:</strong> Per-PR (smoke fast), per-merge (full regression), nightly (canary set)</li>
+        <li><strong>Format:</strong> <code>{input, expected_behavior, tags}</code> — expected là rubric mô tả, không phải string exact</li>
+        <li><strong>Tip:</strong> Giữ lại nhiều prompt version cũ để có thể A/B eval bất kỳ lúc nào</li>
+      </ul>
+    </div>
+    <div class="tab-panel">
+      <h4>Eval cho Model version changes</h4>
+      <p>
+        Khi switch model (GPT-4o → GPT-4o-mini, Claude 3.5 → Claude Sonnet 4) hoặc khi provider upgrade model silently, cần eval toàn diện hơn.
+      </p>
+      <ul>
+        <li><strong>Grader:</strong> Dùng third-party judge model (nếu eval model A thì dùng model B làm judge)</li>
+        <li><strong>Cadence:</strong> Chạy full suite trước bất kỳ model migration nào. Nightly detect silent upgrades.</li>
+        <li><strong>Format:</strong> Thêm dimension về latency và cost vào mỗi case — model mới có thể tốt hơn chất lượng nhưng 2x chậm hơn</li>
+        <li><strong>Tip:</strong> Luôn so sánh side-by-side: chạy cả model cũ và mới trên toàn bộ eval set, so sánh score phân phối</li>
+      </ul>
+    </div>
+    <div class="tab-panel">
+      <h4>Eval cho Agent systems</h4>
+      <p>
+        Agent eval phức tạp hơn nhiều vì output không phải text đơn mà là chuỗi actions và tool calls. Thêm vào đó, agent có thể fail ở nhiều bước khác nhau.
+      </p>
+      <ul>
+        <li><strong>Grader:</strong> Phải check cả final outcome lẫn intermediate steps. Dùng task-completion metric thay vì text quality.</li>
+        <li><strong>Cadence:</strong> Agent eval tốn kém hơn (nhiều LLM calls/case) → dùng subset nhỏ hơn cho per-PR, full suite chỉ nightly</li>
+        <li><strong>Format:</strong> <code>{task, environment_state, expected_outcome, acceptable_paths}</code>. Một số tasks có nhiều cách đúng.</li>
+        <li><strong>Tip:</strong> Dùng deterministic "trajectory replay" — record một agent trajectory thành công, replay để check xem agent có vẫn đi đúng path hay không</li>
+        <li><strong>Tip:</strong> Đo số lần agent bị "stuck" (loop tool call), gọi sai tool, hoặc hallucinate tool names — những failure mode này không xuất hiện trong single-turn eval</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2 id="tooling">37.10 Tooling: Braintrust, Langfuse, Promptfoo, LangSmith, custom</h2>
+
+  <h3>Promptfoo — open-source, cấu hình YAML</h3>
+  <pre><code><span class="cm"># promptfooconfig.yaml</span>
+prompts:
+  - file://prompts/summarize-v2.txt
+
+providers:
+  - id: anthropic:claude-sonnet-4-5
+    config:
+      temperature: <span class="num">0.3</span>
+
+tests:
+  - description: <span class="str">"Golden: email với deadline"</span>
+    vars:
+      email_content: <span class="str">"Dear team, deadline is tomorrow 5pm..."</span>
+    assert:
+      - type: llm-rubric
+        value: <span class="str">"Response phải đề cập deadline và action item cụ thể"</span>
+      - type: javascript
+        value: <span class="str">"output.length < 500"</span>  <span class="cm"># không quá dài</span>
+
+  - description: <span class="str">"Regression: không hallucinate ngày tháng"</span>
+    vars:
+      email_content: <span class="str">"Meeting scheduled but no date mentioned yet"</span>
+    assert:
+      - type: not-contains
+        value: <span class="str">"ngày"</span>  <span class="cm"># không được tự bịa ngày</span>
+      - type: llm-rubric
+        value: <span class="str">"Không đề cập ngày cụ thể vì email không có ngày"</span>
+
+<span class="cm"># Chạy: promptfoo eval --output results.json</span>
+<span class="cm"># CI: promptfoo eval --ci --pass-rate 0.90</span></code></pre>
+
+  <h3>Braintrust — SDK Python</h3>
+  <pre><code><span class="kw">import</span> braintrust
+<span class="kw">from</span> braintrust <span class="kw">import</span> Eval
+
+<span class="kw">async def</span> <span class="fn">task</span>(input: dict) -> str:
+
+  response = <span class="kw">await</span> anthropic_client.messages.create(
+    model=<span class="str">"claude-sonnet-4-5"</span>,
+    messages=[{<span class="str">"role"</span>: <span class="str">"user"</span>, <span class="str">"content"</span>: input[<span class="str">"query"</span>]}],
+  )
+  <span class="kw">return</span> response.content[<span class="num">0</span>].text
+
+<span class="kw">await</span> Eval(
+  <span class="str">"summarization-eval"</span>,
+  data=<span class="kw">lambda</span>: braintrust.load_dataset(<span class="str">"summarization-golden-v3"</span>),
+  task=task,
+  scores=[
+    braintrust.LLMClassifierFromSpec(
+      name=<span class="str">"relevance"</span>,
+      prompt_template=RELEVANCE_PROMPT,
+      choice_scores={<span class="str">"excellent"</span>: <span class="num">1.0</span>, <span class="str">"good"</span>: <span class="num">0.7</span>, <span class="str">"poor"</span>: <span class="num">0.0</span>},
+    ),
+  ],
+  experiment_name=f<span class="str">"pr-{os.environ['PR_NUMBER']}-{git_sha[:7]}"</span>,
+)</code></pre>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Tool</th>
+          <th>Loại</th>
+          <th>Điểm mạnh</th>
+          <th>Khi nào dùng</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Promptfoo</strong></td>
+          <td>Open-source CLI</td>
+          <td>YAML config, zero vendor lock-in, CI-native, nhiều assert types</td>
+          <td>Team muốn đơn giản, không cần UI fancy, prompt-centric</td>
+        </tr>
+        <tr>
+          <td><strong>Braintrust</strong></td>
+          <td>SaaS platform</td>
+          <td>Dataset versioning mạnh, score comparison UI, CI integration tốt, human annotation</td>
+          <td>Team cần UI để so sánh experiments, có budget tooling</td>
+        </tr>
+        <tr>
+          <td><strong>Langfuse</strong></td>
+          <td>Open-source / SaaS</td>
+          <td>Kết hợp tracing + eval, self-hostable, dataset management, free tier</td>
+          <td>Muốn tích hợp observability và eval vào một nơi</td>
+        </tr>
+        <tr>
+          <td><strong>LangSmith</strong></td>
+          <td>SaaS (LangChain)</td>
+          <td>Tích hợp tự nhiên với LangChain, UI debug trace đẹp, eval tích hợp</td>
+          <td>Đang dùng LangChain/LangGraph ecosystem</td>
+        </tr>
+        <tr>
+          <td><strong>Custom script</strong></td>
+          <td>In-house</td>
+          <td>Full control, tích hợp với bất kỳ hệ thống nào, zero vendor dependency</td>
+          <td>Team có nhu cầu đặc thù, hoặc đã có infrastructure monitoring</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 id="anti-patterns">37.11 Eval Design Anti-patterns</h2>
+  <p>
+    Eval kém thiết kế còn nguy hiểm hơn không có eval — nó cho cảm giác an toàn giả tạo. Những anti-pattern sau cực kỳ phổ biến và cực kỳ dễ rơi vào.
+  </p>
+
+  <div class="grid-2">
+    <div class="card">
+      <h4>Single metric vanity</h4>
+      <p>Chỉ theo dõi một số tổng như "overall pass rate 92%". Che giấu hoàn toàn slice nào đang fail. Fix: luôn break down by tag, by feature area, by user segment.</p>
+    </div>
+    <div class="card">
+      <h4>No slicing</h4>
+      <p>Eval set không có tags, không thể phân tích failing cases theo loại. Khi score drop, không biết phần nào hỏng. Fix: mọi case phải có ít nhất 2–3 tags có ý nghĩa.</p>
+    </div>
+    <div class="card">
+      <h4>Train-on-eval</h4>
+      <p>Tune prompt trực tiếp để pass test cases trong eval set — kết quả là overfit: model "học" cách làm hài lòng judge nhưng không tốt hơn với real users. Fix: eval set phải frozen khi đang optimize prompt.</p>
+    </div>
+    <div class="card">
+      <h4>Eval contamination</h4>
+      <p>Cases trong eval set bị leak vào training data hoặc few-shot examples. Model "biết câu trả lời" của test → inflated scores. Fix: theo dõi lineage, không dùng eval cases làm few-shot.</p>
+    </div>
+    <div class="card">
+      <h4>Thresholds không có basis</h4>
+      <p>Đặt threshold 90% vì nghe có vẻ ổn, không dựa trên data về user satisfaction thực tế. Fix: calibrate threshold bằng cách so sánh eval score vs human ratings hoặc business metrics.</p>
+    </div>
+    <div class="card">
+      <h4>Judge bias không được kiểm soát</h4>
+      <p>LLM judge có xu hướng favor response dài hơn, verbose hơn, và thiên về model cùng nhà cung cấp. Fix: calibrate judge với human ratings, dùng nhiều judge models, kiểm tra correlation giữa judge score và actual user satisfaction.</p>
+    </div>
+  </div>
+
+  <div class="callout danger">
+    <div class="icon">!</div>
+    <div>
+      <div class="title">Anti-pattern nguy hiểm nhất: "eval set quá nhỏ để có ý nghĩa"</div>
+      <p>
+        Eval set chỉ có 10–15 cases không cho statistical power đủ để phân biệt signal thực vs noise. Bạn có thể thấy score "tăng" khi thực ra chỉ là may mắn. Tối thiểu cần 50 cases cho each slice quan trọng; 200+ cho toàn bộ suite để có p-value có nghĩa.
+      </p>
+    </div>
+  </div>
+
+  <h2 id="stats">37.12 Statistical Significance cho Online Eval</h2>
+  <p>
+    Online eval liên tục tạo ra data. Nhưng khi nào thì một sự thay đổi trong eval score là "thật" và khi nào chỉ là noise ngẫu nhiên? Statistical testing cho phép trả lời câu hỏi này một cách khoa học.
+  </p>
+
+  <h3>P-value và khi nào cần dùng</h3>
+  <p>
+    Khi so sánh hai versions (A vs B, before vs after), dùng hypothesis test để check xem sự khác biệt có đủ lớn để kết luận thật sự hay không. P-value &lt; 0.05 thường được dùng làm threshold, nhưng với nhiều comparisons, cần điều chỉnh.
+  </p>
+
+  <pre><code><span class="kw">from</span> scipy.stats <span class="kw">import</span> mannwhitneyu, chi2_contingency
+<span class="kw">import</span> numpy <span class="kw">as</span> np
+
+<span class="kw">def</span> <span class="fn">compare_eval_versions</span>(scores_v1: list[float], scores_v2: list[float]) -> dict:
+  <span class="cm">"""So sánh eval score giữa hai versions, trả về significance + effect size."""</span>
+
+  <span class="cm"># Mann-Whitney U test (non-parametric, robust với distribution bất kỳ)</span>
+  stat, p_value = mannwhitneyu(scores_v1, scores_v2, alternative=<span class="str">'two-sided'</span>)
+
+  <span class="cm"># Effect size: Cohen's d</span>
+  pooled_std = np.sqrt((np.var(scores_v1) + np.var(scores_v2)) / <span class="num">2</span>)
+  cohens_d   = (np.mean(scores_v2) - np.mean(scores_v1)) / (pooled_std + <span class="num">1e-9</span>)
+
+  <span class="cm"># Minimum sample size check: cần ít nhất 200/nhóm để reliable</span>
+  is_reliable = min(len(scores_v1), len(scores_v2)) >= <span class="num">200</span>
+
+  <span class="kw">return</span> {
+    <span class="str">"p_value"</span>: p_value,
+    <span class="str">"significant"</span>: p_value < <span class="num">0.05</span> <span class="kw">and</span> is_reliable,
+    <span class="str">"effect_size"</span>: cohens_d,
+    <span class="str">"interpretation"</span>: (
+      <span class="str">"large"</span> <span class="kw">if</span> abs(cohens_d) > <span class="num">0.8</span> <span class="kw">else</span>
+      <span class="str">"medium"</span> <span class="kw">if</span> abs(cohens_d) > <span class="num">0.5</span> <span class="kw">else</span>
+      <span class="str">"small"</span>
+    ),
+    <span class="str">"mean_delta"</span>: np.mean(scores_v2) - np.mean(scores_v1),
+    <span class="str">"reliable"</span>: is_reliable,
+  }</code></pre>
+
+  <h3>Multiple comparisons problem</h3>
+  <p>
+    Khi bạn test 20 slices cùng một lúc, xác suất để ít nhất một slice "significant" chỉ do ngẫu nhiên là ~64% (với p&lt;0.05 threshold). Đây là <strong>multiple comparisons problem</strong>.
+  </p>
+  <ul>
+    <li><strong>Bonferroni correction</strong>: Chia alpha cho số tests. Với 20 tests, dùng p &lt; 0.05/20 = 0.0025 làm threshold.</li>
+    <li><strong>Benjamini-Hochberg (FDR)</strong>: Ít conservative hơn Bonferroni, phù hợp khi có nhiều tests. Dùng <code>statsmodels.stats.multitest.multipletests</code>.</li>
+    <li><strong>Practical tip</strong>: Đối với alert hàng ngày, dùng effect size (Cohen's d &gt; 0.3) kết hợp p-value thay vì chỉ p-value để tránh false alarms.</li>
+  </ul>
+
+  <h3>Sample size planning</h3>
+  <p>
+    Trước khi chạy A/B test eval, tính minimum sample size cần thiết để detect effect size mong muốn:
+  </p>
+  <pre><code><span class="kw">from</span> statsmodels.stats.power <span class="kw">import</span> TTestIndPower
+
+analysis = TTestIndPower()
+<span class="cm"># Muốn detect 5% improvement (effect_size=0.3), power=80%, alpha=0.05</span>
+n = analysis.solve_power(effect_size=<span class="num">0.3</span>, alpha=<span class="num">0.05</span>, power=<span class="num">0.8</span>, alternative=<span class="str">'two-sided'</span>)
+<span class="cm"># n ≈ 176 samples mỗi nhóm → cần khoảng 350 samples total</span></code></pre>
+
+  <h2 id="old-vs-new">37.13 Cách cũ vs Cách hiện tại</h2>
+  <p>
+    Sự tiến hóa của eval practice là từ "xem thử" sang "đo lường hệ thống". Phần lớn team vẫn đang ở đâu đó giữa hai extreme này vào năm 2026.
+  </p>
+
+  <!-- SVG: Old vs current loop -->
+  <svg class="diagram" viewBox="0 0 760 300" role="img" aria-label="Cách cũ vs cách hiện tại">
+    <defs>
+      <marker id="arrowhead4" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#6f7c92"/>
+      </marker>
+    </defs>
+
+    <!-- OLD WAY -->
+    <text x="190" y="22" text-anchor="middle" font-weight="700" font-size="13" fill="#ff8a8a">Cách cũ (còn phổ biến 2024)</text>
+    <rect class="node-bg" x="20" y="35" width="110" height="50" rx="8"/>
+    <text x="75" y="57" text-anchor="middle" font-size="12">Edit prompt</text>
+    <text x="75" y="73" text-anchor="middle" class="label-sm">in codebase</text>
+
+    <rect class="node-bg" x="160" y="35" width="110" height="50" rx="8"/>
+    <text x="215" y="57" text-anchor="middle" font-size="12">Chạy tay 5–10</text>
+    <text x="215" y="73" text-anchor="middle" class="label-sm">examples "xem thử"</text>
+
+    <rect class="node-bg" x="300" y="35" width="100" height="50" rx="8"/>
+    <text x="350" y="55" text-anchor="middle" font-size="12">"Trông ổn"</text>
+    <text x="350" y="71" text-anchor="middle" class="label-sm">→ merge</text>
+
+    <rect fill="rgba(255,138,138,0.15)" stroke="#ff8a8a" stroke-width="1" x="420" y="35" width="320" height="50" rx="8"/>
+    <text x="580" y="52" text-anchor="middle" font-size="12" fill="#ff8a8a">User complain 3 ngày sau</text>
+    <text x="580" y="68" text-anchor="middle" class="label-sm">"AI trả lời sai rồi" — ai cũng ngạc nhiên</text>
+
+    <line class="arrow" x1="130" y1="60" x2="157" y2="60"/>
+    <line class="arrow" x1="270" y1="60" x2="297" y2="60"/>
+    <line class="arrow" x1="400" y1="60" x2="417" y2="60"/>
+
+    <!-- NEW WAY -->
+    <text x="380" y="120" text-anchor="middle" font-weight="700" font-size="13" fill="#b4e07a">Cách hiện tại (2025–2026)</text>
+
+    <rect class="node-bg" x="20" y="135" width="100" height="50" rx="8"/>
+    <text x="70" y="155" text-anchor="middle" font-size="11">Commit</text>
+    <text x="70" y="170" text-anchor="middle" class="label-sm">prompt/config</text>
+
+    <rect class="node-accent" x="140" y="135" width="100" height="50" rx="8"/>
+    <text x="190" y="155" text-anchor="middle" font-size="11">CI smoke</text>
+    <text x="190" y="170" text-anchor="middle" class="label-sm">&lt;60s fast-fail</text>
+
+    <rect class="node-accent" x="260" y="135" width="100" height="50" rx="8"/>
+    <text x="310" y="155" text-anchor="middle" font-size="11">CI regression</text>
+    <text x="310" y="170" text-anchor="middle" class="label-sm">gate merge</text>
+
+    <rect class="node-green" x="380" y="135" width="100" height="50" rx="8"/>
+    <text x="430" y="155" text-anchor="middle" font-size="11">Deploy canary</text>
+    <text x="430" y="170" text-anchor="middle" class="label-sm">5% traffic</text>
+
+    <rect class="node-blue" x="500" y="135" width="110" height="50" rx="8"/>
+    <text x="555" y="155" text-anchor="middle" font-size="11">Online sample</text>
+    <text x="555" y="170" text-anchor="middle" class="label-sm">LLM judge async</text>
+
+    <rect class="node-green" x="630" y="135" width="100" height="50" rx="8"/>
+    <text x="680" y="155" text-anchor="middle" font-size="11">Full rollout</text>
+    <text x="680" y="170" text-anchor="middle" class="label-sm">dashboard alert</text>
+
+    <line class="arrow" x1="120" y1="160" x2="137" y2="160"/>
+    <line class="arrow" x1="240" y1="160" x2="257" y2="160"/>
+    <line class="arrow" x1="360" y1="160" x2="377" y2="160"/>
+    <line class="arrow" x1="480" y1="160" x2="497" y2="160"/>
+    <line class="arrow" x1="610" y1="160" x2="627" y2="160"/>
+
+    <!-- Feedback loop arrow -->
+    <path d="M 680 185 Q 680 250 380 250 Q 100 250 70 185" fill="none" stroke="#b4e07a" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arrowhead4)"/>
+    <text x="380" y="265" text-anchor="middle" font-size="11" fill="#b4e07a">Failing online sample → canary set → tự động vào regression next PR</text>
+
+    <!-- Key differences -->
+    <rect fill="rgba(180,224,122,0.06)" stroke="#b4e07a" stroke-width="1" x="20" y="278" width="720" height="18" rx="4"/>
+    <text x="380" y="291" text-anchor="middle" font-size="11" fill="#aab4c5">Kết quả: regression được phát hiện trong vòng phút → không có "surprise" sau 3 ngày</text>
+  </svg>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Chiều cạnh</th>
+          <th>Cách cũ</th>
+          <th>Cách hiện tại</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Khi nào biết có regression?</td>
+          <td>Khi user complain (1–3 ngày sau deploy)</td>
+          <td>Trong vòng phút — CI gate hoặc canary online eval alert</td>
+        </tr>
+        <tr>
+          <td>Eval coverage</td>
+          <td>5–10 examples tay, không có tags, không reproducible</td>
+          <td>200+ versioned cases, có tags, chạy tự động, kết quả so sánh được</td>
+        </tr>
+        <tr>
+          <td>Confidence khi deploy</td>
+          <td>"Trông có vẻ ổn" — subjective</td>
+          <td>Score vượt threshold 90%, golden 100%, online sample trending up</td>
+        </tr>
+        <tr>
+          <td>Debug khi có vấn đề</td>
+          <td>Xem log thủ công, không biết prompt nào đang chạy</td>
+          <td>Drill từ aggregate → slice → individual example với full trace context</td>
+        </tr>
+        <tr>
+          <td>Model upgrade</td>
+          <td>Upgrade, cross fingers, xem có ai phàn nàn không</td>
+          <td>Chạy full eval side-by-side, so sánh phân phối score, chỉ migrate khi p-value significant positive</td>
+        </tr>
+        <tr>
+          <td>Silent drift detection</td>
+          <td>Không có — biết khi KPI business drop</td>
+          <td>Nightly eval + online sample → alert trong giờ</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 id="tom-tat">Tóm tắt</h2>
+  <ol>
+    <li><strong>Eval as code:</strong> mọi test case, grader, threshold đều sống trong git — versioned, reviewable, reproducible. Đây là nền tảng của mọi thứ phía dưới.</li>
+    <li><strong>CI gate:</strong> smoke eval (fast fail, &lt;60s) trên mọi PR; regression eval (gate merge, &lt;10 phút) trước mọi merge vào main. Không có passing gate → không có deploy.</li>
+    <li><strong>Phân loại 4 set:</strong> golden (100% must-pass), regression (catch past bugs), smoke (fast subset), canary (production sample). Mỗi loại có threshold và cadence riêng.</li>
+    <li><strong>Drift detection:</strong> monitor input distribution shift, output quality drop, cost/latency anomaly. Nightly eval là bắt buộc — nhiều drift không đến từ code change.</li>
+    <li><strong>Online eval:</strong> sample 5–10% production async, score bằng cheap LLM judge, track theo thời gian, alert khi drop. Cost chỉ ~$7–15/tháng với Batch API.</li>
+    <li><strong>Eval budget:</strong> treat eval cost như SLO — quyết định upfront, back-calculate sample rate và judge model. Batch API giảm 50% chi phí ngay lập tức.</li>
+    <li><strong>Observability 3 levels:</strong> aggregate score → failing slice → individual example with trace. Không thể debug nếu không có drill-down.</li>
+    <li><strong>Anti-patterns cần tránh:</strong> single metric, no slicing, train-on-eval, eval contamination, judge bias chưa calibrate. Eval kém thiết kế nguy hiểm hơn không có eval.</li>
+    <li><strong>Statistics matter:</strong> dùng Mann-Whitney + Cohen's d cho so sánh, Bonferroni correction cho multiple comparisons, minimum 200 samples/nhóm cho online A/B.</li>
+    <li><strong>Cách hiện tại:</strong> commit → CI gate → canary deploy → online sample → dashboard alert → failing samples trở thành regression cases cho PR tiếp theo. Vòng lặp tự cải thiện.</li>
+  </ol>
+
+  <nav class="section-footer">
+    <a href="36-reward-modeling.html" class="prev">
+      <div class="label">← trước</div>
+      <div class="title">36 — Reward Modeling</div>
+    </a>
+    <a href="38-inference-compute-scaling.html" class="next">
+      <div class="label">tiếp theo →</div>
+      <div class="title">38 — Inference &amp; Compute Scaling</div>
+    </a>
+  </nav>
+
+</main>
+
+<script src="../assets/script.js"></script>
+</body>
+</html>

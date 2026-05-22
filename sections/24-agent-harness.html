@@ -1,0 +1,1051 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>24 · Agent Harness là gì — AI Engineering</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<nav class="top-nav">
+  <div class="brand"><span class="dot"></span> AI Engineering</div>
+  <div class="crumbs"><a href="../index.html">Mục lục</a> › Phần 9 · <span>24 — Agent Harness là gì</span></div>
+  <div class="nav-actions">
+    <a href="23-agent-design-patterns.html">← Trước</a>
+    <a href="25-agent-memory.html">Tiếp →</a>
+  </div>
+</nav>
+
+<main class="page">
+
+  <section class="hero">
+    <span class="eyebrow">Phần 9 · §24</span>
+    <h1>Agent Harness là gì</h1>
+    <p class="lede">
+      Runtime hosting vòng lặp agent — model layer, tool layer, sandbox, permission system, observability, hooks, và state management. Từ Claude Code đến Devin, harness là thứ biến LLM thành AI assistant thực sự.
+    </p>
+    <img class="hero-image" src="../images/24-agent-harness.png" alt="Agent harness architecture" onerror="this.style.display='none'">
+  </section>
+
+  <aside class="toc">
+    <div class="toc-title">Trong trang này</div>
+    <ul>
+      <li><a href="#dinh-nghia">24.1 Định nghĩa harness</a></li>
+      <li><a href="#anatomy">24.2 Anatomy của harness hiện đại</a></li>
+      <li><a href="#claude-code">24.3 Case study: Claude Code</a></li>
+      <li><a href="#codex-cli">24.4 Case study: Codex CLI</a></li>
+      <li><a href="#cursor">24.5 Case study: Cursor / Windsurf</a></li>
+      <li><a href="#minimal">24.6 Aider, Continue, Roo Code, Cline</a></li>
+      <li><a href="#cloud">24.7 Autonomous / cloud harness</a></li>
+      <li><a href="#permissions">24.8 Permission models</a></li>
+      <li><a href="#hooks">24.9 Hooks &amp; extensibility</a></li>
+      <li><a href="#custom">24.10 Building a custom harness</a></li>
+      <li><a href="#mcp">24.11 MCP — universal harness extension</a></li>
+      <li><a href="#old-vs-new">24.12 Cách cũ vs Cách hiện tại</a></li>
+      <li><a href="#tom-tat">Tóm tắt</a></li>
+    </ul>
+  </aside>
+
+  <!-- ═══════════════════════════════════════════════
+       24.1 Định nghĩa
+  ════════════════════════════════════════════════ -->
+  <h2 id="dinh-nghia">24.1 Định nghĩa harness</h2>
+  <p>
+    <strong>Agent harness</strong> là runtime environment host và orchestrate vòng lặp agent. Nó nằm giữa
+    <em>model</em> (LLM API) và <em>thế giới thực</em> (filesystem, shell, browser, APIs), đảm bảo mỗi
+    tool call được route đúng, mỗi kết quả được trả về đúng ngữ cảnh, và toàn bộ session được quản lý
+    an toàn có kiểm soát.
+  </p>
+
+  <div class="callout note">
+    <div class="icon">≡</div>
+    <div>
+      <div class="title">Phân biệt ba khái niệm</div>
+      <p>
+        <strong>Model</strong> (Claude, GPT-4o, Gemini) — chỉ là LLM, không tự làm gì được.<br>
+        <strong>Framework</strong> (LangChain, Mastra, LlamaIndex) — thư viện giúp xây dựng agent logic.<br>
+        <strong>Harness</strong> (Claude Code, Cursor, Devin) — <em>sản phẩm chạy được</em> với loop + tools + UX + sandbox + permissions. Framework là building blocks; harness là ngôi nhà đã xây xong.
+      </p>
+    </div>
+  </div>
+
+  <p>
+    Một harness đầy đủ trả lời cho 6 câu hỏi vận hành:
+  </p>
+  <ul>
+    <li><strong>Loop:</strong> Vòng lặp agent được host và dừng như thế nào?</li>
+    <li><strong>Tools:</strong> Agent có thể làm những gì với môi trường?</li>
+    <li><strong>State:</strong> Conversation, artifacts, và context được lưu trữ ở đâu?</li>
+    <li><strong>Permission:</strong> Ai được phép approve hoặc chặn tool calls nào?</li>
+    <li><strong>Sandbox:</strong> Code nguy hiểm chạy trong môi trường nào?</li>
+    <li><strong>Observability:</strong> Làm sao debug và audit khi mọi thứ sai?</li>
+  </ul>
+
+  <!-- ═══════════════════════════════════════════════
+       24.2 Anatomy
+  ════════════════════════════════════════════════ -->
+  <h2 id="anatomy">24.2 Anatomy của một harness hiện đại</h2>
+  <p>
+    Mọi harness production-ready đều có 7 layer phân tầng rõ ràng. SVG dưới đây mô tả kiến trúc từ shell đến model:
+  </p>
+
+  <svg class="diagram" viewBox="0 0 760 500" role="img" aria-label="Harness anatomy — layered from shell to model">
+    <defs>
+      <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#6f7c92"/>
+      </marker>
+    </defs>
+
+    <!-- Layer 7: User / Shell -->
+    <rect class="node-bg" x="30" y="20" width="700" height="52" rx="10"/>
+    <text x="380" y="42" text-anchor="middle" font-weight="700" font-size="14">Shell / UX Layer</text>
+    <text x="380" y="60" text-anchor="middle" class="label-sm">CLI · IDE panel · Web UI · Slash commands · /skills · CLAUDE.md context</text>
+
+    <!-- Arrow down -->
+    <line class="arrow" x1="380" y1="72" x2="380" y2="92" marker-end="url(#arrowhead)"/>
+
+    <!-- Layer 6: Conversation & State -->
+    <rect class="node-accent" x="30" y="94" width="700" height="52" rx="10"/>
+    <text x="380" y="116" text-anchor="middle" font-weight="700" font-size="14">Conversation &amp; State Management</text>
+    <text x="380" y="134" text-anchor="middle" class="label-sm">Message history · Compaction/summarize · MEMORY.md · Session artifacts · TodoWrite</text>
+
+    <line class="arrow" x1="380" y1="147" x2="380" y2="167" marker-end="url(#arrowhead)"/>
+
+    <!-- Layer 5: Hooks -->
+    <rect class="node-blue" x="30" y="169" width="700" height="52" rx="10"/>
+    <text x="380" y="191" text-anchor="middle" font-weight="700" font-size="14">Hooks &amp; Extensibility</text>
+    <text x="380" y="209" text-anchor="middle" class="label-sm">pre-tool · post-tool · on-stop · sub-agent dispatch · custom validators</text>
+
+    <line class="arrow" x1="380" y1="222" x2="380" y2="242" marker-end="url(#arrowhead)"/>
+
+    <!-- Layer 4: Permission System -->
+    <rect class="node-accent" x="30" y="244" width="700" height="52" rx="10"/>
+    <text x="380" y="266" text-anchor="middle" font-weight="700" font-size="14">Permission System</text>
+    <text x="380" y="284" text-anchor="middle" class="label-sm">allowlist · ask-every-call · sandbox-gated · role-based · human-in-the-loop confirmation</text>
+
+    <line class="arrow" x1="380" y1="297" x2="380" y2="317" marker-end="url(#arrowhead)"/>
+
+    <!-- Layer 3: Sandbox -->
+    <rect class="node-green" x="30" y="319" width="340" height="52" rx="10"/>
+    <text x="200" y="341" text-anchor="middle" font-weight="700" font-size="13">Sandbox</text>
+    <text x="200" y="359" text-anchor="middle" class="label-sm">Docker · E2B · modal · read-only FS</text>
+
+    <!-- Layer 3: Observability -->
+    <rect class="node-blue" x="390" y="319" width="340" height="52" rx="10"/>
+    <text x="560" y="341" text-anchor="middle" font-weight="700" font-size="13">Observability</text>
+    <text x="560" y="359" text-anchor="middle" class="label-sm">traces · cost meter · latency · evals</text>
+
+    <line class="arrow" x1="200" y1="372" x2="200" y2="392" marker-end="url(#arrowhead)"/>
+    <line class="arrow" x1="560" y1="372" x2="560" y2="392" marker-end="url(#arrowhead)"/>
+
+    <!-- Layer 2: Tool Layer (joined) -->
+    <rect class="node-bg" x="30" y="394" width="700" height="52" rx="10"/>
+    <text x="380" y="416" text-anchor="middle" font-weight="700" font-size="14">Tool Layer</text>
+    <text x="380" y="434" text-anchor="middle" class="label-sm">Bash · Read · Edit · Write · Browser · LSP · MCP servers · custom tools</text>
+
+    <line class="arrow" x1="380" y1="447" x2="380" y2="467" marker-end="url(#arrowhead)"/>
+
+    <!-- Layer 1: Model -->
+    <rect class="node-accent" x="200" y="469" width="360" height="24" rx="8"/>
+    <text x="380" y="485" text-anchor="middle" font-weight="700" font-size="13">Model Layer (LLM API)</text>
+  </svg>
+
+  <h3>7 thành phần cốt lõi</h3>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Thành phần</th><th>Vai trò</th><th>Ví dụ thực tế</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Model layer</strong></td>
+          <td>Gọi LLM, quản lý tokens, streaming, tool schemas</td>
+          <td>Anthropic SDK, OpenAI SDK, Ollama</td>
+        </tr>
+        <tr>
+          <td><strong>Tool layer</strong></td>
+          <td>Đăng ký và dispatch tools khi model yêu cầu</td>
+          <td>Bash, Read/Edit/Write, browser, editor API</td>
+        </tr>
+        <tr>
+          <td><strong>Sandbox</strong></td>
+          <td>Cô lập code execution khỏi host system</td>
+          <td>Docker, E2B, Modal, macOS sandbox-exec</td>
+        </tr>
+        <tr>
+          <td><strong>Permission system</strong></td>
+          <td>Kiểm soát tool nào được gọi, khi nào cần human approval</td>
+          <td>Allowlist/blocklist, ask-mode, role-based</td>
+        </tr>
+        <tr>
+          <td><strong>Observability</strong></td>
+          <td>Trace mọi tool call, đo cost/latency, audit log</td>
+          <td>LangSmith, Braintrust, custom logging</td>
+        </tr>
+        <tr>
+          <td><strong>Hooks</strong></td>
+          <td>Inject logic trước/sau mỗi tool call, on agent stop</td>
+          <td>pre-tool validator, post-tool formatter, on-stop notifier</td>
+        </tr>
+        <tr>
+          <td><strong>Conversation / State</strong></td>
+          <td>Lưu và compress message history; quản lý session artifacts</td>
+          <td>In-memory, SQLite, Redis, MEMORY.md</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════
+       24.3 Claude Code
+  ════════════════════════════════════════════════ -->
+  <h2 id="claude-code">24.3 Case study: Claude Code</h2>
+  <p>
+    Claude Code (Anthropic, 2025) là harness mạnh nhất hiện tại cho software engineering. Nó chạy
+    như CLI trong terminal và cung cấp cho Claude một bộ tools đầy đủ để làm việc với codebase thực.
+  </p>
+
+  <h3>Bộ tools tích hợp sẵn</h3>
+  <div class="grid-2">
+    <div class="card">
+      <div class="title" style="color:var(--accent);font-weight:600;margin-bottom:8px">Filesystem &amp; Code</div>
+      <ul style="margin:0;padding-left:18px">
+        <li><code>Read</code> — đọc file với line offset</li>
+        <li><code>Write</code> — tạo file mới (overwrite toàn bộ)</li>
+        <li><code>Edit</code> — thay thế exact string trong file</li>
+        <li><code>Bash</code> — chạy lệnh shell tùy ý</li>
+        <li><code>Glob</code> / <code>Grep</code> — tìm kiếm trong codebase</li>
+      </ul>
+    </div>
+    <div class="card">
+      <div class="title" style="color:var(--accent-2);font-weight:600;margin-bottom:8px">Agent &amp; Session</div>
+      <ul style="margin:0;padding-left:18px">
+        <li><code>Agent</code> — spawn subagent với context riêng</li>
+        <li><code>TodoWrite</code> — quản lý task checklist trong session</li>
+        <li><code>WebFetch</code> — fetch URL và trả về content</li>
+        <li><code>Skill</code> — gọi skill (macro) đã định nghĩa sẵn</li>
+        <li>MCP servers — bất kỳ tool external nào qua MCP</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3>Subagent pattern</h3>
+  <p>
+    Claude Code cho phép agent chính spawn subagent qua <code>Agent</code> tool. Subagent nhận:
+    (1) system prompt riêng, (2) bộ tool riêng (có thể hạn chế hơn), (3) context window riêng.
+    Pattern này giải quyết hai vấn đề: context window overflow và parallel execution.
+  </p>
+  <pre><code><span class="cm"># Ví dụ: orchestrator agent dispatch nhiều subagents song song</span>
+<span class="cm"># (miêu tả conceptual, không phải code Python thực)</span>
+subtasks = [
+    {<span class="str">"task"</span>: <span class="str">"Phân tích schema DB hiện tại"</span>, <span class="str">"tools"</span>: [<span class="str">"Read"</span>, <span class="str">"Bash"</span>]},
+    {<span class="str">"task"</span>: <span class="str">"Tìm tất cả API endpoints liên quan"</span>, <span class="str">"tools"</span>: [<span class="str">"Grep"</span>, <span class="str">"Read"</span>]},
+    {<span class="str">"task"</span>: <span class="str">"Draft migration plan"</span>, <span class="str">"tools"</span>: [<span class="str">"Write"</span>]},
+]
+<span class="cm"># Orchestrator dùng TodoWrite để track từng subtask</span>
+<span class="cm"># Kết quả từ subagents được synthesize thành plan tổng thể</span></code></pre>
+
+  <h3>CLAUDE.md và MEMORY.md — context tĩnh và context động</h3>
+  <p>
+    <code>CLAUDE.md</code> (checked vào repo) cung cấp project-level instructions: code style, architecture patterns, workflow rules. Đây là "system prompt mở rộng" mà mọi session đều nhận.
+  </p>
+  <p>
+    <code>MEMORY.md</code> (trong <code>~/.claude/</code>) lưu user-level preferences và learned facts từ các session trước. Claude Code tự động persist thông tin quan trọng vào đây khi user yêu cầu hoặc khi nhận thấy pattern lặp lại.
+  </p>
+
+  <h3>Permission system trong Claude Code</h3>
+  <p>
+    Harness cung cấp 3 chế độ permission qua <code>.claude/settings.json</code>:
+  </p>
+  <ul>
+    <li><strong>allowedTools</strong> — whitelist tool patterns không cần confirm (e.g. <code>"Bash(git *)"</code>)</li>
+    <li><strong>deniedTools</strong> — blacklist tuyệt đối</li>
+    <li><strong>ask-every-call</strong> — default: hỏi user trước mỗi tool call nguy hiểm</li>
+  </ul>
+
+  <div class="callout tip">
+    <div class="icon">★</div>
+    <div>
+      <div class="title">Hooks trong Claude Code</div>
+      <p>
+        Settings <code>hooks</code> cho phép định nghĩa shell commands chạy <em>trước</em> (<code>PreToolUse</code>), <em>sau</em> (<code>PostToolUse</code>), hoặc khi agent <em>dừng</em> (<code>Stop</code>). Ví dụ: tự động notify Slack khi agent hoàn thành task dài, hoặc validate file không chứa secrets trước khi commit.
+      </p>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════
+       24.4 Codex CLI
+  ════════════════════════════════════════════════ -->
+  <h2 id="codex-cli">24.4 Case study: Codex CLI (OpenAI)</h2>
+  <p>
+    Codex CLI (OpenAI, 2025) là harness CLI cho OpenAI models. Điểm khác biệt chính so với Claude Code là
+    thiết kế sandbox bậc thang rõ ràng và kiến trúc app-server tách biệt.
+  </p>
+
+  <h3>Kiến trúc app-server</h3>
+  <p>
+    Codex CLI chia thành hai process: <strong>App</strong> (xử lý UX, render terminal, stream output)
+    và <strong>Server</strong> (chạy agent loop, quản lý tools, sandbox). Tách biệt này giúp server
+    có thể chạy trong môi trường restricted mà không ảnh hưởng đến UX layer.
+  </p>
+
+  <h3>Ba sandbox modes</h3>
+  <div class="tabs" data-tabs>
+    <div class="tab-buttons">
+      <button class="active">read-only</button>
+      <button>workspace-write</button>
+      <button>danger-full-access</button>
+    </div>
+    <div class="tab-panel active">
+      <h4>read-only (default khi chưa set)</h4>
+      <p>
+        Agent chỉ được đọc filesystem. Không được ghi file, không được chạy lệnh mutate. An toàn nhất cho môi trường production hoặc khi user muốn agent chỉ <em>phân tích</em> codebase.
+      </p>
+      <p><span class="tag green">safe</span> <span class="tag">recommend cho explore/audit</span></p>
+    </div>
+    <div class="tab-panel">
+      <h4>workspace-write (recommended default)</h4>
+      <p>
+        Agent được ghi vào working directory (project folder) nhưng không được truy cập ngoài workspace. Shell commands được sandbox bởi macOS <code>sandbox-exec</code> hoặc Linux <code>landlock</code> — chặn network access và filesystem ngoài workspace.
+      </p>
+      <p><span class="tag blue">balanced</span> <span class="tag">recommend cho dev workflow</span></p>
+    </div>
+    <div class="tab-panel">
+      <h4>danger-full-access</h4>
+      <p>
+        Không có sandbox. Agent có thể làm bất cứ điều gì user có thể làm — đọc/ghi mọi file, gọi mọi network endpoint, cài package, v.v. Dành cho power users hoặc CI environments đã có isolation layer riêng (container, VM).
+      </p>
+      <div class="callout danger" style="margin-top:12px">
+        <div class="icon">!</div>
+        <div>
+          <div class="title">Chỉ dùng trong môi trường đã cô lập sẵn</div>
+          <p>Không dùng <code>danger-full-access</code> trên máy development chứa credentials, SSH keys, hoặc dữ liệu nhạy cảm.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <h3>exec subcommand và MCP integration</h3>
+  <p>
+    Codex CLI có lệnh <code>codex exec "task description"</code> để chạy agent non-interactively — phù hợp với CI/CD pipelines. MCP servers được cấu hình trong <code>~/.codex/config.json</code>, giống cách Claude Code dùng <code>settings.json</code>.
+  </p>
+
+  <!-- ═══════════════════════════════════════════════
+       24.5 Cursor / Windsurf
+  ════════════════════════════════════════════════ -->
+  <h2 id="cursor">24.5 Case study: Cursor / Windsurf</h2>
+  <p>
+    Cursor và Windsurf là editor-integrated harnesses — chạy bên trong IDE thay vì CLI.
+    Điều này cho phép tích hợp sâu với Language Server Protocol (LSP), symbol lookup,
+    và multi-file context mà CLI harness khó đạt được.
+  </p>
+
+  <h3>Ưu điểm editor-integrated</h3>
+  <ul>
+    <li><strong>LSP-aware tools:</strong> Agent biết chính xác symbol nào là variable, function, hay type nhờ LSP. Không cần grep string blindly.</li>
+    <li><strong>Multi-file edit:</strong> Cursor có thể mở nhiều file trong context và áp dụng changes atomically, với diff preview trước khi apply.</li>
+    <li><strong>Codebase indexing:</strong> Cursor lập index toàn bộ codebase để semantic search — tìm "tất cả nơi xử lý payment" mà không cần biết tên file.</li>
+    <li><strong>Inline UI:</strong> Agent suggestions hiện trực tiếp trong editor inline, không phải terminal riêng biệt.</li>
+  </ul>
+
+  <h3>Agent mode vs Chat mode</h3>
+  <p>
+    Cursor phân biệt hai modes rõ ràng:
+  </p>
+  <ul>
+    <li><strong>Chat mode:</strong> Single-turn Q&amp;A, agent không tự apply changes — user phải manually accept từng suggestion.</li>
+    <li><strong>Agent mode (Composer):</strong> Multi-step loop, agent tự đọc files, áp dụng edits, chạy terminal commands, lặp lại cho đến khi task hoàn thành hoặc user dừng.</li>
+  </ul>
+
+  <div class="callout note">
+    <div class="icon">≡</div>
+    <div>
+      <div class="title">Windsurf — Cascade architecture</div>
+      <p>
+        Windsurf (Codeium) dùng kiến trúc Cascade: agent có <em>persistent awareness</em> của toàn bộ codebase context, không chỉ những file đang mở. Flows được design để agent proactively suggest changes trước khi user hỏi.
+      </p>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════
+       24.6 Minimal harness variants
+  ════════════════════════════════════════════════ -->
+  <h2 id="minimal">24.6 Aider, Continue, Roo Code, Cline</h2>
+  <p>
+    Một nhóm harness thiết kế theo triết lý <em>minimal</em> — ít tính năng hơn nhưng nhẹ hơn, linh hoạt hơn,
+    và thường open-source hoàn toàn.
+  </p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Tool</th><th>Triết lý</th><th>Điểm mạnh</th><th>Hạn chế</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Aider</strong></td>
+          <td>Git-native, CLI, multi-model</td>
+          <td>Tự động commit, map toàn bộ repo, dùng được với bất kỳ model nào</td>
+          <td>Không có sandbox; dùng qua terminal, không có UI phong phú</td>
+        </tr>
+        <tr>
+          <td><strong>Continue</strong></td>
+          <td>VS Code extension, open-source</td>
+          <td>Bring-your-own-model, local model support, codebase indexing</td>
+          <td>Agent mode ít powerful hơn Cursor; permission model đơn giản hơn</td>
+        </tr>
+        <tr>
+          <td><strong>Roo Code</strong></td>
+          <td>VS Code fork của Cline, MCP-first</td>
+          <td>MCP tool integration mạnh, multi-agent orchestration, open-source</td>
+          <td>Còn mới, ecosystem nhỏ hơn; không có managed hosting</td>
+        </tr>
+        <tr>
+          <td><strong>Cline</strong></td>
+          <td>VS Code extension, transparent agent</td>
+          <td>Hiển thị mọi tool call trước khi execute; rất nhiều model support</td>
+          <td>Ask-every-call mặc định → chậm nếu task lớn; không có allowlist đủ mạnh</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>
+    Điểm chung: tất cả bốn tools này đều có <strong>sandbox yếu hơn</strong> Claude Code hay Codex CLI.
+    Chúng dựa vào người dùng confirm từng tool call nguy hiểm hơn là system-level isolation.
+  </p>
+
+  <!-- ═══════════════════════════════════════════════
+       24.7 Cloud harness
+  ════════════════════════════════════════════════ -->
+  <h2 id="cloud">24.7 Autonomous / cloud harness: Devin, Cosine, OpenHands</h2>
+  <p>
+    Cloud harnesses đại diện cho thế hệ tiếp theo — agent chạy trong container cloud, có thể làm việc
+    hàng giờ mà không cần user hiện diện, với toàn bộ môi trường development isolated trên server.
+  </p>
+
+  <h3>Đặc điểm kiến trúc</h3>
+  <ul>
+    <li><strong>Per-session container:</strong> Mỗi task nhận một Docker container riêng — agent có full Linux environment: bash, git, npm, Python, browser headless.</li>
+    <li><strong>Browser tool tích hợp:</strong> Agent có thể browse web, đăng nhập trang web (trong sandbox), click UI, screenshot, extract data.</li>
+    <li><strong>Long-running sessions:</strong> Session có thể kéo dài 30 phút đến vài giờ. User nhận notification khi cần approve hoặc khi task xong.</li>
+    <li><strong>Async workflow:</strong> User describe task → harness lên kế hoạch → hỏi clarifying questions → user approve → agent tự chạy → báo cáo kết quả.</li>
+  </ul>
+
+  <h3>Devin (Cognition AI)</h3>
+  <p>
+    Devin là harness thương mại đầu tiên được thiết kế như một <em>AI software engineer</em> thực sự.
+    Nó có: shell access, browser, code editor, file system, unit test runner, và khả năng mở PR lên GitHub.
+    Điểm đặc biệt: Devin có <em>knowledge management system</em> để learn từ feedback và lưu project-specific knowledge.
+  </p>
+
+  <h3>OpenHands (All-Hands AI)</h3>
+  <p>
+    OpenHands là open-source alternative. Kiến trúc modular với <em>Runtime</em> (container execution),
+    <em>AgentHub</em> (many agent types), và <em>EventStream</em> (tracing mọi action).
+    Đặc biệt dễ extend vì mọi thứ đều là events.
+  </p>
+
+  <div class="callout warn">
+    <div class="icon">⚠</div>
+    <div>
+      <div class="title">Cloud harness và bảo mật credentials</div>
+      <p>
+        Khi dùng Devin hay OpenHands với private repos, agent cần được cấp credentials (GitHub token, API keys). Luôn dùng <strong>fine-grained tokens với scope tối thiểu</strong> — không bao giờ cấp full admin access cho harness cloud.
+      </p>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════
+       24.8 Permission models
+  ════════════════════════════════════════════════ -->
+  <h2 id="permissions">24.8 Permission models</h2>
+  <p>
+    Permission model là cơ chế kiểm soát <em>ai được phép làm gì</em> trong harness. Có 4 trường phái chính:
+  </p>
+
+  <div class="tabs" data-tabs>
+    <div class="tab-buttons">
+      <button class="active">Ask-every-call</button>
+      <button>Allowlist</button>
+      <button>Sandbox-based</button>
+      <button>Role-based</button>
+    </div>
+    <div class="tab-panel active">
+      <h4>Ask-every-call (Confirm per tool)</h4>
+      <p>
+        Trước mỗi tool call có side effect (ghi file, chạy shell, gọi API), harness hỏi user confirm.
+        User thấy chính xác command gì và có thể approve/reject.
+      </p>
+      <p><strong>Ưu điểm:</strong> Transparent; user luôn kiểm soát.</p>
+      <p><strong>Nhược điểm:</strong> Rất chậm cho tasks nhiều steps; user fatigue → người dùng bắt đầu auto-approve mà không đọc kỹ.</p>
+      <p><strong>Dùng khi:</strong> Người dùng mới, task có rủi ro cao (deploy, delete), môi trường production.</p>
+      <p><span class="tag">Cline (default)</span> <span class="tag">Cursor ask mode</span></p>
+    </div>
+    <div class="tab-panel">
+      <h4>Allowlist / Blocklist</h4>
+      <p>
+        User định nghĩa pattern nào được phép không cần confirm (<code>allowedTools</code>) và pattern nào bị chặn tuyệt đối (<code>deniedTools</code>). Harness tự động approve các tool calls khớp allowlist, chặn các calls khớp blocklist, và hỏi user cho tất cả còn lại.
+      </p>
+      <pre style="margin:8px 0"><code><span class="cm"># .claude/settings.json — ví dụ allowlist</span>
+{
+  <span class="str">"allowedTools"</span>: [
+    <span class="str">"Bash(git *)"</span>,
+    <span class="str">"Bash(npm run *)"</span>,
+    <span class="str">"Read(*)"</span>, <span class="str">"Edit(*)"</span>, <span class="str">"Write(*)"</span>
+  ],
+  <span class="str">"deniedTools"</span>: [
+    <span class="str">"Bash(rm -rf *)"</span>,
+    <span class="str">"Bash(curl * | bash)"</span>
+  ]
+}</code></pre>
+      <p><strong>Dùng khi:</strong> Dev workflow hàng ngày — allowlist các lệnh an toàn quen thuộc.</p>
+      <p><span class="tag blue">Claude Code</span> <span class="tag blue">Codex CLI</span></p>
+    </div>
+    <div class="tab-panel">
+      <h4>Sandbox-based (OS-level isolation)</h4>
+      <p>
+        Không tin tưởng permission logic ở application layer. Thay vào đó, dùng OS/kernel sandbox để giới hạn vật lý những gì process có thể làm — ngay cả khi agent muốn thực thi lệnh nguy hiểm, OS chặn nó.
+      </p>
+      <ul>
+        <li><strong>macOS sandbox-exec:</strong> Profile-based, chặn file access ngoài workspace và network</li>
+        <li><strong>Linux landlock:</strong> Kernel-level, tương tự sandbox-exec</li>
+        <li><strong>Docker container:</strong> Filesystem isolation, network isolation, resource limits</li>
+        <li><strong>E2B / Modal:</strong> Ephemeral cloud VM per session</li>
+      </ul>
+      <p><strong>Dùng khi:</strong> Agent chạy untrusted code, CI/CD, cloud harness.</p>
+      <p><span class="tag green">Codex workspace-write</span> <span class="tag green">Devin</span> <span class="tag green">OpenHands</span></p>
+    </div>
+    <div class="tab-panel">
+      <h4>Role-based (RBAC for agents)</h4>
+      <p>
+        Trong multi-agent hoặc enterprise harness, mỗi agent được assign một <em>role</em> với capability set xác định. Orchestrator agent có role khác worker agents; agents không thể tự nâng quyền.
+      </p>
+      <p><strong>Ví dụ role hierarchy:</strong></p>
+      <ul>
+        <li><code>reader</code> — chỉ Read tools</li>
+        <li><code>developer</code> — Read + Edit + Write + Bash(test/*)</li>
+        <li><code>deployer</code> — developer + Bash(deploy/*) + cloud APIs</li>
+        <li><code>orchestrator</code> — spawn agents, tất cả tools, nhưng không có credentials thật</li>
+      </ul>
+      <p><strong>Dùng khi:</strong> Enterprise harness, regulated environments, multi-tenant setups.</p>
+      <p><span class="tag lilac">Custom enterprise harness</span> <span class="tag lilac">Devin enterprise</span></p>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════
+       24.9 Hooks
+  ════════════════════════════════════════════════ -->
+  <h2 id="hooks">24.9 Hooks &amp; extensibility</h2>
+  <p>
+    Hooks là điểm extension của harness — cho phép inject custom logic vào lifecycle của agent
+    mà không cần fork harness hay sửa model prompt.
+  </p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Hook point</th><th>Thời điểm trigger</th><th>Use cases điển hình</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>PreToolUse</strong></td>
+          <td>Trước khi tool được execute</td>
+          <td>Validate lệnh không chứa pattern nguy hiểm; rate-limit tool calls; log intent</td>
+        </tr>
+        <tr>
+          <td><strong>PostToolUse</strong></td>
+          <td>Sau khi tool hoàn thành, trước khi trả kết quả cho model</td>
+          <td>Format output; redact secrets trong output; ghi audit log; trigger notification</td>
+        </tr>
+        <tr>
+          <td><strong>OnStop</strong></td>
+          <td>Khi agent kết thúc session (thành công hoặc lỗi)</td>
+          <td>Gửi Slack notification; tạo summary; clean up temp files; update Linear ticket</td>
+        </tr>
+        <tr>
+          <td><strong>SubAgentDispatch</strong></td>
+          <td>Trước khi spawn subagent</td>
+          <td>Inject context bổ sung; giới hạn tools cho subagent; assign budget</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <pre><code><span class="cm"># .claude/settings.json — hooks example</span>
+{
+  <span class="str">"hooks"</span>: {
+    <span class="str">"PreToolUse"</span>: [{
+      <span class="str">"matcher"</span>: <span class="str">"Bash"</span>,
+      <span class="str">"hooks"</span>: [{
+        <span class="str">"type"</span>: <span class="str">"command"</span>,
+        <span class="cm">// Chặn bất kỳ lệnh nào có "rm -rf /"</span>
+        <span class="str">"command"</span>: <span class="str">"bash -c 'echo \"$CLAUDE_TOOL_INPUT\" | grep -q \"rm -rf /\" && exit 1 || exit 0'"</span>
+      }]
+    }],
+    <span class="str">"Stop"</span>: [{
+      <span class="str">"hooks"</span>: [{
+        <span class="str">"type"</span>: <span class="str">"command"</span>,
+        <span class="cm">// Notify khi agent xong</span>
+        <span class="str">"command"</span>: <span class="str">"notify-send 'Claude Code' 'Agent session completed'"</span>
+      }]
+    }]
+  }
+}</code></pre>
+
+  <h3>Skill system — macro trên hooks</h3>
+  <p>
+    Claude Code extends hooks với <em>skills</em> — đây là reusable agent workflows được đóng gói thành
+    "slash commands" (<code>/feature-dev</code>, <code>/code-review</code>, <code>/angular</code>, v.v.).
+    Khi user gọi <code>/angular</code>, harness load skill prompt và inject vào context trước khi agent bắt đầu.
+    Skills là harness-level macro, không phải model-level feature.
+  </p>
+
+  <!-- ═══════════════════════════════════════════════
+       24.10 Building a custom harness
+  ════════════════════════════════════════════════ -->
+  <h2 id="custom">24.10 Building a custom harness</h2>
+  <p>
+    Đôi khi bạn cần xây harness riêng — cho domain cụ thể, môi trường đặc biệt, hoặc để học sâu
+    cơ chế bên trong. Dưới đây là minimum viable loop (~30 dòng Python):
+  </p>
+
+  <pre><code><span class="kw">import</span> anthropic
+<span class="kw">import</span> subprocess, json
+<span class="kw">from</span> typing <span class="kw">import</span> Any
+
+client = anthropic.Anthropic()
+
+<span class="cm"># ── Tool definitions ────────────────────────────────────────</span>
+TOOLS = [{
+    <span class="str">"name"</span>: <span class="str">"bash"</span>,
+    <span class="str">"description"</span>: <span class="str">"Run a shell command. Returns stdout/stderr."</span>,
+    <span class="str">"input_schema"</span>: {
+        <span class="str">"type"</span>: <span class="str">"object"</span>,
+        <span class="str">"properties"</span>: {<span class="str">"command"</span>: {<span class="str">"type"</span>: <span class="str">"string"</span>}},
+        <span class="str">"required"</span>: [<span class="str">"command"</span>]
+    }
+}]
+
+<span class="cm"># ── Tool executor ────────────────────────────────────────────</span>
+<span class="kw">def</span> <span class="fn">execute_tool</span>(name: str, inputs: dict[str, Any]) -> str:
+
+    <span class="kw">if</span> name == <span class="str">"bash"</span>:
+        result = subprocess.<span class="fn">run</span>(
+            inputs[<span class="str">"command"</span>], shell=<span class="kw">True</span>,
+            capture_output=<span class="kw">True</span>, text=<span class="kw">True</span>, timeout=<span class="num">30</span>
+        )
+        <span class="kw">return</span> result.stdout + result.stderr
+    <span class="kw">raise</span> <span class="fn">ValueError</span>(<span class="fn">f</span><span class="str">"Unknown tool: {name}"</span>)
+
+<span class="cm"># ── Main agent loop ──────────────────────────────────────────</span>
+<span class="kw">def</span> <span class="fn">run_agent</span>(task: str, max_iterations: int = <span class="num">20</span>) -> str:
+
+    messages = [{<span class="str">"role"</span>: <span class="str">"user"</span>, <span class="str">"content"</span>: task}]
+
+    <span class="kw">for</span> iteration <span class="kw">in</span> <span class="fn">range</span>(max_iterations):
+        response = client.messages.<span class="fn">create</span>(
+            model=<span class="str">"claude-opus-4-5"</span>,
+            max_tokens=<span class="num">4096</span>,
+            tools=TOOLS,
+            messages=messages
+        )
+
+        <span class="cm"># Append assistant turn</span>
+        messages.<span class="fn">append</span>({<span class="str">"role"</span>: <span class="str">"assistant"</span>, <span class="str">"content"</span>: response.content})
+
+        <span class="cm"># Agent finished — no tool calls</span>
+        <span class="kw">if</span> response.stop_reason == <span class="str">"end_turn"</span>:
+            <span class="kw">return</span> response.content[<span class="num">0</span>].text
+
+        <span class="cm"># Dispatch tool calls → collect results</span>
+        tool_results = []
+        <span class="kw">for</span> block <span class="kw">in</span> response.content:
+            <span class="kw">if</span> block.type == <span class="str">"tool_use"</span>:
+                output = <span class="fn">execute_tool</span>(block.name, block.input)
+                tool_results.<span class="fn">append</span>({
+                    <span class="str">"type"</span>: <span class="str">"tool_result"</span>,
+                    <span class="str">"tool_use_id"</span>: block.id,
+                    <span class="str">"content"</span>: output
+                })
+
+        messages.<span class="fn">append</span>({<span class="str">"role"</span>: <span class="str">"user"</span>, <span class="str">"content"</span>: tool_results})
+
+    <span class="kw">return</span> <span class="str">"max_iterations reached"</span>
+
+<span class="cm"># ── Entry point ──────────────────────────────────────────────</span>
+<span class="kw">if</span> __name__ == <span class="str">"__main__"</span>:
+    <span class="fn">print</span>(<span class="fn">run_agent</span>(<span class="str">"List the top 5 largest files in the current directory"</span>))</code></pre>
+
+  <h3>Design decisions khi xây custom harness</h3>
+  <div class="grid-2">
+    <div class="card">
+      <div class="title" style="color:var(--accent);font-weight:600;margin-bottom:8px">Sync vs Async</div>
+      <p>
+        <strong>Sync loop</strong> (như ví dụ trên): đơn giản, dễ debug, phù hợp cho single-user CLI tools.
+        <strong>Async loop</strong>: cần cho web servers, concurrent users, parallel tool calls. Dùng <code>asyncio</code> + <code>asyncio.gather()</code> cho parallel tools.
+      </p>
+    </div>
+    <div class="card">
+      <div class="title" style="color:var(--accent-2);font-weight:600;margin-bottom:8px">State storage</div>
+      <p>
+        <strong>In-memory list:</strong> đơn giản, mất khi process restart. <strong>SQLite:</strong> persistent, tốt cho local tools. <strong>Redis:</strong> tốt cho distributed, multi-process harnesses. <strong>File-based (MEMORY.md):</strong> human-readable, dễ inspect và edit.
+      </p>
+    </div>
+    <div class="card">
+      <div class="title" style="color:var(--accent-3);font-weight:600;margin-bottom:8px">Sandbox type</div>
+      <p>
+        <strong>subprocess (no sandbox):</strong> chỉ cho local dev, trusted use cases. <strong>Docker:</strong> tốt cho server-side, có network isolation. <strong>E2B/Modal:</strong> managed cloud sandbox, tốt cho SaaS harness. <strong>WASM:</strong> cho browser-based harness.
+      </p>
+    </div>
+    <div class="card">
+      <div class="title" style="color:var(--accent-4);font-weight:600;margin-bottom:8px">Context management</div>
+      <p>
+        Luôn track token count và compress history khi gần context limit. Dùng prompt caching cho system prompt dài. Với long tasks, summary-and-continue thay vì giữ toàn bộ history.
+      </p>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════
+       24.11 MCP
+  ════════════════════════════════════════════════ -->
+  <h2 id="mcp">24.11 MCP (Model Context Protocol) — universal harness extension</h2>
+  <p>
+    <strong>Model Context Protocol</strong> (Anthropic, 2024) là open standard cho phép harness kết nối
+    với bất kỳ external tool server nào theo cách chuẩn hóa. MCP giải quyết vấn đề cũ: mỗi harness
+    phải viết integration riêng cho mỗi tool — với MCP, một server chạy một lần và mọi harness đều dùng được.
+  </p>
+
+  <svg class="diagram" viewBox="0 0 760 320" role="img" aria-label="MCP architecture: host, client, servers, transports">
+    <defs>
+      <marker id="arrowmcp" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#6f7c92"/>
+      </marker>
+    </defs>
+
+    <!-- Host (Harness) -->
+    <rect class="node-accent" x="30" y="80" width="220" height="160" rx="12"/>
+    <text x="140" y="104" text-anchor="middle" font-weight="700" font-size="14">Harness (Host)</text>
+    <text x="140" y="122" text-anchor="middle" class="label-sm">Claude Code / Cursor / custom</text>
+
+    <!-- MCP Client inside host -->
+    <rect class="node-bg" x="50" y="134" width="180" height="50" rx="8"/>
+    <text x="140" y="156" text-anchor="middle" font-weight="600" font-size="12">MCP Client</text>
+    <text x="140" y="172" text-anchor="middle" class="label-sm">1 client per server connection</text>
+
+    <!-- Arrow to servers -->
+    <line class="arrow" x1="231" y1="159" x2="280" y2="130" marker-end="url(#arrowmcp)"/>
+    <line class="arrow" x1="231" y1="159" x2="280" y2="195" marker-end="url(#arrowmcp)"/>
+    <line class="arrow" x1="231" y1="159" x2="280" y2="260" marker-end="url(#arrowmcp)"/>
+
+    <!-- Transport label -->
+    <text x="253" y="148" font-size="10" fill="#ffb86b">stdio</text>
+    <text x="253" y="210" font-size="10" fill="#7cc4ff">HTTP/SSE</text>
+
+    <!-- MCP Server 1 (stdio) -->
+    <rect class="node-green" x="282" y="100" width="180" height="60" rx="8"/>
+    <text x="372" y="124" text-anchor="middle" font-weight="600" font-size="12">MCP Server: Git</text>
+    <text x="372" y="142" text-anchor="middle" class="label-sm">stdio transport · local process</text>
+
+    <!-- MCP Server 2 (HTTP) -->
+    <rect class="node-blue" x="282" y="168" width="180" height="60" rx="8"/>
+    <text x="372" y="192" text-anchor="middle" font-weight="600" font-size="12">MCP Server: Linear</text>
+    <text x="372" y="210" text-anchor="middle" class="label-sm">HTTP/SSE · remote service</text>
+
+    <!-- MCP Server 3 -->
+    <rect class="node-bg" x="282" y="236" width="180" height="60" rx="8"/>
+    <text x="372" y="260" text-anchor="middle" font-weight="600" font-size="12">MCP Server: Browser</text>
+    <text x="372" y="278" text-anchor="middle" class="label-sm">stdio · Puppeteer wrapper</text>
+
+    <!-- What servers expose -->
+    <rect class="node-bg" x="490" y="80" width="240" height="220" rx="12"/>
+    <text x="610" y="104" text-anchor="middle" font-weight="700" font-size="13">Servers expose:</text>
+    <text x="510" y="128" font-size="12">• <tspan font-weight="600" fill="#ffb86b">Tools</tspan> — callable functions</text>
+    <text x="510" y="150" font-size="12">• <tspan font-weight="600" fill="#7cc4ff">Resources</tspan> — data sources</text>
+    <text x="510" y="172" font-size="12">• <tspan font-weight="600" fill="#b4e07a">Prompts</tspan> — prompt templates</text>
+    <text x="510" y="198" font-size="11" fill="#6f7c92">Discovery: client queries</text>
+    <text x="510" y="214" font-size="11" fill="#6f7c92">server for capability list</text>
+    <text x="510" y="238" font-size="11" fill="#6f7c92">Model sees tools as normal</text>
+    <text x="510" y="254" font-size="11" fill="#6f7c92">tool_use blocks — MCP is</text>
+    <text x="510" y="270" font-size="11" fill="#6f7c92">transparent to model layer</text>
+
+    <line class="arrow" x1="463" y1="159" x2="489" y2="159" marker-end="url(#arrowmcp)"/>
+    <line class="arrow" x1="463" y1="228" x2="489" y2="228" marker-end="url(#arrowmcp)"/>
+  </svg>
+
+  <h3>Hai transport modes</h3>
+  <div class="grid-2">
+    <div class="card">
+      <div class="title" style="color:var(--accent-3);font-weight:600;margin-bottom:8px">stdio (local)</div>
+      <p>
+        Server chạy như subprocess. Client giao tiếp qua stdin/stdout với JSON-RPC messages.
+        Tốt cho local tools (git, filesystem, editor APIs). Không cần network port.
+        Lifecycle: client spawn → giao tiếp → client kill khi xong.
+      </p>
+    </div>
+    <div class="card">
+      <div class="title" style="color:var(--accent-2);font-weight:600;margin-bottom:8px">HTTP + SSE (remote)</div>
+      <p>
+        Server chạy như HTTP service. Client POST để send requests, nhận responses qua
+        Server-Sent Events stream. Tốt cho remote services (Linear, Slack, databases).
+        Hỗ trợ auth headers. Có thể shared giữa nhiều harness instances.
+      </p>
+    </div>
+  </div>
+
+  <h3>Security implications của MCP</h3>
+  <div class="callout danger">
+    <div class="icon">!</div>
+    <div>
+      <div class="title">MCP server là attack surface mới</div>
+      <p>
+        Khi thêm MCP server vào harness, bạn đang cấp cho agent khả năng gọi bất kỳ tool nào server đó expose. Nguyên tắc bảo mật:
+      </p>
+      <ul style="margin:6px 0 0 0">
+        <li>Chỉ cài MCP servers từ nguồn tin cậy (official repos, vendors uy tín)</li>
+        <li>Review tool list mà server expose trước khi cấp quyền cho agent dùng</li>
+        <li>Dùng <code>deniedTools</code> để block các MCP tools nguy hiểm cụ thể</li>
+        <li>Coi mỗi MCP server như một dependency mới — có attack vector riêng</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════
+       24.12 Old vs New
+  ════════════════════════════════════════════════ -->
+  <h2 id="old-vs-new">24.12 Cách cũ vs Cách hiện tại</h2>
+
+  <div class="callout note">
+    <div class="icon">≡</div>
+    <div>
+      <div class="title">Contrast: single-turn API glue code (2022) vs full harness (2025–2026)</div>
+      <p>Hai cách tiếp cận cùng giải một bài toán, nhưng khả năng và độ phức tạp hoàn toàn khác nhau.</p>
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Chiều</th><th>Cách cũ (2022–2023): Glue code</th><th>Cách hiện tại (2025–2026): Full harness</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Loop</strong></td>
+          <td>Người dùng gọi API một lần, nhận text, tự paste kết quả vào prompt tiếp theo</td>
+          <td>Harness tự động duy trì vòng lặp: LLM call → tool dispatch → result → next LLM call</td>
+        </tr>
+        <tr>
+          <td><strong>State</strong></td>
+          <td>Stateless: mỗi call là một request độc lập. Session "state" do user manually manage</td>
+          <td>Persistent state: conversation history, MEMORY.md, session artifacts, TodoWrite tracking</td>
+        </tr>
+        <tr>
+          <td><strong>Tools</strong></td>
+          <td>Hardcoded: code Python/JS tự parse LLM output, tự gọi function nếu output match pattern</td>
+          <td>First-class: tool schemas trong API request, harness dispatch theo structured tool_use blocks</td>
+        </tr>
+        <tr>
+          <td><strong>Sandbox</strong></td>
+          <td>Không có: code được gọi trực tiếp trên host process</td>
+          <td>OS-level isolation: Docker, landlock, sandbox-exec, E2B cloud VM</td>
+        </tr>
+        <tr>
+          <td><strong>Permissions</strong></td>
+          <td>All-or-nothing: agent có cùng quyền với script đang chạy</td>
+          <td>Fine-grained: allowlist/blocklist per tool pattern, ask-mode cho tools nguy hiểm, RBAC cho multi-agent</td>
+        </tr>
+        <tr>
+          <td><strong>Hooks</strong></td>
+          <td>Không có: thêm logic = sửa code trực tiếp</td>
+          <td>Pre/PostToolUse hooks, OnStop hooks, extensible mà không cần sửa harness core</td>
+        </tr>
+        <tr>
+          <td><strong>Observability</strong></td>
+          <td>print() statements; không trace structured; không cost tracking</td>
+          <td>Structured traces (tool call + result + latency + cost), session replay, LangSmith/Braintrust integration</td>
+        </tr>
+        <tr>
+          <td><strong>Extension</strong></td>
+          <td>Thêm tool = viết thêm code trong cùng file</td>
+          <td>MCP servers: cắm bất kỳ external service nào vào harness qua chuẩn protocol</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>So sánh harness hàng đầu 2025–2026</h3>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Harness</th><th>Type</th><th>Sandbox</th><th>Permission</th><th>MCP</th><th>Hooks</th><th>Subagent</th><th>Long-running</th><th>Open-source</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Claude Code</strong></td>
+          <td><span class="tag">CLI</span></td>
+          <td>OS sandbox</td>
+          <td>Allowlist + ask</td>
+          <td>✓ native</td>
+          <td>✓ full</td>
+          <td>✓</td>
+          <td>Partial</td>
+          <td>Không</td>
+        </tr>
+        <tr>
+          <td><strong>Codex CLI</strong></td>
+          <td><span class="tag">CLI</span></td>
+          <td>3-level tiered</td>
+          <td>Allowlist + mode</td>
+          <td>✓ native</td>
+          <td>Limited</td>
+          <td>Không</td>
+          <td>exec cmd</td>
+          <td>✓</td>
+        </tr>
+        <tr>
+          <td><strong>Cursor</strong></td>
+          <td><span class="tag blue">IDE</span></td>
+          <td>Không</td>
+          <td>Ask-mode</td>
+          <td>✓</td>
+          <td>Không</td>
+          <td>Không</td>
+          <td>Partial</td>
+          <td>Không</td>
+        </tr>
+        <tr>
+          <td><strong>Windsurf</strong></td>
+          <td><span class="tag blue">IDE</span></td>
+          <td>Không</td>
+          <td>Ask-mode</td>
+          <td>✓</td>
+          <td>Không</td>
+          <td>Không</td>
+          <td>Partial</td>
+          <td>Không</td>
+        </tr>
+        <tr>
+          <td><strong>Aider</strong></td>
+          <td><span class="tag">CLI</span></td>
+          <td>Không</td>
+          <td>Ask-mode</td>
+          <td>Không</td>
+          <td>Không</td>
+          <td>Không</td>
+          <td>Không</td>
+          <td>✓</td>
+        </tr>
+        <tr>
+          <td><strong>Cline</strong></td>
+          <td><span class="tag blue">IDE ext</span></td>
+          <td>Không</td>
+          <td>Ask-every-call</td>
+          <td>✓</td>
+          <td>Không</td>
+          <td>Không</td>
+          <td>Không</td>
+          <td>✓</td>
+        </tr>
+        <tr>
+          <td><strong>Devin</strong></td>
+          <td><span class="tag green">Cloud</span></td>
+          <td>Per-task container</td>
+          <td>Role-based</td>
+          <td>✓</td>
+          <td>Partial</td>
+          <td>✓</td>
+          <td>✓✓</td>
+          <td>Không</td>
+        </tr>
+        <tr>
+          <td><strong>OpenHands</strong></td>
+          <td><span class="tag green">Cloud</span></td>
+          <td>Docker runtime</td>
+          <td>Configurable</td>
+          <td>✓</td>
+          <td>✓ events</td>
+          <td>✓</td>
+          <td>✓✓</td>
+          <td>✓</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Agent loop minimal SVG -->
+  <h3>Vòng lặp agent tối giản</h3>
+  <p>
+    Dù harness phức tạp đến đâu, core loop luôn là 4 bước:
+  </p>
+  <svg class="diagram" viewBox="0 0 760 200" role="img" aria-label="Minimal agent loop: LLM call, tool dispatch, tool exec, result, loop">
+    <defs>
+      <marker id="arrowloop" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#6f7c92"/>
+      </marker>
+    </defs>
+
+    <!-- Step 1 -->
+    <rect class="node-accent" x="30" y="70" width="150" height="60" rx="10"/>
+    <text x="105" y="96" text-anchor="middle" font-weight="700" font-size="13">① LLM call</text>
+    <text x="105" y="114" text-anchor="middle" class="label-sm">model + messages + tools</text>
+
+    <line class="arrow" x1="181" y1="100" x2="209" y2="100" marker-end="url(#arrowloop)"/>
+
+    <!-- Step 2 -->
+    <rect class="node-blue" x="211" y="70" width="150" height="60" rx="10"/>
+    <text x="286" y="96" text-anchor="middle" font-weight="700" font-size="13">② Tool dispatch</text>
+    <text x="286" y="114" text-anchor="middle" class="label-sm">parse tool_use blocks</text>
+
+    <line class="arrow" x1="362" y1="100" x2="390" y2="100" marker-end="url(#arrowloop)"/>
+
+    <!-- Step 3 -->
+    <rect class="node-green" x="392" y="70" width="150" height="60" rx="10"/>
+    <text x="467" y="96" text-anchor="middle" font-weight="700" font-size="13">③ Tool exec</text>
+    <text x="467" y="114" text-anchor="middle" class="label-sm">bash / read / API call</text>
+
+    <line class="arrow" x1="543" y1="100" x2="571" y2="100" marker-end="url(#arrowloop)"/>
+
+    <!-- Step 4 -->
+    <rect class="node-bg" x="573" y="70" width="150" height="60" rx="10"/>
+    <text x="648" y="96" text-anchor="middle" font-weight="700" font-size="13">④ Result</text>
+    <text x="648" y="114" text-anchor="middle" class="label-sm">append tool_result</text>
+
+    <!-- Loop back arrow -->
+    <path class="arrow" d="M 648 130 Q 648 165 380 165 Q 112 165 105 131" fill="none" marker-end="url(#arrowloop)"/>
+    <text x="380" y="182" text-anchor="middle" font-size="11" fill="#ffb86b">loop until stop_reason == end_turn</text>
+  </svg>
+
+  <!-- ═══════════════════════════════════════════════
+       Summary
+  ════════════════════════════════════════════════ -->
+  <h2 id="tom-tat">Tóm tắt</h2>
+  <ol>
+    <li><strong>Harness ≠ model, ≠ framework.</strong> Harness là runtime sản phẩm chạy được: loop + tools + sandbox + permissions + hooks + state. Model là engine; harness là xe.</li>
+    <li><strong>7 layer anatomy:</strong> Shell/UX → State → Hooks → Permissions → Sandbox + Observability → Tools → Model. Mỗi layer giải quyết một concern độc lập.</li>
+    <li><strong>Claude Code</strong> là harness CLI mạnh nhất hiện tại: CLAUDE.md/MEMORY.md, subagent pattern, full hooks system, MCP native, fine-grained permission allowlist.</li>
+    <li><strong>Codex CLI</strong> nổi bật với 3-tier sandbox modes tiered rõ ràng (read-only / workspace-write / danger-full-access) và kiến trúc app-server tách biệt.</li>
+    <li><strong>Editor harnesses</strong> (Cursor, Windsurf) bù đắp bằng LSP-awareness và multi-file context mà CLI không có, nhưng sandbox yếu hơn.</li>
+    <li><strong>Cloud harnesses</strong> (Devin, OpenHands) cho long-running autonomous tasks với per-session containers và browser tools — phù hợp cho async workflows.</li>
+    <li><strong>Permission models</strong> có 4 trường phái: ask-every-call (safe nhưng chậm), allowlist (balanced), sandbox-based (best isolation), role-based (enterprise). Production cần ít nhất allowlist + sandbox.</li>
+    <li><strong>MCP</strong> là universal extension layer: một server protocol cho mọi external tools. Giúp harness khác nhau share tools ecosystem chung. Security implication: mỗi MCP server là attack surface mới.</li>
+    <li><strong>Custom harness minimal</strong> chỉ cần ~30 dòng Python: LLM call → parse tool_use → execute tool → append result → loop. Phần còn lại (sandbox, hooks, permission) là production concerns thêm vào sau.</li>
+    <li><strong>Cách cũ → Cách hiện tại:</strong> stateless single-call glue code → persistent stateful loop với sandbox, hooks, structured observability, và MCP extensions.</li>
+  </ol>
+
+  <nav class="section-footer">
+    <a href="23-agent-design-patterns.html" class="prev">
+      <div class="label">← trước</div>
+      <div class="title">23 — Agent Design Patterns</div>
+    </a>
+    <a href="25-agent-memory.html" class="next">
+      <div class="label">tiếp theo →</div>
+      <div class="title">25 — Agent Memory</div>
+    </a>
+  </nav>
+
+</main>
+
+<script src="../assets/script.js"></script>
+</body>
+</html>

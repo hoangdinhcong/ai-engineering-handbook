@@ -1,0 +1,511 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>21 · Team &amp; Process — AI Engineering</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<nav class="top-nav">
+  <div class="brand"><span class="dot"></span> AI Engineering</div>
+  <div class="crumbs"><a href="../index.html">Mục lục</a> › Phần 7 · <span>21 — Team &amp; Process</span></div>
+  <div class="nav-actions">
+    <a href="20-cost-finops.html">← Trước</a>
+    <a href="22-future-advanced.html">Tiếp →</a>
+  </div>
+</nav>
+
+<main class="page">
+
+  <section class="hero">
+    <span class="eyebrow">Phần 7 · §21</span>
+    <h1>Team &amp; Process</h1>
+    <p class="lede">
+      Build sản phẩm AI không chỉ là kỹ thuật — tổ chức team, collaboration với PM và domain experts,
+      iteration loop, và tránh các pitfall tổ chức phổ biến.
+    </p>
+    <img class="hero-image" src="../images/21-team-process.png" alt="Hero illustration" onerror="this.style.display='none'">
+  </section>
+
+  <aside class="toc">
+    <div class="toc-title">Trong trang này</div>
+    <ul>
+      <li><a href="#ai-engineer-in-org">21.1 AI Engineer trong tổ chức</a></li>
+      <li><a href="#skills-matrix">21.2 Skills matrix</a></li>
+      <li><a href="#collaboration">21.3 Collaboration</a></li>
+      <li><a href="#iteration-loop">21.4 Iteration loop</a></li>
+      <li><a href="#eval-driven-dev">21.5 Eval-driven development</a></li>
+      <li><a href="#documentation">21.6 Documentation</a></li>
+      <li><a href="#on-call">21.7 On-call considerations</a></li>
+      <li><a href="#hiring">21.8 Hiring &amp; growing</a></li>
+      <li><a href="#non-determinism">21.9 Working with non-determinism</a></li>
+      <li><a href="#pitfalls">21.10 Common org pitfalls</a></li>
+      <li><a href="#tom-tat">Tóm tắt</a></li>
+    </ul>
+  </aside>
+
+  <h2 id="ai-engineer-in-org">21.1 AI Engineer trong Tổ Chức</h2>
+  <p>
+    Không có cấu trúc tổ chức "đúng" duy nhất cho AI engineering. Ba model phổ biến, mỗi cái
+    phù hợp với quy mô và giai đoạn khác nhau:
+  </p>
+
+  <svg class="diagram" viewBox="0 0 760 340" role="img" aria-label="Org chart variants: standalone vs embedded vs platform">
+    <defs>
+      <marker id="arrowhead6" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#6f7c92"/>
+      </marker>
+    </defs>
+
+    <!-- Model 1: Standalone -->
+    <text x="115" y="20" text-anchor="middle" font-weight="700" font-size="13" fill="#ffb86b">① Standalone AI Team</text>
+    <rect class="node-accent" x="40" y="30" width="150" height="38" rx="7"/>
+    <text x="115" y="54" text-anchor="middle" font-size="12">AI Team (5–15 people)</text>
+
+    <line class="arrow" marker-end="url(#arrowhead6)" x1="90" y1="68" x2="65" y2="95"/>
+    <line class="arrow" marker-end="url(#arrowhead6)" x1="140" y1="68" x2="165" y2="95"/>
+
+    <rect class="node-bg" x="30" y="95" width="70" height="32" rx="5"/>
+    <text x="65" y="115" text-anchor="middle" font-size="11">Feature A</text>
+    <rect class="node-bg" x="120" y="95" width="70" height="32" rx="5"/>
+    <text x="155" y="115" text-anchor="middle" font-size="11">Feature B</text>
+
+    <text x="115" y="150" text-anchor="middle" class="label-sm">Tập trung chuyên môn, tách biệt với product teams</text>
+
+    <!-- Model 2: Embedded -->
+    <text x="390" y="20" text-anchor="middle" font-weight="700" font-size="13" fill="#7cc4ff">② Embedded AI Engineers</text>
+    <rect class="node-blue" x="280" y="30" width="110" height="38" rx="7"/>
+    <text x="335" y="54" text-anchor="middle" font-size="12">Product Team A</text>
+    <rect class="node-blue" x="420" y="30" width="110" height="38" rx="7"/>
+    <text x="475" y="54" text-anchor="middle" font-size="12">Product Team B</text>
+
+    <rect class="node-accent" x="295" y="85" width="80" height="28" rx="5"/>
+    <text x="335" y="103" text-anchor="middle" font-size="11">AI Eng ×1</text>
+    <rect class="node-accent" x="435" y="85" width="80" height="28" rx="5"/>
+    <text x="475" y="103" text-anchor="middle" font-size="11">AI Eng ×1</text>
+
+    <text x="390" y="135" text-anchor="middle" class="label-sm">Gần product, context sâu, nhưng dễ siloed</text>
+    <text x="390" y="150" text-anchor="middle" class="label-sm">Phù hợp: scale-up, AI feature trên nhiều products</text>
+
+    <!-- Model 3: Platform -->
+    <text x="660" y="20" text-anchor="middle" font-weight="700" font-size="13" fill="#b4e07a">③ AI Platform Team</text>
+    <rect class="node-green" x="580" y="30" width="160" height="38" rx="7"/>
+    <text x="660" y="54" text-anchor="middle" font-size="12">AI Platform Team</text>
+
+    <line class="arrow" marker-end="url(#arrowhead6)" x1="630" y1="68" x2="605" y2="100"/>
+    <line class="arrow" marker-end="url(#arrowhead6)" x1="660" y1="68" x2="660" y2="100"/>
+    <line class="arrow" marker-end="url(#arrowhead6)" x1="690" y1="68" x2="715" y2="100"/>
+
+    <rect class="node-bg" x="575" y="100" width="55" height="28" rx="5"/>
+    <text x="602" y="118" text-anchor="middle" font-size="10">Team A</text>
+    <rect class="node-bg" x="638" y="100" width="45" height="28" rx="5"/>
+    <text x="660" y="118" text-anchor="middle" font-size="10">Team B</text>
+    <rect class="node-bg" x="691" y="100" width="55" height="28" rx="5"/>
+    <text x="718" y="118" text-anchor="middle" font-size="10">Team C</text>
+
+    <text x="660" y="148" text-anchor="middle" class="label-sm">Shared infra: prompt mgmt, eval, observability</text>
+    <text x="660" y="163" text-anchor="middle" class="label-sm">Phù hợp: enterprise, nhiều teams dùng AI</text>
+
+    <!-- Comparison row -->
+    <text x="380" y="210" text-anchor="middle" font-weight="600" font-size="12" fill="#aab4c5">So sánh theo giai đoạn</text>
+
+    <rect class="node-accent" x="20" y="225" width="220" height="90" rx="8"/>
+    <text x="130" y="245" text-anchor="middle" font-weight="600" font-size="12">Standalone</text>
+    <text x="130" y="263" text-anchor="middle" class="label-sm">Tốt cho: early-stage, AI-first product</text>
+    <text x="130" y="279" text-anchor="middle" class="label-sm">Rủi ro: ivory tower, mất product context</text>
+    <text x="130" y="295" text-anchor="middle" class="label-sm">Quy mô: 1–15 people</text>
+
+    <rect class="node-blue" x="270" y="225" width="220" height="90" rx="8"/>
+    <text x="380" y="245" text-anchor="middle" font-weight="600" font-size="12">Embedded</text>
+    <text x="380" y="263" text-anchor="middle" class="label-sm">Tốt cho: scale-up, add AI vào existing product</text>
+    <text x="380" y="279" text-anchor="middle" class="label-sm">Rủi ro: duplicate work, no shared infra</text>
+    <text x="380" y="295" text-anchor="middle" class="label-sm">Quy mô: 1 per team</text>
+
+    <rect class="node-green" x="520" y="225" width="220" height="90" rx="8"/>
+    <text x="630" y="245" text-anchor="middle" font-weight="600" font-size="12">Platform</text>
+    <text x="630" y="263" text-anchor="middle" class="label-sm">Tốt cho: enterprise, nhiều teams dùng AI</text>
+    <text x="630" y="279" text-anchor="middle" class="label-sm">Rủi ro: bottleneck, xa business context</text>
+    <text x="630" y="295" text-anchor="middle" class="label-sm">Quy mô: 5–30 people</text>
+  </svg>
+
+  <h2 id="skills-matrix">21.2 Skills Matrix</h2>
+  <p>
+    AI Engineer cần kết hợp nhiều skill domains. Không ai giỏi tất cả — mục tiêu là có
+    <strong>T-shaped profile</strong>: rộng đủ để hiểu toàn bộ stack, sâu ở 1–2 area.
+  </p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Domain</th><th>Competencies</th><th>Mức cần thiết</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Software Engineering</strong></td>
+          <td>API design, system design, testing, version control, CI/CD</td>
+          <td><span class="tag green">Cao — nền tảng</span></td>
+        </tr>
+        <tr>
+          <td><strong>Prompt Engineering</strong></td>
+          <td>Chain-of-thought, few-shot, structured output, tool use, system design</td>
+          <td><span class="tag green">Cao — core skill</span></td>
+        </tr>
+        <tr>
+          <td><strong>ML Literacy</strong></td>
+          <td>Hiểu tokenization, embeddings, attention, fine-tuning khái niệm</td>
+          <td><span class="tag">Vừa — đủ để communicate</span></td>
+        </tr>
+        <tr>
+          <td><strong>Evaluation</strong></td>
+          <td>Design eval sets, metrics, LLM-as-judge, A/B testing</td>
+          <td><span class="tag green">Cao — differentiator</span></td>
+        </tr>
+        <tr>
+          <td><strong>Product Sense</strong></td>
+          <td>User empathy, scoping, đặt câu hỏi đúng về what to build</td>
+          <td><span class="tag">Vừa — thường thiếu</span></td>
+        </tr>
+        <tr>
+          <td><strong>Data Engineering</strong></td>
+          <td>ETL, data pipelines, vector stores, dataset management</td>
+          <td><span class="tag">Vừa — for RAG/fine-tune</span></td>
+        </tr>
+        <tr>
+          <td><strong>Infra / DevOps</strong></td>
+          <td>Containers, deployment, monitoring, cost management</td>
+          <td><span class="tag blue">Cơ bản — không cần chuyên sâu</span></td>
+        </tr>
+        <tr>
+          <td><strong>Domain Knowledge</strong></td>
+          <td>Hiểu đủ business domain để judge output quality</td>
+          <td><span class="tag">Context-dependent</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout note">
+    <div class="icon">≡</div>
+    <div>
+      <div class="title">Skill thường bị undervalue: Evaluation</div>
+      <p>
+        Nhiều AI Engineers giỏi build nhưng yếu ở evaluation. Thực ra, khả năng thiết kế
+        eval tốt là skill quan trọng nhất để build AI products bền vững — nó cho phép bạn
+        biết liệu thay đổi có thực sự cải thiện hay không.
+      </p>
+    </div>
+  </div>
+
+  <h2 id="collaboration">21.3 Collaboration với PM, Designer, Domain Expert, Researcher</h2>
+  <p>
+    AI features nằm ở giao điểm của nhiều stakeholders. Hiểu cách mỗi người contribute giúp
+    team work hiệu quả hơn.
+  </p>
+
+  <h3>Với Product Manager</h3>
+  <ul>
+    <li>PM define <strong>what success looks like</strong> — AI Engineer translate sang eval metrics</li>
+    <li>Phải set expectation về non-determinism: "AI không phải button, không phải lúc nào cũng cho kết quả giống nhau"</li>
+    <li>Làm việc cùng nhau để xác định đâu là <strong>MVP eval criteria</strong> — không cần perfect, cần đủ tốt để ship</li>
+    <li>PM cần hiểu về <strong>confidence và error modes</strong> để plan UX cho failure cases</li>
+  </ul>
+
+  <h3>Với Designer</h3>
+  <ul>
+    <li>AI output có thể dài, ngắn, hoặc format khác nhau — design cần flexible</li>
+    <li>Design <strong>error states và fallbacks</strong> rõ ràng: khi AI fail hoặc uncertain</li>
+    <li>Streaming response UX: loading states, partial renders, cancel functionality</li>
+    <li>Human-in-the-loop touchpoints: review, approve, edit AI output</li>
+  </ul>
+
+  <h3>Với Domain Expert</h3>
+  <ul>
+    <li>Domain experts là nguồn eval data tốt nhất — họ biết output đúng/sai</li>
+    <li>Involve họ sớm để build golden eval set</li>
+    <li>Họ thường không biết gì về AI — explain trade-offs bằng ngôn ngữ của họ</li>
+    <li>Khi model sai theo cách mà chỉ domain expert biết, đó là signal cần improve</li>
+  </ul>
+
+  <h3>Với ML Researcher</h3>
+  <ul>
+    <li>Researcher cung cấp insight về model capabilities và limitations</li>
+    <li>AI Engineer translate research findings thành production-ready implementations</li>
+    <li>Friction thường ở timeline: research → engineering → product có thể mất 6–18 tháng</li>
+    <li>Establish shared vocabulary về metrics (researcher nói "perplexity", product nói "user satisfaction")</li>
+  </ul>
+
+  <h2 id="iteration-loop">21.4 Iteration Loop cho AI Features</h2>
+
+  <svg class="diagram" viewBox="0 0 760 260" role="img" aria-label="AI feature iteration loop">
+    <defs>
+      <marker id="arrowhead7" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#6f7c92"/>
+      </marker>
+    </defs>
+
+    <!-- Nodes in a cycle -->
+    <rect class="node-accent" x="300" y="10" width="160" height="50" rx="10"/>
+    <text x="380" y="32" text-anchor="middle" font-weight="600" font-size="13">① Idea &amp; Scope</text>
+    <text x="380" y="50" text-anchor="middle" class="label-sm">Bài toán là gì? Success ra sao?</text>
+
+    <rect class="node-blue" x="560" y="100" width="180" height="50" rx="10"/>
+    <text x="650" y="122" text-anchor="middle" font-weight="600" font-size="13">② Prototype</text>
+    <text x="650" y="140" text-anchor="middle" class="label-sm">Prompt + quick eval set</text>
+
+    <rect class="node-green" x="560" y="195" width="180" height="50" rx="10"/>
+    <text x="650" y="217" text-anchor="middle" font-weight="600" font-size="13">③ Eval &amp; Iterate</text>
+    <text x="650" y="235" text-anchor="middle" class="label-sm">Measure, find failure modes</text>
+
+    <rect class="node-bg" x="300" y="195" width="160" height="50" rx="10"/>
+    <text x="380" y="217" text-anchor="middle" font-weight="600" font-size="13">④ Ship (Canary)</text>
+    <text x="380" y="235" text-anchor="middle" class="label-sm">Small % real traffic</text>
+
+    <rect class="node-accent" x="20" y="100" width="180" height="50" rx="10"/>
+    <text x="110" y="122" text-anchor="middle" font-weight="600" font-size="13">⑤ Measure &amp; Learn</text>
+    <text x="110" y="140" text-anchor="middle" class="label-sm">Business metrics, user feedback</text>
+
+    <!-- Arrows -->
+    <line class="arrow" marker-end="url(#arrowhead7)" x1="460" y1="35" x2="558" y2="100"/>
+    <line class="arrow" marker-end="url(#arrowhead7)" x1="650" y1="150" x2="650" y2="193"/>
+    <line class="arrow" marker-end="url(#arrowhead7)" x1="558" y1="220" x2="462" y2="220"/>
+    <line class="arrow" marker-end="url(#arrowhead7)" x1="298" y1="220" x2="202" y2="150"/>
+    <line class="arrow" marker-end="url(#arrowhead7)" x1="110" y1="100" x2="298" y2="35"/>
+  </svg>
+
+  <p>
+    Loop này nhanh hơn nhiều so với traditional software development vì:
+  </p>
+  <ul>
+    <li>Prototype có thể xong trong <strong>vài giờ</strong> (thử prompt, chạy eval set nhỏ)</li>
+    <li>Iteration chủ yếu ở <strong>prompt level</strong>, không cần rebuild infrastructure</li>
+    <li>Ship canary sớm giúp collect real data thay vì chỉ guess</li>
+  </ul>
+
+  <h3>Sự khác biệt so với traditional software loop</h3>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Điểm</th><th>Traditional SW</th><th>AI Features</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Time to prototype</td><td>Ngày đến tuần</td><td>Giờ đến ngày</td></tr>
+        <tr><td>Primary iteration artifact</td><td>Code</td><td>Prompts + eval sets</td></tr>
+        <tr><td>Testing method</td><td>Unit/integration tests</td><td>Evals (pass rate, quality score)</td></tr>
+        <tr><td>Definition of done</td><td>Tests pass</td><td>Eval pass + user feedback positive</td></tr>
+        <tr><td>Regression risk</td><td>Code change</td><td>Code change + model update + prompt change</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 id="eval-driven-dev">21.5 Eval-Driven Development như Team Practice</h2>
+  <p>
+    Eval-driven development (EDD) là khi cả team đồng ý rằng: <strong>không có eval, không có ship</strong>.
+    Giống TDD nhưng dành cho AI. Nhưng quan trọng hơn TDD ở chỗ: với non-deterministic systems,
+    không thể chỉ dựa vào unit tests — eval là cách duy nhất để biết system hoạt động đúng.
+  </p>
+
+  <h3>Team practices để duy trì EDD</h3>
+  <ul>
+    <li><strong>Eval set là shared artifact</strong>: Mọi người đều có thể review, add, remove test cases</li>
+    <li><strong>"Add to golden set" khi fix bug</strong>: Khi fix một failure mode, thêm nó vào eval set để không tái phát</li>
+    <li><strong>Eval results trong PR description</strong>: "Before: 82%, After: 91%" → reviewers thấy impact ngay</li>
+    <li><strong>Weekly eval review</strong>: 30 phút/tuần để review recent failures và discuss patterns</li>
+    <li><strong>Eval ownership</strong>: Ai chịu trách nhiệm maintain eval set, add cases mới từ production feedback</li>
+  </ul>
+
+  <h2 id="documentation">21.6 Documentation</h2>
+  <p>
+    AI features có nhiều dimension cần document hơn traditional software. Thiếu documentation
+    dẫn đến "ai cũng biết system hoạt động nhưng không ai biết tại sao" — đặc biệt nguy hiểm
+    khi team member change.
+  </p>
+
+  <h3>Prompt documentation</h3>
+  <ul>
+    <li><strong>Intent</strong>: Prompt này làm gì, cho use case nào</li>
+    <li><strong>Design decisions</strong>: Tại sao chọn cách này, không phải cách kia</li>
+    <li><strong>Known limitations</strong>: Loại input nào không xử lý tốt</li>
+    <li><strong>Changelog</strong>: Đã thay đổi gì, khi nào, tại sao</li>
+  </ul>
+
+  <h3>Decision logs</h3>
+  <p>
+    Khi team đưa ra quyết định quan trọng (chọn model X thay Y, dùng RAG thay vì fine-tune,
+    set threshold ở Z%), ghi lại: context, options đã xem xét, quyết định, và lý do.
+    Format đơn giản nhất là YYYMMDD + decision name + ADR (Architecture Decision Record).
+  </p>
+
+  <h3>Model cards (cho fine-tuned models)</h3>
+  <p>
+    Mỗi fine-tuned model cần model card: training data source và size, intended use, known biases,
+    evaluation results, người chịu trách nhiệm, và khi nào cần retrain.
+  </p>
+
+  <h3>Eval set documentation</h3>
+  <p>
+    Cho mỗi eval set: từ đâu cases được tạo ra (synthetic, production, expert-curated),
+    distribution của input types, grading criteria, và expected baseline scores.
+  </p>
+
+  <h2 id="on-call">21.7 On-Call Considerations cho LLM Features</h2>
+  <p>
+    LLM features tạo ra loại incidents khác so với traditional software:
+  </p>
+
+  <div class="callout warn">
+    <div class="icon">!</div>
+    <div>
+      <div class="title">LLM-specific incidents</div>
+      <p>
+        <strong>Quality degradation</strong>: Không phải "error" theo nghĩa truyền thống — system vẫn hoạt động
+        nhưng output chất lượng thấp. Cần quality monitoring, không chỉ uptime monitoring.
+        <strong>Model version change từ provider</strong>: Provider tự động upgrade model minor version, behavior thay đổi.
+        <strong>Context pollution</strong>: Trong agentic systems, một bước fail có thể corrupt context cho các bước sau.
+      </p>
+    </div>
+  </div>
+
+  <h3>On-call checklist</h3>
+  <ul>
+    <li>Biết cách toggle feature flag để disable LLM feature nhanh</li>
+    <li>Biết cách switch sang previous prompt version</li>
+    <li>Hiểu dashboard: latency, error rate, quality score, cost</li>
+    <li>Có runbook cho các scenarios phổ biến: provider outage, quality regression, cost spike</li>
+    <li>Biết escalation path khi vấn đề là ở provider side</li>
+  </ul>
+
+  <h2 id="hiring">21.8 Hiring &amp; Growing AI Engineers</h2>
+
+  <h3>Dấu hiệu AI Engineer tiềm năng tốt</h3>
+  <ul>
+    <li>Đã build và ship ít nhất một AI product, dù nhỏ</li>
+    <li>Hiểu tại sao eval quan trọng — không chỉ nói về build</li>
+    <li>Biết giới hạn của LLM: hallucination, context limits, latency</li>
+    <li>Curious về new capabilities nhưng không hype blindly</li>
+    <li>Strong software engineering fundamentals — AI không thay thế được</li>
+  </ul>
+
+  <h3>Interview signal tốt</h3>
+  <p>
+    Cho candidate một task thực tế: "Build một mini RAG system trong 2 giờ".
+    Quan sát: họ break down bài toán thế nào? Họ thiết kế eval ra sao? Họ handle edge cases gì?
+    Kết quả sản phẩm ít quan trọng hơn thinking process.
+  </p>
+
+  <h3>Growing AI Engineers trong team</h3>
+  <ul>
+    <li>Pair programming trên real features — học nhanh hơn tutorial</li>
+    <li>Encourage reading papers (không cần hiểu toán, đọc abstract + intro + results)</li>
+    <li>Build internal "AI demos" không có production pressure — explore new capabilities</li>
+    <li>Share learnings sau mỗi incident: "post-mortem cho AI failures" rất valuable</li>
+  </ul>
+
+  <h2 id="non-determinism">21.9 Working with Non-Determinism</h2>
+  <p>
+    Non-determinism là fundamental property của LLMs, không phải bug. Manage expectations
+    và design systems accordingly:
+  </p>
+
+  <h3>Manage expectations với stakeholders</h3>
+  <ul>
+    <li><strong>Đừng demo với cherry-picked examples</strong> — stakeholders sẽ expect mọi case đều perfect</li>
+    <li>Show <em>distribution</em> của outputs, không chỉ best case</li>
+    <li>Frame quality bằng <strong>pass rate</strong>: "90% của trường hợp system cho output đúng theo criteria X"</li>
+    <li>Agree upfront: what "good enough" means cho product to ship</li>
+  </ul>
+
+  <h3>Design cho failure gracefully</h3>
+  <ul>
+    <li>Always có human review option — AI không phải final word</li>
+    <li>Show confidence khi có thể: "AI không chắc về điều này"</li>
+    <li>Fallback khi AI output low quality thay vì show garbage</li>
+    <li>Log failures để improve — non-determinism không có nghĩa là không learn được</li>
+  </ul>
+
+  <h2 id="pitfalls">21.10 Common Org Pitfalls</h2>
+
+  <div class="callout danger">
+    <div class="icon">✕</div>
+    <div>
+      <div class="title">AI Hype Cycle trong tổ chức</div>
+      <p>
+        Leadership bị cuốn vào hype, set unrealistic timeline và expectations. "Có AI rồi, sẽ giải quyết
+        được bài toán X trong 2 tuần." Reality check: nhiều AI projects mất 3–6 tháng từ idea đến
+        production-ready vì cần eval infrastructure, data curation, và iteration.
+      </p>
+    </div>
+  </div>
+
+  <div class="callout danger">
+    <div class="icon">✕</div>
+    <div>
+      <div class="title">Demo-Driven Development</div>
+      <p>
+        Build impressive demo, get approval, push to production mà không có eval infrastructure.
+        Demo thường dùng hand-picked inputs — production có hàng trăm edge cases mà demo không cover.
+        Kết quả: user complaints, emergency fixes, eroding trust.
+      </p>
+    </div>
+  </div>
+
+  <div class="callout danger">
+    <div class="icon">✕</div>
+    <div>
+      <div class="title">No Eval = Không Biết Mình Đang Ở Đâu</div>
+      <p>
+        Team chạy nhiều iterations nhưng không có eval → không biết mỗi iteration có cải thiện hay không.
+        Sau 2 tháng, bạn có 20 prompt versions nhưng không biết version nào tốt nhất, và tại sao.
+        Thiếu eval là root cause của nhiều AI project thất bại.
+      </p>
+    </div>
+  </div>
+
+  <div class="callout danger">
+    <div class="icon">✕</div>
+    <div>
+      <div class="title">Vendor Lock-In Không Có Kế Hoạch</div>
+      <p>
+        Viết code phụ thuộc sâu vào một provider API mà không có abstraction layer. Khi provider
+        tăng giá, deprecate model, hoặc có outage, việc switch rất đau đớn. Solution: dùng
+        abstraction layer (LiteLLM, OpenAI-compatible interface) và design prompt để model-agnostic.
+      </p>
+    </div>
+  </div>
+
+  <h3>Pitfalls nhỏ hơn nhưng phổ biến</h3>
+  <ul>
+    <li>Over-engineering lần đầu: RAG + fine-tune + agents ngay từ đầu — start simple, add complexity khi cần</li>
+    <li>Thiếu cost tracking cho đến khi hóa đơn gây shock</li>
+    <li>Ignore security: prompt injection, sensitive data leak qua prompt</li>
+    <li>Không có offline mode hoặc fallback khi provider down</li>
+    <li>Team không đồng nhất về "done" — cần agree trên eval criteria trước khi start</li>
+  </ul>
+
+  <h2 id="tom-tat">Tóm tắt</h2>
+  <ol>
+    <li><strong>Không có org structure duy nhất đúng</strong>: Standalone, embedded, platform — chọn theo stage và quy mô.</li>
+    <li><strong>T-shaped skills</strong>: Rộng đủ để understand stack, sâu ở evaluation và prompt engineering.</li>
+    <li><strong>Collaboration đa chiều</strong>: PM define success, designer plan for failure, domain expert cung cấp eval data.</li>
+    <li><strong>Eval-driven development</strong> là practice cả team, không chỉ tech: không có eval, không có ship.</li>
+    <li><strong>Document mọi thứ</strong>: Prompts, decisions, eval sets — AI features có nhiều dimension cần document hơn traditional SW.</li>
+    <li><strong>Tránh 4 big pitfalls</strong>: AI hype, demo-driven dev, no eval, vendor lock-in không có kế hoạch.</li>
+  </ol>
+
+  <nav class="section-footer">
+    <a href="20-cost-finops.html" class="prev">
+      <div class="label">← trước</div>
+      <div class="title">20 — Cost &amp; FinOps cho AI</div>
+    </a>
+    <a href="22-future-advanced.html" class="next">
+      <div class="label">tiếp theo →</div>
+      <div class="title">22 — Tương lai &amp; các chủ đề nâng cao</div>
+    </a>
+  </nav>
+
+</main>
+
+<script src="../assets/script.js"></script>
+</body>
+</html>

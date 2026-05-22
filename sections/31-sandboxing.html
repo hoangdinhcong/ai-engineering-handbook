@@ -1,0 +1,1147 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>31 · Sandboxing &amp; Isolation cho AI Agents — AI Engineering</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<nav class="top-nav">
+  <div class="brand"><span class="dot"></span> AI Engineering</div>
+  <div class="crumbs"><a href="../index.html">Mục lục</a> › Phần 10 · <span>31 — Sandboxing &amp; Isolation cho AI Agents</span></div>
+  <div class="nav-actions">
+    <a href="30-agent-threats.html">← Trước</a>
+    <a href="32-ai-red-team.html">Tiếp →</a>
+  </div>
+</nav>
+
+<main class="page">
+
+  <section class="hero">
+    <span class="eyebrow">Phần 10 · §31</span>
+    <h1>Sandboxing &amp; Isolation cho AI Agents</h1>
+    <p class="lede">
+      AI agent có thể thực thi code, gọi tool, đọc/ghi file — tất cả đều là untrusted operations. Sandboxing là lớp bảo vệ cuối cùng: ngay cả khi agent bị compromise, tác động chỉ bị giới hạn trong một ephemeral environment không thể thoát ra ngoài.
+    </p>
+    <img class="hero-image" src="../images/31-sandboxing.png" alt="Hero illustration" onerror="this.style.display='none'">
+  </section>
+
+  <aside class="toc">
+    <div class="toc-title">Trong trang này</div>
+    <ul>
+      <li><a href="#why-sandbox">31.1 Tại sao cần sandbox</a></li>
+      <li><a href="#isolation-spectrum">31.2 Isolation spectrum</a></li>
+      <li><a href="#container-limits">31.3 Giới hạn của container security</a></li>
+      <li><a href="#gvisor-kata-firecracker">31.4 gVisor, Kata Containers, Firecracker</a></li>
+      <li><a href="#microvm-advantages">31.5 microVM advantages</a></li>
+      <li><a href="#wasm">31.6 WASM sandboxes</a></li>
+      <li><a href="#commercial">31.7 Commercial sandboxes 2026</a></li>
+      <li><a href="#network-policy">31.8 Network policies</a></li>
+      <li><a href="#filesystem">31.9 Filesystem policies</a></li>
+      <li><a href="#persistence">31.10 Persistence &amp; warm sandboxes</a></li>
+      <li><a href="#resource-limits">31.11 Resource limits</a></li>
+      <li><a href="#cost">31.12 Cost comparison</a></li>
+      <li><a href="#permission-model">31.13 Permission model integration</a></li>
+      <li><a href="#old-vs-new">31.14 Cách cũ vs Cách hiện tại</a></li>
+      <li><a href="#tom-tat">Tóm tắt</a></li>
+    </ul>
+  </aside>
+
+  <h2 id="why-sandbox">31.1 Tại sao AI Agent cần Sandbox</h2>
+  <p>
+    Agent hiện đại không chỉ gọi LLM — chúng thực thi code do LLM tạo ra, xử lý output từ tool bên ngoài,
+    và đọc content từ nguồn không tin tưởng (web, email, file user upload). Ba luồng nguy hiểm chính:
+  </p>
+
+  <div class="grid-2">
+    <div class="card">
+      <strong>Untrusted code</strong>
+      <p>LLM generate Python/JS/Bash và agent thực thi trực tiếp. Code có thể chứa
+      <code>os.system()</code>, <code>subprocess</code>, file I/O, network calls — bất kỳ thứ gì có thể
+      làm trên host OS.</p>
+      <span class="tag" style="background:rgba(255,138,138,0.15);color:#ff8a8a">HIGH RISK</span>
+    </div>
+    <div class="card">
+      <strong>Untrusted content</strong>
+      <p>Agent đọc web page, PDF, email — bất kỳ trong số đó có thể chứa prompt injection instruction
+      khiến agent thực hiện hành động độc hại ở turn tiếp theo.</p>
+      <span class="tag" style="background:rgba(255,184,107,0.15);color:#ffb86b">MEDIUM RISK</span>
+    </div>
+    <div class="card">
+      <strong>Untrusted tool output</strong>
+      <p>Tool trả về dữ liệu từ API bên ngoài, database, hay subprocess. Kết quả có thể chứa
+      injected data hoặc trigger side effect ngoài ý muốn nếu không được validate.</p>
+      <span class="tag" style="background:rgba(255,184,107,0.15);color:#ffb86b">MEDIUM RISK</span>
+    </div>
+    <div class="card">
+      <strong>Supply chain exploit</strong>
+      <p>Agent dùng thư viện Python/npm trong khi thực thi code. Một dependency độc hại
+      có thể exfiltrate secrets, chạy cryptominer, hay tạo backdoor — tất cả trong cùng
+      process với agent host.</p>
+      <span class="tag" style="background:rgba(255,138,138,0.15);color:#ff8a8a">HIGH RISK</span>
+    </div>
+  </div>
+
+  <div class="callout danger">
+    <div class="icon">!</div>
+    <div>
+      <div class="title">Blast radius không sandbox = host machine</div>
+      <p>
+        Nếu agent thực thi code trên cùng host với application server, một code execution lỗi
+        có thể đọc toàn bộ environment variables (chứa API keys), access network nội bộ, ghi đè
+        file binary, và pivot sang infrastructure khác. Sandbox không phải "nice to have" — đây là
+        <strong>prerequisite để chạy agent trong production</strong>.
+      </p>
+    </div>
+  </div>
+
+  <h2 id="isolation-spectrum">31.2 Isolation Spectrum: từ process đến separate machine</h2>
+  <p>
+    Isolation không phải binary. Có một phổ liên tục từ "hơi cách ly" đến "hoàn toàn cách ly",
+    với trade-off giữa overhead và bảo đảm bảo mật.
+  </p>
+
+  <svg class="diagram" viewBox="0 0 760 400" role="img" aria-label="Isolation spectrum từ process đến separate machine">
+    <defs>
+      <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#6f7c92"/>
+      </marker>
+      <linearGradient id="specGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+        <stop offset="0%" stop-color="#ffb86b" stop-opacity="0.6"/>
+        <stop offset="100%" stop-color="#b4e07a" stop-opacity="0.6"/>
+      </linearGradient>
+    </defs>
+    <text x="380" y="26" text-anchor="middle" font-weight="700" font-size="15">Isolation Spectrum</text>
+    <rect fill="url(#specGrad)" x="40" y="46" width="680" height="8" rx="4"/>
+    <text x="40" y="72" font-size="11" fill="#ffb86b" font-weight="600">← Nhanh hơn / Overhead thấp hơn</text>
+    <text x="720" y="72" text-anchor="end" font-size="11" fill="#b4e07a" font-weight="600">Cách ly mạnh hơn →</text>
+
+    <rect class="node-bg" x="40" y="86" width="118" height="90" rx="10"/>
+    <text x="99" y="108" text-anchor="middle" font-weight="700" font-size="13">① Process</text>
+    <text x="99" y="126" text-anchor="middle" font-size="11" fill="#aab4c5">chroot</text>
+    <text x="99" y="141" text-anchor="middle" font-size="11" fill="#aab4c5">namespaces</text>
+    <text x="99" y="156" text-anchor="middle" font-size="11" fill="#aab4c5">seccomp-bpf</text>
+    <text x="99" y="168" text-anchor="middle" font-size="10" fill="#ffb86b">Shared kernel</text>
+
+    <rect class="node-accent" x="168" y="86" width="118" height="90" rx="10"/>
+    <text x="227" y="108" text-anchor="middle" font-weight="700" font-size="13">② Container</text>
+    <text x="227" y="126" text-anchor="middle" font-size="11" fill="#aab4c5">Docker / OCI</text>
+    <text x="227" y="141" text-anchor="middle" font-size="11" fill="#aab4c5">cgroups</text>
+    <text x="227" y="156" text-anchor="middle" font-size="11" fill="#aab4c5">AppArmor</text>
+    <text x="227" y="168" text-anchor="middle" font-size="10" fill="#ffb86b">Shared kernel</text>
+
+    <rect class="node-blue" x="296" y="86" width="128" height="90" rx="10"/>
+    <text x="360" y="108" text-anchor="middle" font-weight="700" font-size="13">③ User-kernel</text>
+    <text x="360" y="126" text-anchor="middle" font-size="11" fill="#aab4c5">gVisor (runsc)</text>
+    <text x="360" y="141" text-anchor="middle" font-size="11" fill="#aab4c5">Sandbox kernel</text>
+    <text x="360" y="156" text-anchor="middle" font-size="11" fill="#aab4c5">trong user space</text>
+    <text x="360" y="168" text-anchor="middle" font-size="10" fill="#7cc4ff">Syscall intercepted</text>
+
+    <rect class="node-green" x="434" y="86" width="128" height="90" rx="10"/>
+    <text x="498" y="108" text-anchor="middle" font-weight="700" font-size="13">④ microVM</text>
+    <text x="498" y="126" text-anchor="middle" font-size="11" fill="#aab4c5">Firecracker</text>
+    <text x="498" y="141" text-anchor="middle" font-size="11" fill="#aab4c5">Cloud Hypervisor</text>
+    <text x="498" y="156" text-anchor="middle" font-size="11" fill="#aab4c5">Kata Containers</text>
+    <text x="498" y="168" text-anchor="middle" font-size="10" fill="#b4e07a">Real kernel isolation</text>
+
+    <rect fill="rgba(180,224,122,0.18)" stroke="#b4e07a" stroke-width="2" x="572" y="86" width="148" height="90" rx="10"/>
+    <text x="646" y="108" text-anchor="middle" font-weight="700" font-size="13">⑤ VM / Machine</text>
+    <text x="646" y="126" text-anchor="middle" font-size="11" fill="#aab4c5">QEMU/KVM</text>
+    <text x="646" y="141" text-anchor="middle" font-size="11" fill="#aab4c5">VMware ESXi</text>
+    <text x="646" y="156" text-anchor="middle" font-size="11" fill="#aab4c5">Separate bare metal</text>
+    <text x="646" y="168" text-anchor="middle" font-size="10" fill="#b4e07a">Strongest isolation</text>
+
+    <text x="380" y="210" text-anchor="middle" font-size="12" fill="#6f7c92" font-weight="600">— Trust Boundary —</text>
+
+    <text x="40" y="236" font-size="12" fill="#aab4c5" font-weight="600">Boot time:</text>
+    <text x="99" y="252" text-anchor="middle" font-size="12">&lt;1ms</text>
+    <text x="227" y="252" text-anchor="middle" font-size="12">50–200ms</text>
+    <text x="360" y="252" text-anchor="middle" font-size="12">100–300ms</text>
+    <text x="498" y="252" text-anchor="middle" font-size="12">~125ms</text>
+    <text x="646" y="252" text-anchor="middle" font-size="12">5–30s</text>
+
+    <text x="40" y="278" font-size="12" fill="#aab4c5" font-weight="600">Memory overhead:</text>
+    <text x="99" y="294" text-anchor="middle" font-size="12">~0 MB</text>
+    <text x="227" y="294" text-anchor="middle" font-size="12">~10 MB</text>
+    <text x="360" y="294" text-anchor="middle" font-size="12">~15 MB</text>
+    <text x="498" y="294" text-anchor="middle" font-size="12">~5 MB</text>
+    <text x="646" y="294" text-anchor="middle" font-size="12">500MB+</text>
+
+    <text x="40" y="320" font-size="12" fill="#aab4c5" font-weight="600">Kernel sharing:</text>
+    <text x="99" y="336" text-anchor="middle" font-size="12" fill="#ff8a8a">Shared</text>
+    <text x="227" y="336" text-anchor="middle" font-size="12" fill="#ff8a8a">Shared</text>
+    <text x="360" y="336" text-anchor="middle" font-size="12" fill="#7cc4ff">Intercepted</text>
+    <text x="498" y="336" text-anchor="middle" font-size="12" fill="#b4e07a">Isolated</text>
+    <text x="646" y="336" text-anchor="middle" font-size="12" fill="#b4e07a">Isolated</text>
+
+    <text x="40" y="362" font-size="12" fill="#aab4c5" font-weight="600">AI agent use:</text>
+    <text x="99" y="378" text-anchor="middle" font-size="11" fill="#ff8a8a">Không đủ</text>
+    <text x="227" y="378" text-anchor="middle" font-size="11" fill="#ffb86b">Low-risk chỉ</text>
+    <text x="360" y="378" text-anchor="middle" font-size="11" fill="#7cc4ff">Recommended</text>
+    <text x="498" y="378" text-anchor="middle" font-size="11" fill="#b4e07a">Best practice</text>
+    <text x="646" y="378" text-anchor="middle" font-size="11" fill="#b4e07a">High-security</text>
+  </svg>
+
+  <div class="callout note">
+    <div class="icon">≡</div>
+    <div>
+      <div class="title">Recommendation cho 2026</div>
+      <p>
+        Với AI agent thực thi code bất kỳ: dùng <strong>microVM (Firecracker)</strong> hoặc
+        <strong>gVisor</strong> làm minimum bar. Container thuần (Docker) không đủ cho untrusted code
+        vì còn chia sẻ kernel. Full VM chỉ cần thiết cho compliance đặc biệt (FedRAMP, HIPAA tier-2).
+      </p>
+    </div>
+  </div>
+
+  <h2 id="container-limits">31.3 Giới hạn của Container Security</h2>
+  <p>
+    Docker container là lớp isolation phổ biến nhất, nhưng có một nhược điểm cơ bản:
+    <strong>tất cả container trên cùng host chia sẻ cùng một Linux kernel</strong>.
+    Điều này tạo ra attack surface qua syscall interface.
+  </p>
+
+  <h3>Container escape vectors đã biết</h3>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>CVE / Vulnerability</th><th>Kỹ thuật</th><th>Điều kiện</th><th>Tác động</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>CVE-2019-5736</code></td>
+          <td>runc overwrite via /proc/self/exe</td>
+          <td>Attacker có write access to any container</td>
+          <td>Host root execution</td>
+        </tr>
+        <tr>
+          <td><code>CVE-2020-15257</code></td>
+          <td>Containerd shim API exposure</td>
+          <td>Container on host network</td>
+          <td>Privilege escalation</td>
+        </tr>
+        <tr>
+          <td><code>CVE-2022-0185</code></td>
+          <td>Linux kernel heap overflow trong filesystem context</td>
+          <td>CAP_SYS_ADMIN hoặc user namespace</td>
+          <td>Kernel code execution</td>
+        </tr>
+        <tr>
+          <td><code>CVE-2024-21626</code></td>
+          <td>runc process.cwd / fd leakage</td>
+          <td>Malicious image hoặc user instruction</td>
+          <td>Host filesystem escape</td>
+        </tr>
+        <tr>
+          <td>Dirty COW variants</td>
+          <td>Kernel memory race condition</td>
+          <td>Any container (unpatched kernel)</td>
+          <td>Host privilege escalation</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout warn">
+    <div class="icon">⚠</div>
+    <div>
+      <div class="title">seccomp + AppArmor giúp nhưng không đủ</div>
+      <p>
+        Bật seccomp profile và AppArmor policy giảm đáng kể attack surface — chặn các syscall nguy hiểm
+        như <code>ptrace</code>, <code>mount</code>, <code>kexec_load</code>. Nhưng zero-day kernel exploit
+        có thể bypass cả hai. Với untrusted code từ LLM, đây vẫn là rủi ro không chấp nhận được.
+      </p>
+    </div>
+  </div>
+
+  <h3>Tại sao container vẫn được dùng trong production</h3>
+  <p>
+    Container (Docker) vẫn phù hợp cho các workload <em>semi-trusted</em>: code do developer viết,
+    các tool internal đã review. Vấn đề xuất hiện khi container chạy <strong>arbitrary LLM-generated code</strong>
+    hoặc <strong>user-provided code</strong> — đây là threat model khác hoàn toàn.
+  </p>
+
+  <h2 id="gvisor-kata-firecracker">31.4 gVisor, Kata Containers, Firecracker</h2>
+
+  <div class="tabs" data-tabs>
+    <div class="tab-buttons">
+      <button class="active">gVisor</button>
+      <button>Kata Containers</button>
+      <button>Firecracker</button>
+    </div>
+    <div class="tab-panel active">
+      <h3>gVisor — User-space Kernel</h3>
+      <p>
+        gVisor (Google, open source 2018) triển khai một Linux kernel trong user space gọi là <strong>Sentry</strong>.
+        Khi containerized process gọi syscall, gVisor intercept và handle trong user space — không bao giờ
+        gọi trực tiếp host kernel.
+      </p>
+      <ul>
+        <li><strong>runsc</strong>: OCI runtime thay thế runc — drop-in với Docker/containerd/Kubernetes</li>
+        <li><strong>Ptrace platform</strong>: dùng ptrace để intercept — portable nhưng chậm hơn</li>
+        <li><strong>KVM platform</strong>: hardware virtualization cho syscall interception — nhanh hơn đáng kể</li>
+        <li>Không phải mọi syscall đều được implement — một số ứng dụng có thể không tương thích</li>
+      </ul>
+      <pre><code><span class="cm"># Chạy container với gVisor runtime</span>
+docker run --runtime=runsc \
+  --memory=512m --cpus=1 \
+  python:3.12-slim python script.py
+
+<span class="cm"># Kubernetes: annotate pod để dùng gVisor</span>
+<span class="cm"># spec.runtimeClassName: gvisor</span></code></pre>
+      <p><strong>Dùng khi:</strong> cần drop-in replacement cho Docker với syscall isolation, không muốn
+      overhead microVM, ứng dụng tương thích với subset syscall của gVisor.</p>
+    </div>
+    <div class="tab-panel">
+      <h3>Kata Containers — microVM Wrapper</h3>
+      <p>
+        Kata Containers (OpenInfra Foundation) chạy mỗi container trong một lightweight VM với kernel riêng,
+        nhưng interface vẫn là OCI container chuẩn. Kết hợp tốt nhất của hai thế giới: isolation của VM,
+        UX của container.
+      </p>
+      <ul>
+        <li>Dùng QEMU, Cloud Hypervisor, hoặc Firecracker làm hypervisor backend</li>
+        <li>Mỗi pod (Kubernetes) = một VM riêng với kernel riêng</li>
+        <li>Boot time ~100-500ms tùy hypervisor backend</li>
+        <li>Tương thích hoàn toàn với Kubernetes — chỉ thay <code>runtimeClassName</code></li>
+      </ul>
+      <pre><code><span class="cm"># Kubernetes với Kata (Firecracker backend)</span>
+apiVersion: node.k8s.io/v1
+kind: RuntimeClass
+metadata:
+  name: kata-fc
+handler: kata-fc
+---
+<span class="cm"># Pod spec</span>
+spec:
+  runtimeClassName: kata-fc
+  containers:
+  - name: agent-sandbox
+    image: agent-runner:latest</code></pre>
+      <p><strong>Dùng khi:</strong> đang chạy Kubernetes và muốn kernel isolation mà không thay đổi workflow.</p>
+    </div>
+    <div class="tab-panel">
+      <h3>Firecracker microVM</h3>
+      <p>
+        Firecracker (Amazon, 2018) là Virtual Machine Monitor (VMM) được thiết kế đặc biệt cho serverless
+        workloads — Lambda và Fargate đều dùng Firecracker. Minimal device model: chỉ có virtio-net,
+        virtio-blk, keyboard, serial port.
+      </p>
+      <ul>
+        <li>Boot time: <strong>~125ms</strong> đến guest OS ready</li>
+        <li>Memory overhead: ~5MB per VM (so với ~500MB cho QEMU full VM)</li>
+        <li>Written in Rust — memory-safe VMM, nhỏ hơn nhiều so với QEMU</li>
+        <li>Cần <strong>KVM</strong> trên host — chỉ chạy trên bare metal hoặc nested virt enabled instances</li>
+        <li>E2B, Modal, AWS Lambda đều dùng Firecracker</li>
+      </ul>
+      <pre><code><span class="cm"># Firecracker REST API (simplified)</span>
+<span class="cm"># 1. Set kernel + boot args</span>
+PUT /boot-source {
+  "kernel_image_path": "/vmlinux",
+  "boot_args": "console=ttyS0 reboot=k panic=1 pci=off"
+}
+<span class="cm"># 2. Set rootfs</span>
+PUT /drives/rootfs {
+  "drive_id": "rootfs",
+  "path_on_host": "/sandbox-root.ext4",
+  "is_root_device": true
+}
+<span class="cm"># 3. Set machine config</span>
+PUT /machine-config { "vcpu_count": 1, "mem_size_mib": 256 }
+<span class="cm"># 4. Start VM</span>
+PUT /actions { "action_type": "InstanceStart" }</code></pre>
+      <p><strong>Dùng khi:</strong> cần boot nhanh nhất có thể với true kernel isolation. Là nền tảng của
+      hầu hết commercial AI sandbox services.</p>
+    </div>
+  </div>
+
+  <h2 id="microvm-advantages">31.5 microVM Advantages — Tại sao Firecracker thắng</h2>
+
+  <svg class="diagram" viewBox="0 0 760 320" role="img" aria-label="microVM vs Container architecture so sánh">
+    <defs>
+      <marker id="arr2" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#6f7c92"/>
+      </marker>
+    </defs>
+    <text x="380" y="24" text-anchor="middle" font-weight="700" font-size="15">Container vs microVM — Kernel Sharing</text>
+
+    <text x="185" y="50" text-anchor="middle" font-weight="700" font-size="13" fill="#ffb86b">Container (Docker)</text>
+    <rect fill="rgba(255,184,107,0.10)" stroke="#ffb86b" stroke-width="1.5" x="30" y="60" width="310" height="235" rx="12"/>
+
+    <rect class="node-bg" x="50" y="74" width="120" height="44" rx="8"/>
+    <text x="110" y="94" text-anchor="middle" font-size="12" font-weight="600">Agent Process</text>
+    <text x="110" y="110" text-anchor="middle" font-size="11" fill="#aab4c5">Untrusted code</text>
+
+    <rect class="node-bg" x="200" y="74" width="120" height="44" rx="8"/>
+    <text x="260" y="94" text-anchor="middle" font-size="12" font-weight="600">App Process</text>
+    <text x="260" y="110" text-anchor="middle" font-size="11" fill="#aab4c5">Trusted code</text>
+
+    <rect fill="rgba(255,138,138,0.15)" stroke="#ff8a8a" stroke-width="2" x="50" y="148" width="270" height="50" rx="8"/>
+    <text x="185" y="170" text-anchor="middle" font-size="13" font-weight="700" fill="#ff8a8a">Shared Linux Kernel</text>
+    <text x="185" y="188" text-anchor="middle" font-size="11" fill="#aab4c5">syscall surface exposed to both</text>
+
+    <rect class="node-bg" x="50" y="220" width="270" height="44" rx="8"/>
+    <text x="185" y="240" text-anchor="middle" font-size="12" font-weight="600">Host Hardware</text>
+    <text x="185" y="256" text-anchor="middle" font-size="11" fill="#aab4c5">CPU / Memory / Disk / Network</text>
+
+    <line x1="110" y1="118" x2="185" y2="148" stroke="#ff8a8a" stroke-width="1.5" marker-end="url(#arr2)"/>
+    <line x1="260" y1="118" x2="185" y2="148" stroke="#aab4c5" stroke-width="1.5" marker-end="url(#arr2)"/>
+    <line x1="185" y1="198" x2="185" y2="220" stroke="#aab4c5" stroke-width="1.5" marker-end="url(#arr2)"/>
+
+    <text x="185" y="295" text-anchor="middle" font-size="11" fill="#ff8a8a">Kernel escape → cả hai process bị ảnh hưởng</text>
+
+    <text x="575" y="50" text-anchor="middle" font-weight="700" font-size="13" fill="#b4e07a">microVM (Firecracker)</text>
+    <rect fill="rgba(180,224,122,0.08)" stroke="#b4e07a" stroke-width="1.5" x="420" y="60" width="320" height="235" rx="12"/>
+
+    <rect fill="rgba(180,224,122,0.12)" stroke="#b4e07a" stroke-width="1.5" x="435" y="70" width="140" height="160" rx="10"/>
+    <text x="505" y="92" text-anchor="middle" font-size="11" fill="#b4e07a" font-weight="700">Guest VM</text>
+    <rect class="node-bg" x="448" y="100" width="114" height="40" rx="8"/>
+    <text x="505" y="118" text-anchor="middle" font-size="12" font-weight="600">Agent Process</text>
+    <text x="505" y="132" text-anchor="middle" font-size="11" fill="#aab4c5">Untrusted code</text>
+    <rect class="node-blue" x="448" y="152" width="114" height="36" rx="8"/>
+    <text x="505" y="168" text-anchor="middle" font-size="12" font-weight="600">Guest Kernel</text>
+    <text x="505" y="182" text-anchor="middle" font-size="11" fill="#aab4c5">Isolated instance</text>
+
+    <rect class="node-bg" x="585" y="90" width="140" height="80" rx="10"/>
+    <text x="655" y="112" text-anchor="middle" font-size="12" font-weight="600">App Process</text>
+    <text x="655" y="128" text-anchor="middle" font-size="11" fill="#aab4c5">Trusted code</text>
+    <rect fill="rgba(180,224,122,0.15)" stroke="#b4e07a" stroke-width="1" x="590" y="143" width="130" height="24" rx="6"/>
+    <text x="655" y="159" text-anchor="middle" font-size="11" fill="#b4e07a">Host Kernel</text>
+
+    <rect fill="rgba(124,196,255,0.12)" stroke="#7cc4ff" stroke-width="1.5" x="435" y="244" width="290" height="36" rx="8"/>
+    <text x="580" y="262" text-anchor="middle" font-size="12" font-weight="600">Firecracker VMM (Rust) + KVM</text>
+    <text x="580" y="276" text-anchor="middle" font-size="11" fill="#aab4c5">Minimal device model — hardware boundary</text>
+
+    <line x1="505" y1="230" x2="505" y2="244" stroke="#aab4c5" stroke-width="1.5" marker-end="url(#arr2)"/>
+    <line x1="655" y1="170" x2="655" y2="230" stroke="#aab4c5" stroke-width="1.5"/>
+    <line x1="655" y1="230" x2="620" y2="244" stroke="#aab4c5" stroke-width="1.5" marker-end="url(#arr2)"/>
+
+    <text x="580" y="308" text-anchor="middle" font-size="11" fill="#b4e07a">Kernel escape trong VM ≠ host compromise</text>
+  </svg>
+
+  <p>
+    Firecracker microVM được thiết kế để boot nhanh, sử dụng ít tài nguyên, và có kernel isolation thực sự.
+    Với AI agent, điều này có nghĩa là mỗi code execution request có thể có VM riêng — ephemeral, throwaway,
+    và không thể thoát ra host.
+  </p>
+
+  <h2 id="wasm">31.6 WASM Sandboxes — Browser-grade Isolation</h2>
+  <p>
+    WebAssembly (WASM) cung cấp một loại isolation khác: <strong>capability-based</strong>.
+    WASM module chỉ có thể làm những gì được explicitly cấp quyền — không có syscall trực tiếp,
+    không có memory access ngoài linear memory của module.
+  </p>
+
+  <div class="grid-2">
+    <div class="card">
+      <strong>Wasmtime</strong> (Bytecode Alliance / Mozilla)
+      <p>Runtime WASM production-grade nhất. Dùng Cranelift JIT compiler. Hỗ trợ WASI (WebAssembly System Interface) để access file, network một cách controlled. Được dùng trong Fastly Compute@Edge.</p>
+      <span class="tag">Rust</span> <span class="tag">Production-ready</span>
+    </div>
+    <div class="card">
+      <strong>Wasmer</strong>
+      <p>Runtime đa nền tảng với nhiều backend compiler (Cranelift, LLVM, Singlepass). API đa ngôn ngữ (Python, Go, Java, Ruby). Wasmer Cloud cung cấp serverless WASM execution.</p>
+      <span class="tag">Multi-backend</span> <span class="tag">Multi-lang SDK</span>
+    </div>
+    <div class="card">
+      <strong>WasmEdge</strong>
+      <p>Được tối ưu cho edge computing và AI inference. Hỗ trợ ONNX, TensorFlow Lite natively. Được CNCF sandbox project. Dùng trong Envoy proxy và Kubernetes sidecar.</p>
+      <span class="tag">AI-optimized</span> <span class="tag">CNCF</span>
+    </div>
+    <div class="card">
+      <strong>Lucet</strong> (Fastly, deprecated → Wasmtime)
+      <p>Tiên phong trong AOT compilation cho WASM. Đã được merge vào Wasmtime. Chứng minh WASM có thể chạy untrusted code ở microsecond-level latency với isolation.</p>
+      <span class="tag">Historical</span> <span class="tag">AOT</span>
+    </div>
+  </div>
+
+  <h3>Trade-offs của WASM cho AI Agents</h3>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Tiêu chí</th><th>WASM</th><th>Firecracker microVM</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Isolation model</td><td>Capability-based, no syscall</td><td>VM-level, full kernel isolation</td></tr>
+        <tr><td>Language support</td><td>Phụ thuộc WASM compilation — Python hạn chế, Rust/Go tốt</td><td>Bất kỳ ngôn ngữ nào, binary bất kỳ</td></tr>
+        <tr><td>Boot/startup</td><td>Microseconds đến milliseconds</td><td>~125ms</td></tr>
+        <tr><td>Memory model</td><td>Linear memory, explicit bounds</td><td>Full OS memory model</td></tr>
+        <tr><td>Python ecosystem</td><td>Pyodide/py2wasm — hạn chế C extensions</td><td>Full CPython, all packages</td></tr>
+        <tr><td>System calls</td><td>Chỉ qua WASI interface — controlled</td><td>Full Linux syscall (trong VM)</td></tr>
+        <tr><td>Use case tốt nhất</td><td>Plugin system, untrusted functions nhỏ, edge</td><td>Full Python/bash agent execution</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout tip">
+    <div class="icon">★</div>
+    <div>
+      <div class="title">WASM vs microVM: chọn theo language support</div>
+      <p>
+        Nếu agent chủ yếu chạy <strong>Python với thư viện ML/data science</strong> (numpy, pandas, PIL) —
+        microVM là lựa chọn thực tế vì WASM vẫn hạn chế với C extensions. Nếu agent chạy
+        <strong>Rust/Go/JS functions nhỏ</strong> hoặc cần microsecond-level latency — WASM phù hợp hơn.
+      </p>
+    </div>
+  </div>
+
+  <h2 id="commercial">31.7 Commercial Sandboxes 2026</h2>
+  <p>
+    Hệ sinh thái sandbox-as-a-service đã trưởng thành đáng kể. Dưới đây là so sánh các nền tảng
+    phổ biến nhất trong 2026.
+  </p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Platform</th>
+          <th>Isolation Tech</th>
+          <th>Boot Time</th>
+          <th>Language Support</th>
+          <th>Persistence</th>
+          <th>Network Policy</th>
+          <th>Pricing (approx)</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>E2B</strong></td>
+          <td>Firecracker microVM</td>
+          <td>~150ms cold, &lt;10ms warm</td>
+          <td>Python, Node.js, + custom images</td>
+          <td>Snapshot/restore; filesystem persist</td>
+          <td>Egress allowlist configurable; metadata blocked</td>
+          <td>$0.000165/s compute</td>
+        </tr>
+        <tr>
+          <td><strong>Modal Sandboxes</strong></td>
+          <td>gVisor + container</td>
+          <td>~200ms</td>
+          <td>Python first; custom images</td>
+          <td>Volume mounts; ephemeral default</td>
+          <td>Default open; network policy beta</td>
+          <td>$0.00006/s (CPU)</td>
+        </tr>
+        <tr>
+          <td><strong>Daytona</strong></td>
+          <td>Container / microVM hybrid</td>
+          <td>~1s</td>
+          <td>Any (devcontainer spec)</td>
+          <td>Persistent workspace; git-backed</td>
+          <td>Full network access by default</td>
+          <td>$0.0025/min</td>
+        </tr>
+        <tr>
+          <td><strong>Replit</strong></td>
+          <td>Custom container + nsjail</td>
+          <td>~2–5s</td>
+          <td>50+ languages via Nix</td>
+          <td>Persistent filesystem per repl</td>
+          <td>Open by default; can restrict</td>
+          <td>$0.01/min (Autoscale)</td>
+        </tr>
+        <tr>
+          <td><strong>Anthropic Computer Use Sandbox</strong></td>
+          <td>Docker + VNC/display server</td>
+          <td>~5–10s (full desktop)</td>
+          <td>Any (full Ubuntu desktop)</td>
+          <td>Volume mount; ephemeral default</td>
+          <td>Egress for web access; configurable</td>
+          <td>Self-hosted</td>
+        </tr>
+        <tr>
+          <td><strong>CodeSandbox</strong></td>
+          <td>microVM (Firecracker-based)</td>
+          <td>~500ms</td>
+          <td>Node.js, Python, Rust, others</td>
+          <td>Persistent sandbox; snapshot</td>
+          <td>Open network, CDN-backed</td>
+          <td>$0.007/min</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Ví dụ: Launching an E2B Sandbox (Python)</h3>
+  <pre><code><span class="kw">import</span> asyncio
+<span class="kw">from</span> e2b_code_interpreter <span class="kw">import</span> AsyncSandbox
+
+<span class="kw">async def</span> <span class="fn">run_agent_code</span>(llm_generated_code: str) -&gt; dict:
+
+  <span class="cm"># Tạo sandbox mới — Firecracker microVM boot ~150ms</span>
+  <span class="kw">async with</span> AsyncSandbox(
+    template=<span class="str">"python3"</span>,
+    timeout=30,           <span class="cm"># tự động kill sau 30 giây</span>
+    metadata={"agent_id": "agent-abc123"}
+  ) <span class="kw">as</span> sandbox:
+
+    <span class="cm"># Cài package nếu cần (vẫn trong sandbox)</span>
+    <span class="kw">await</span> sandbox.process.start_and_wait(
+      <span class="str">"pip install pandas matplotlib -q"</span>
+    )
+
+    <span class="cm"># Thực thi code từ LLM bên trong VM — không bao giờ trên host</span>
+    execution = <span class="kw">await</span> sandbox.run_code(llm_generated_code)
+
+    <span class="kw">return</span> {
+      <span class="str">"stdout"</span>: execution.logs.stdout,
+      <span class="str">"stderr"</span>: execution.logs.stderr,
+      <span class="str">"results"</span>: [r.text <span class="kw">for</span> r <span class="kw">in</span> execution.results],
+      <span class="str">"error"</span>: execution.error.traceback <span class="kw">if</span> execution.error <span class="kw">else</span> None,
+    }
+  <span class="cm"># Sandbox bị destroy tự động khi ra khỏi context manager</span>
+
+<span class="kw">async def</span> <span class="fn">agent_loop_step</span>(task: str, llm_client):
+
+  llm_response = <span class="kw">await</span> llm_client.complete(
+    f<span class="str">"Write Python code to complete: {task}\nOutput ONLY the code block."</span>
+  )
+  code = extract_code_block(llm_response)
+
+  <span class="cm"># Code được thực thi trong isolated Firecracker microVM</span>
+  result = <span class="kw">await</span> run_agent_code(code)
+  <span class="kw">return</span> result</code></pre>
+
+  <div class="callout tip">
+    <div class="icon">★</div>
+    <div>
+      <div class="title">Anthropic Computer Use Sandbox Architecture</div>
+      <p>
+        Anthropic's reference implementation cho Computer Use dùng Docker container chạy Ubuntu desktop
+        với Xvfb virtual framebuffer, VNC server, và noVNC cho web access. Agent tương tác qua
+        screenshot + mouse/keyboard actions. Dù dùng Docker (không phải microVM), sandbox này được
+        thiết kế để cô lập desktop session — không phải code execution sandbox thuần túy.
+        Cho production, bọc thêm bằng Firecracker hoặc dùng nested VM.
+      </p>
+    </div>
+  </div>
+
+  <h2 id="network-policy">31.8 Network Policies cho Sandbox</h2>
+  <p>
+    Network là con đường phổ biến nhất để exfiltrate data hoặc kết nối với attacker C2 server.
+    Ngay cả trong sandbox, network policy phải cực kỳ chặt chẽ.
+  </p>
+
+  <svg class="diagram" viewBox="0 0 760 300" role="img" aria-label="Egress policy enforcement trong sandbox">
+    <defs>
+      <marker id="arr3" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#6f7c92"/>
+      </marker>
+      <marker id="arr3-red" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#ff8a8a"/>
+      </marker>
+      <marker id="arr3-green" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#b4e07a"/>
+      </marker>
+    </defs>
+    <text x="380" y="24" text-anchor="middle" font-weight="700" font-size="14">Egress Policy Enforcement</text>
+
+    <rect fill="rgba(124,196,255,0.07)" stroke="#7cc4ff" stroke-width="1.5" stroke-dasharray="6,3" x="30" y="40" width="240" height="200" rx="12"/>
+    <text x="150" y="62" text-anchor="middle" font-size="12" fill="#7cc4ff" font-weight="600">Sandbox (microVM)</text>
+    <rect class="node-bg" x="60" y="76" width="160" height="44" rx="8"/>
+    <text x="140" y="96" text-anchor="middle" font-size="12" font-weight="600">Agent Code</text>
+    <text x="140" y="112" text-anchor="middle" font-size="11" fill="#aab4c5">LLM-generated</text>
+
+    <rect fill="rgba(255,184,107,0.15)" stroke="#ffb86b" stroke-width="2" x="310" y="100" width="140" height="100" rx="10"/>
+    <text x="380" y="122" text-anchor="middle" font-size="12" font-weight="700" fill="#ffb86b">Egress</text>
+    <text x="380" y="140" text-anchor="middle" font-size="12" font-weight="700" fill="#ffb86b">Firewall</text>
+    <text x="380" y="160" text-anchor="middle" font-size="11" fill="#aab4c5">DNS allowlist</text>
+    <text x="380" y="177" text-anchor="middle" font-size="11" fill="#aab4c5">IP blocklist</text>
+
+    <line x1="220" y1="148" x2="308" y2="148" stroke="#aab4c5" stroke-width="1.5" marker-end="url(#arr3)"/>
+
+    <rect class="node-green" x="500" y="54" width="220" height="36" rx="8"/>
+    <text x="610" y="69" text-anchor="middle" font-size="12" font-weight="600">pypi.org</text>
+    <text x="610" y="83" text-anchor="middle" font-size="11" fill="#b4e07a">✓ Allowlisted</text>
+    <line x1="450" y1="130" x2="498" y2="72" stroke="#b4e07a" stroke-width="1.5" marker-end="url(#arr3-green)"/>
+
+    <rect class="node-green" x="500" y="108" width="220" height="36" rx="8"/>
+    <text x="610" y="123" text-anchor="middle" font-size="12" font-weight="600">api.openai.com</text>
+    <text x="610" y="137" text-anchor="middle" font-size="11" fill="#b4e07a">✓ Allowlisted</text>
+    <line x1="450" y1="148" x2="498" y2="126" stroke="#b4e07a" stroke-width="1.5" marker-end="url(#arr3-green)"/>
+
+    <rect fill="rgba(255,138,138,0.15)" stroke="#ff8a8a" stroke-width="2" x="500" y="162" width="220" height="36" rx="8"/>
+    <text x="610" y="177" text-anchor="middle" font-size="12" font-weight="600">169.254.169.254</text>
+    <text x="610" y="191" text-anchor="middle" font-size="11" fill="#ff8a8a">✗ BLOCKED (cloud metadata)</text>
+    <line x1="450" y1="168" x2="498" y2="180" stroke="#ff8a8a" stroke-width="1.5" stroke-dasharray="4" marker-end="url(#arr3-red)"/>
+
+    <rect fill="rgba(255,138,138,0.15)" stroke="#ff8a8a" stroke-width="2" x="500" y="216" width="220" height="36" rx="8"/>
+    <text x="610" y="231" text-anchor="middle" font-size="12" font-weight="600">unknown-host.example</text>
+    <text x="610" y="245" text-anchor="middle" font-size="11" fill="#ff8a8a">✗ BLOCKED (not allowlisted)</text>
+    <line x1="450" y1="190" x2="498" y2="234" stroke="#ff8a8a" stroke-width="1.5" stroke-dasharray="4" marker-end="url(#arr3-red)"/>
+
+    <text x="380" y="282" text-anchor="middle" font-size="11" fill="#aab4c5">Default-deny egress — chỉ cho phép domain đã approved</text>
+  </svg>
+
+  <h3>Các quy tắc network policy quan trọng</h3>
+
+  <div class="callout danger">
+    <div class="icon">!</div>
+    <div>
+      <div class="title">LUÔN chặn 169.254.169.254 — cloud metadata endpoint</div>
+      <p>
+        <code>169.254.169.254</code> là link-local address của AWS/GCP/Azure instance metadata service.
+        Từ đây, code trong sandbox có thể lấy IAM credentials, SSH keys, user-data, và region info
+        của host instance. Đây là bước đầu tiên của nhiều cloud infrastructure attack.
+        Chặn cả <code>fd00:ec2::254</code> (IPv6 variant cho AWS).
+      </p>
+    </div>
+  </div>
+
+  <pre><code><span class="cm"># iptables rules cho sandbox network isolation</span>
+
+<span class="cm"># Block cloud metadata service (AWS, GCP, Azure)</span>
+iptables -I OUTPUT -d 169.254.169.254 -j DROP
+iptables -I OUTPUT -d 169.254.0.0/16 -j DROP
+
+<span class="cm"># Block host network (prevent lateral movement)</span>
+iptables -I OUTPUT -d 10.0.0.0/8 -j DROP
+iptables -I OUTPUT -d 172.16.0.0/12 -j DROP
+iptables -I OUTPUT -d 192.168.0.0/16 -j DROP
+
+<span class="cm"># DNS: only allow specific resolver</span>
+iptables -I OUTPUT -p udp --dport 53 -d 8.8.8.8 -j ACCEPT
+iptables -I OUTPUT -p udp --dport 53 -j DROP
+
+<span class="cm"># Default HTTPS egress (kết hợp với DNS-level allowlist)</span>
+iptables -I OUTPUT -p tcp --dport 443 -j ACCEPT
+
+<span class="cm"># Block everything else outbound</span>
+iptables -P OUTPUT DROP
+iptables -I OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT</code></pre>
+
+  <h2 id="filesystem">31.9 Filesystem Policies</h2>
+  <p>
+    Filesystem isolation ngăn chặn agent đọc secrets từ host, ghi vào paths quan trọng,
+    hoặc persist malicious artifacts qua các session.
+  </p>
+
+  <h3>Overlay filesystem pattern</h3>
+  <pre><code><span class="cm"># Overlay mount: read-only base image + ephemeral scratch layer</span>
+<span class="cm"># Mọi write đều vào upperdir (scratch), không bao giờ chạm vào base image</span>
+mount -t overlay overlay \
+  -o lowerdir=/base-image,\
+     upperdir=/tmp/scratch-${SESSION_ID},\
+     workdir=/tmp/work-${SESSION_ID} \
+  /sandbox/rootfs
+
+<span class="cm"># Sau khi sandbox kết thúc: xóa scratch layer hoàn toàn</span>
+<span class="cm"># Base image vẫn sạch cho session tiếp theo</span></code></pre>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Path / Mount</th><th>Policy</th><th>Lý do</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>/</code> (rootfs)</td><td>Read-only base image</td><td>Ngăn ghi đè binary, sửa system files</td></tr>
+        <tr><td><code>/tmp</code>, <code>/home/sandbox</code></td><td>Read/write (ephemeral)</td><td>Working directory cho agent code</td></tr>
+        <tr><td><code>/proc/sys</code></td><td>Masked/read-only</td><td>Ngăn kernel parameter tuning</td></tr>
+        <tr><td><code>/sys/fs/cgroup</code></td><td>Masked</td><td>Ngăn escape via cgroup manipulation</td></tr>
+        <tr><td><code>/dev</code></td><td>Minimal devtmpfs</td><td>Chỉ cần /dev/null, /dev/urandom, /dev/tty</td></tr>
+        <tr><td>Host filesystem bind mount</td><td>NEVER</td><td>Không bao giờ bind mount host path vào untrusted sandbox</td></tr>
+        <tr><td>Shared volume (input)</td><td>Read-only bind mount</td><td>Cung cấp input data mà không cho ghi</td></tr>
+        <tr><td>Output volume</td><td>Write-only hoặc specific path</td><td>Agent chỉ ghi vào output directory được approve</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 id="persistence">31.10 Persistence: Warm Sandboxes và Snapshot/Restore</h2>
+  <p>
+    Cold start (boot microVM từ đầu) mất ~125ms. Với agent loop có nhiều bước, overhead này cộng dồn.
+    Các chiến lược để tối ưu:
+  </p>
+
+  <div class="tabs" data-tabs>
+    <div class="tab-buttons">
+      <button class="active">Warm Pool</button>
+      <button>Snapshot/Restore</button>
+      <button>Session Cache</button>
+      <button>Namespace per Agent</button>
+    </div>
+    <div class="tab-panel active">
+      <h3>Warm Sandbox Pool</h3>
+      <p>Pre-boot N sandbox instances sẵn sàng, không có session. Khi request đến, assign sandbox ngay lập tức (&lt;10ms). Sau khi session kết thúc, reset sandbox về trạng thái clean và trả về pool.</p>
+      <pre><code><span class="cm"># Pseudocode cho warm pool manager</span>
+<span class="kw">class</span> <span class="fn">SandboxPool</span>:
+  min_warm = 5     <span class="cm"># luôn có 5 sandbox sẵn sàng</span>
+  max_total = 50   <span class="cm"># không vượt quá 50 sandbox cùng lúc</span>
+
+  <span class="kw">async def</span> <span class="fn">acquire</span>(self) -&gt; Sandbox:
+    <span class="kw">if</span> self.warm_queue:
+      sb = self.warm_queue.popleft()
+      asyncio.create_task(self._replenish())
+      <span class="kw">return</span> sb
+    <span class="kw">return await</span> self._boot_new()
+
+  <span class="kw">async def</span> <span class="fn">release</span>(self, sb: Sandbox):
+    <span class="kw">await</span> sb.reset()   <span class="cm"># wipe scratch layer, clear state</span>
+    self.warm_queue.append(sb)</code></pre>
+    </div>
+    <div class="tab-panel">
+      <h3>Snapshot/Restore</h3>
+      <p>Firecracker hỗ trợ snapshot VM state (memory + disk) và restore sau ~30ms. Dùng để:</p>
+      <ul>
+        <li>Lưu trạng thái sau khi đã cài packages (warm snapshot sau <code>pip install</code>)</li>
+        <li>Resume session dài (agent bị interrupt, restore đúng chỗ)</li>
+        <li>Fast clone: restore nhiều instance từ cùng snapshot (copy-on-write memory)</li>
+      </ul>
+      <pre><code><span class="cm"># Firecracker snapshot API</span>
+POST /snapshot/create {
+  "snapshot_type": "Full",
+  "snapshot_path": "/snapshots/agent-base-v3.snap",
+  "mem_file_path": "/snapshots/agent-base-v3.mem"
+}
+
+<span class="cm"># Restore (~30ms vs ~125ms cold boot)</span>
+PUT /snapshot/load {
+  "snapshot_path": "/snapshots/agent-base-v3.snap",
+  "mem_backend": {
+    "backend_type": "File",
+    "backend_path": "/snapshots/agent-base-v3.mem"
+  }
+}</code></pre>
+    </div>
+    <div class="tab-panel">
+      <h3>Session Cache</h3>
+      <p>Gán persistent session ID cho agent conversation. Nếu sandbox vẫn còn alive (trong TTL), reuse thay vì boot mới. Filesystem state được giữ nguyên giữa các turns của cùng conversation.</p>
+      <pre><code><span class="kw">async def</span> <span class="fn">get_or_create_sandbox</span>(session_id: str) -&gt; Sandbox:
+
+  <span class="kw">if</span> session_id <span class="kw">in</span> sandbox_cache:
+    sb = sandbox_cache[session_id]
+    <span class="kw">if</span> sb.is_alive():
+      sb.extend_ttl(minutes=5)
+      <span class="kw">return</span> sb
+
+  sb = <span class="kw">await</span> pool.acquire()
+  sandbox_cache[session_id] = sb
+  <span class="kw">return</span> sb</code></pre>
+    </div>
+    <div class="tab-panel">
+      <h3>Namespace per Agent</h3>
+      <p>Mỗi agent (hay agent team) có một isolated namespace — riêng biệt về filesystem, network, và process tree. Các agent trong cùng một task có thể share namespace nhất định (filesystem) nhưng vẫn process-isolated.</p>
+      <pre><code><span class="cm"># Kubernetes namespace per agent job</span>
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: agent-job-${JOB_ID}
+  labels:
+    app: agent-sandbox
+    job-id: ${JOB_ID}
+---
+<span class="cm"># NetworkPolicy: chặn cross-namespace communication</span>
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+  egress:
+  - ports: [{port: 443}]
+    to:
+    - ipBlock:
+        cidr: "0.0.0.0/0"
+        except:
+        - "10.0.0.0/8"
+        - "169.254.0.0/16"</code></pre>
+    </div>
+  </div>
+
+  <h2 id="resource-limits">31.11 Resource Limits</h2>
+  <p>
+    Ngay cả trong sandbox, agent code có thể gây DoS qua resource exhaustion —
+    fork bombs, memory leaks, infinite loops, disk fill.
+  </p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Resource</th><th>Limit recommended</th><th>Mechanism</th><th>Tại sao</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>CPU</td>
+          <td>1–2 vCPU, 50–100% quota</td>
+          <td>cgroups <code>cpu.cfs_quota_us</code></td>
+          <td>Ngăn cryptominer, infinite loop ảnh hưởng host</td>
+        </tr>
+        <tr>
+          <td>Memory</td>
+          <td>256MB–2GB (tùy task)</td>
+          <td>cgroups <code>memory.limit_in_bytes</code></td>
+          <td>OOM killer trong VM, không ảnh hưởng host memory</td>
+        </tr>
+        <tr>
+          <td>Disk (scratch)</td>
+          <td>500MB–5GB</td>
+          <td>Disk image size hoặc tmpfs size limit</td>
+          <td>Ngăn fill disk host, log spam</td>
+        </tr>
+        <tr>
+          <td>Process count</td>
+          <td>50–200 processes</td>
+          <td>cgroups <code>pids.max</code></td>
+          <td>Fork bomb prevention</td>
+        </tr>
+        <tr>
+          <td>Network bandwidth</td>
+          <td>10–100 Mbps egress</td>
+          <td>tc (traffic control) + qdisc</td>
+          <td>Ngăn exfiltration large dataset, cost control</td>
+        </tr>
+        <tr>
+          <td>Execution timeout</td>
+          <td>30s–5min (tùy task)</td>
+          <td>SIGKILL sau timeout từ orchestrator</td>
+          <td>Infinite loop, stuck process không block pool</td>
+        </tr>
+        <tr>
+          <td>File descriptor</td>
+          <td>1024</td>
+          <td>ulimit hoặc cgroups</td>
+          <td>Ngăn fd exhaustion ảnh hưởng host kernel</td>
+        </tr>
+        <tr>
+          <td>Open files</td>
+          <td>10,000 files max</td>
+          <td>inotify limit, tmpfs inode limit</td>
+          <td>Ngăn inode exhaustion trên scratch volume</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <pre><code><span class="cm"># Firecracker machine config với resource limits</span>
+PUT /machine-config {
+  "vcpu_count": 1,
+  "mem_size_mib": 512,
+  "smt": false
+}
+
+<span class="cm"># Bên trong VM: cgroups v2 để giới hạn process</span>
+<span class="cm"># (thường set trong base image hoặc entrypoint script)</span>
+cgset -r cpu.max="50000 100000" sandbox-agent  <span class="cm"># 50% CPU</span>
+cgset -r pids.max=100 sandbox-agent            <span class="cm"># 100 processes max</span>
+cgset -r memory.max=536870912 sandbox-agent    <span class="cm"># 512MB RAM hard limit</span></code></pre>
+
+  <h2 id="cost">31.12 Cost Comparison: Cold-start vs Warm</h2>
+  <p>
+    Chiến lược sandbox ảnh hưởng trực tiếp đến cost và latency. Đây là phân tích thực tế
+    cho một agent thực hiện 1000 code execution requests/ngày.
+  </p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Strategy</th><th>Latency per call</th><th>Cost (E2B pricing)</th><th>Phù hợp cho</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Cold start mỗi request</td>
+          <td>~150ms overhead + exec time</td>
+          <td>Pay per second: ~$0.000165 × duration</td>
+          <td>Low-frequency, independent tasks</td>
+        </tr>
+        <tr>
+          <td>Warm pool (5 instances)</td>
+          <td>&lt;10ms assign + exec time</td>
+          <td>Overhead: 5 × idle time; payoff ở &gt;50 req/hr</td>
+          <td>Medium traffic, predictable load</td>
+        </tr>
+        <tr>
+          <td>Session cache (reuse sandbox)</td>
+          <td>&lt;5ms (already running)</td>
+          <td>Billed for total session duration</td>
+          <td>Multi-turn agent conversations</td>
+        </tr>
+        <tr>
+          <td>Snapshot + restore</td>
+          <td>~30ms restore + exec time</td>
+          <td>Storage cost (~$0.02/GB/month) + compute</td>
+          <td>Có pip install nặng, nhiều dependencies</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout tip">
+    <div class="icon">★</div>
+    <div>
+      <div class="title">Rule of thumb cho cost optimization</div>
+      <p>
+        Nếu agent có nhiều code execution steps trong một conversation (multi-turn): dùng
+        <strong>session cache</strong> — một sandbox, billing cho total wall time.
+        Nếu mỗi request là độc lập (batch processing): dùng <strong>cold start hoặc warm pool</strong>
+        tùy traffic. Snapshot có lợi nhất khi dependency installation mất &gt;10s — amortize qua
+        hàng trăm sessions.
+      </p>
+    </div>
+  </div>
+
+  <h2 id="permission-model">31.13 Permission Model Integration với Agent Harness</h2>
+  <p>
+    Sandbox là một layer trong capability system của agent. Trong architecture hiện đại,
+    mỗi action của agent có một capability level, và sandbox tương ứng với capability
+    "danger-full-access" — mức cao nhất.
+  </p>
+
+  <svg class="diagram" viewBox="0 0 760 280" role="img" aria-label="Permission model integration với sandbox">
+    <text x="380" y="24" text-anchor="middle" font-weight="700" font-size="14">Agent Capability Tiers &amp; Sandbox Mapping</text>
+
+    <rect class="node-green" x="30" y="40" width="700" height="44" rx="10"/>
+    <text x="50" y="58" font-weight="700" font-size="13">Tier 1 — Read-only, no side effects</text>
+    <text x="50" y="76" font-size="12">web_search, read_file (approved paths), calculator, knowledge_base_query</text>
+    <text x="712" y="62" text-anchor="end" font-size="11" fill="#b4e07a" font-weight="600">No sandbox needed</text>
+
+    <rect class="node-blue" x="30" y="98" width="700" height="44" rx="10"/>
+    <text x="50" y="116" font-weight="700" font-size="13">Tier 2 — Limited writes, reversible</text>
+    <text x="50" y="134" font-size="12">create_file (workspace), send_draft (hold for approval), database_read, API calls (GET)</text>
+    <text x="712" y="116" text-anchor="end" font-size="11" fill="#7cc4ff" font-weight="600">Container isolation</text>
+
+    <rect class="node-accent" x="30" y="156" width="700" height="44" rx="10"/>
+    <text x="50" y="174" font-weight="700" font-size="13">Tier 3 — Execution, destructive, external API writes</text>
+    <text x="50" y="192" font-size="12">run_code, shell_command, send_email, API calls (POST/DELETE), database_write</text>
+    <text x="712" y="174" text-anchor="end" font-size="11" fill="#d3a4ff" font-weight="600">gVisor / microVM</text>
+
+    <rect fill="rgba(255,138,138,0.15)" stroke="#ff8a8a" stroke-width="2" x="30" y="214" width="700" height="44" rx="10"/>
+    <text x="50" y="232" font-weight="700" font-size="13" fill="#ff8a8a">Tier 4 — Full system access, browser, GUI</text>
+    <text x="50" y="250" font-size="12">computer_use, full_filesystem, network_unrestricted, install_software</text>
+    <text x="712" y="232" text-anchor="end" font-size="11" fill="#ff8a8a" font-weight="600">Isolated VM + human approval</text>
+  </svg>
+
+  <pre><code><span class="cm"># Permission check trong agent harness trước khi execute tool</span>
+<span class="kw">async def</span> <span class="fn">execute_tool_with_permission_check</span>(
+    tool_name: str, params: dict, agent_ctx: AgentContext
+) -&gt; ToolResult:
+
+  capability_tier = TOOL_CAPABILITY_MAP[tool_name]
+
+  <span class="kw">if</span> capability_tier == CapabilityTier.TIER_3_EXECUTION:
+    <span class="cm"># Wrap trong microVM sandbox</span>
+    <span class="kw">async with</span> sandbox_pool.acquire() <span class="kw">as</span> sb:
+      <span class="kw">return await</span> sb.execute_tool(tool_name, params)
+
+  <span class="kw">elif</span> capability_tier == CapabilityTier.TIER_4_FULL:
+    <span class="cm"># Yêu cầu human approval + isolated VM</span>
+    approval = <span class="kw">await</span> human_approval.request(
+      f"Agent muốn thực hiện {tool_name} với params: {params}"
+    )
+    <span class="kw">if not</span> approval.granted:
+      <span class="kw">raise</span> PermissionDenied(f"{tool_name} yêu cầu human approval")
+    <span class="kw">async with</span> isolated_vm_pool.acquire() <span class="kw">as</span> vm:
+      <span class="kw">return await</span> vm.execute_tool(tool_name, params)
+
+  <span class="kw">else</span>:
+    <span class="cm"># Tier 1/2: execute trực tiếp với constraints nhẹ hơn</span>
+    <span class="kw">return await</span> tool_registry[tool_name](params)</code></pre>
+
+  <h2 id="old-vs-new">31.14 Cách cũ vs Cách hiện tại</h2>
+  <p>
+    Sự thay đổi trong cách tiếp cận sandboxing cho AI agents phản ánh bài học đau đớn
+    từ những vụ incident sớm và trưởng thành của toàn ngành.
+  </p>
+
+  <div class="grid-2">
+    <div class="card">
+      <strong style="color:#ff8a8a">Cách cũ (2022–2024)</strong>
+      <ul>
+        <li>Chạy LLM-generated code trực tiếp bằng <code>eval()</code> hoặc inline shell call trên host server</li>
+        <li>"Sanitize" code bằng regex hoặc AST check — dễ bypass bằng obfuscation</li>
+        <li>Dùng Docker với <code>--privileged</code> flag "vì tiện"</li>
+        <li>Network không bị giới hạn — agent có thể gọi bất kỳ URL nào</li>
+        <li>Không có timeout — infinite loop làm treo server</li>
+        <li>Chạy agent với credentials production trong environment variables</li>
+        <li>"Hope nothing bad happens"</li>
+      </ul>
+    </div>
+    <div class="card">
+      <strong style="color:#b4e07a">Cách hiện tại (2025–2026)</strong>
+      <ul>
+        <li>microVM hoặc gVisor là minimum bar cho code execution</li>
+        <li>Ephemeral by default — mỗi session có sandbox riêng, bị destroy sau khi xong</li>
+        <li>Observable — mọi syscall, network call, file access đều có thể được logged</li>
+        <li>Time-limited — hard timeout với SIGKILL, không có exception</li>
+        <li>Network egress allowlist — default deny, chỉ whitelist explicit domain</li>
+        <li>169.254.169.254 luôn bị block ở mọi sandbox</li>
+        <li>Resource limits hard-coded vào sandbox template</li>
+        <li>Tiered capabilities — sandbox chỉ được activate khi cần tier 3/4</li>
+        <li>Human approval gate cho irreversible actions</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="callout note">
+    <div class="icon">≡</div>
+    <div>
+      <div class="title">Incident timeline — tại sao industry thay đổi</div>
+      <p>
+        Năm 2023, nhiều AI coding assistants bị phát hiện có thể bị trick để exfiltrate
+        environment variables qua prompt injection → code generation → network call đến attacker endpoint.
+        Năm 2024, Devin-style agents chạy trên shared infrastructure bị chứng minh có thể
+        lateral move sang container khác qua shared kernel exploit trong điều kiện lab.
+        Kết quả: tất cả major AI sandbox providers đều chuyển sang Firecracker microVM
+        hoặc equivalent vào đầu 2025. Ngày nay, "sandbox-by-default" là tiêu chuẩn tối thiểu
+        khi release bất kỳ agentic product nào ra production.
+      </p>
+    </div>
+  </div>
+
+  <h2 id="tom-tat">Tóm tắt</h2>
+  <ol>
+    <li>
+      <strong>Sandbox là prerequisite, không phải optional:</strong> AI agent thực thi code bất kỳ trên host
+      = full system compromise nếu bị exploit. Blast radius phải được giới hạn trong ephemeral sandbox.
+    </li>
+    <li>
+      <strong>Container thuần không đủ:</strong> shared kernel = shared attack surface. Dùng
+      <strong>gVisor</strong> (user-space kernel) hoặc <strong>Firecracker microVM</strong>
+      (~125ms boot, ~5MB overhead) làm minimum bar cho untrusted code.
+    </li>
+    <li>
+      <strong>WASM:</strong> phù hợp cho functions nhỏ, latency cực thấp, language support hạn chế
+      (Python ecosystem vẫn là điểm yếu do C extensions).
+    </li>
+    <li>
+      <strong>Commercial sandboxes 2026:</strong> E2B (Firecracker), Modal (gVisor), Daytona, Replit, CodeSandbox —
+      chọn theo boot latency, language support, và persistence model.
+    </li>
+    <li>
+      <strong>Network policy:</strong> default-deny egress, LUÔN block <code>169.254.169.254</code>,
+      DNS allowlist, không có host network bridge.
+    </li>
+    <li>
+      <strong>Filesystem:</strong> read-only base image, overlay scratch layer (ephemeral), không bao giờ
+      bind mount host path vào untrusted sandbox.
+    </li>
+    <li>
+      <strong>Resource limits:</strong> CPU cgroups, memory hard limit, pids.max (fork bomb prevention),
+      hard timeout với SIGKILL.
+    </li>
+    <li>
+      <strong>Warm pool + snapshot:</strong> trade-off giữa cost và latency. Session cache tốt nhất cho
+      multi-turn agent conversations.
+    </li>
+    <li>
+      <strong>Permission tiers:</strong> sandbox chỉ cần ở tier 3+ (code execution, writes, external API).
+      Tier 4 (full system, browser) cần thêm human approval gate.
+    </li>
+  </ol>
+
+  <nav class="section-footer">
+    <a href="30-agent-threats.html" class="prev">
+      <div class="label">← trước</div>
+      <div class="title">30 — Agent Threats</div>
+    </a>
+    <a href="32-ai-red-team.html" class="next">
+      <div class="label">tiếp theo →</div>
+      <div class="title">32 — AI Red-teaming</div>
+    </a>
+  </nav>
+
+</main>
+
+<script src="../assets/script.js"></script>
+</body>
+</html>

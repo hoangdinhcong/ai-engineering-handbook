@@ -1,0 +1,435 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>17 · Multimodal Applications — AI Engineering</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<nav class="top-nav">
+  <div class="brand"><span class="dot"></span> AI Engineering</div>
+  <div class="crumbs"><a href="../index.html">Mục lục</a> › Phần 6 · <span>17 — Multimodal Applications</span></div>
+  <div class="nav-actions">
+    <a href="16-designing-ai-products.html">← 16</a>
+    <a href="18-code-generating-ai.html">Tiếp →</a>
+  </div>
+</nav>
+
+<main class="page">
+
+  <section class="hero">
+    <span class="eyebrow">Phần 6 · §17</span>
+    <h1>Multimodal Applications</h1>
+    <p class="lede">
+      Text, image, audio, video — khi AI xử lý nhiều loại input cùng lúc, mọi thứ trở nên mạnh hơn và phức tạp hơn. Đây là map đầy đủ của multimodal landscape.
+    </p>
+    <img class="hero-image" src="../images/17-multimodal.png" alt="Multimodal applications hero" onerror="this.style.display='none'">
+  </section>
+
+  <aside class="toc">
+    <div class="toc-title">Trong trang này</div>
+    <ul>
+      <li><a href="#dinh-nghia">17.1 Multimodal là gì</a></li>
+      <li><a href="#vision">17.2 Vision</a></li>
+      <li><a href="#document-ai">17.3 Document AI</a></li>
+      <li><a href="#audio">17.4 Audio: STT, TTS, Voice agents</a></li>
+      <li><a href="#video">17.5 Video</a></li>
+      <li><a href="#cross-modal">17.6 Cross-modal patterns</a></li>
+      <li><a href="#cost">17.7 Cost considerations</a></li>
+      <li><a href="#latency">17.8 Latency considerations</a></li>
+      <li><a href="#use-cases">17.9 Common use cases</a></li>
+      <li><a href="#tom-tat">Tóm tắt</a></li>
+    </ul>
+  </aside>
+
+  <h2 id="dinh-nghia">17.1 Multimodal là gì</h2>
+  <p>
+    <strong>Multimodal AI</strong> xử lý và/hoặc generate nhiều loại data (modalities) khác nhau. Có hai kiến trúc chính:
+  </p>
+
+  <div class="grid-2">
+    <div class="card">
+      <h4>Single-model multi-input</h4>
+      <p>Một model duy nhất nhận nhiều loại input. Ví dụ: GPT-4o nhận text + image + audio trong cùng một request. Ưu điểm: cross-modal reasoning tốt hơn, latency thấp hơn. Nhược điểm: model lớn hơn, cost cao hơn.</p>
+    </div>
+    <div class="card">
+      <h4>Pipeline của specialized models</h4>
+      <p>Mỗi modality có model riêng: Whisper (audio → text) → GPT-4o (text → text) → ElevenLabs (text → audio). Ưu điểm: mỗi component tốt nhất trong class, dễ swap. Nhược điểm: latency cao hơn do chaining, error propagation.</p>
+    </div>
+  </div>
+
+  <!-- Modalities map SVG -->
+  <svg class="diagram" viewBox="0 0 760 260" role="img" aria-label="Modalities map with model examples">
+    <defs>
+      <marker id="arr7" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+        <polygon points="0 0, 8 3, 0 6" fill="#6f7c92"/>
+      </marker>
+    </defs>
+
+    <!-- Center: Foundation Model -->
+    <rect class="node-accent" x="290" y="100" width="180" height="60" rx="10"/>
+    <text x="380" y="125" text-anchor="middle" font-weight="700" font-size="14">Foundation Model</text>
+    <text x="380" y="145" text-anchor="middle" class="label-sm">GPT-4o · Claude 3.5 · Gemini 1.5</text>
+
+    <!-- Text modality -->
+    <rect class="node-blue" x="20" y="105" width="140" height="50" rx="8"/>
+    <text x="90" y="127" text-anchor="middle" font-weight="600">📝 Text</text>
+    <text x="90" y="145" text-anchor="middle" class="label-sm">All models</text>
+    <line x1="160" y1="130" x2="288" y2="130" stroke="#7cc4ff" stroke-width="1.5" marker-end="url(#arr7)"/>
+
+    <!-- Image modality -->
+    <rect class="node-blue" x="600" y="20" width="140" height="50" rx="8"/>
+    <text x="670" y="42" text-anchor="middle" font-weight="600">🖼 Image</text>
+    <text x="670" y="58" text-anchor="middle" class="label-sm">GPT-4o · Claude · Gemini · Qwen-VL</text>
+    <line x1="600" y1="50" x2="472" y2="105" stroke="#7cc4ff" stroke-width="1.5" marker-end="url(#arr7)"/>
+
+    <!-- Audio modality -->
+    <rect class="node-green" x="600" y="105" width="140" height="50" rx="8"/>
+    <text x="670" y="127" text-anchor="middle" font-weight="600">🎙 Audio</text>
+    <text x="670" y="145" text-anchor="middle" class="label-sm">Whisper · Deepgram · GPT-4o audio</text>
+    <line x1="600" y1="130" x2="472" y2="130" stroke="#b4e07a" stroke-width="1.5" marker-end="url(#arr7)"/>
+
+    <!-- Video modality -->
+    <rect class="node-green" x="600" y="190" width="140" height="50" rx="8"/>
+    <text x="670" y="212" text-anchor="middle" font-weight="600">🎬 Video</text>
+    <text x="670" y="228" text-anchor="middle" class="label-sm">Gemini 1.5 Pro · GPT-4o frames</text>
+    <line x1="600" y1="210" x2="472" y2="155" stroke="#b4e07a" stroke-width="1.5" marker-end="url(#arr7)"/>
+
+    <!-- Document modality -->
+    <rect class="node-bg" x="20" y="190" width="140" height="50" rx="8"/>
+    <text x="90" y="212" text-anchor="middle" font-weight="600">📄 Document</text>
+    <text x="90" y="228" text-anchor="middle" class="label-sm">LlamaParse · Azure DI · Claude</text>
+    <line x1="160" y1="210" x2="288" y2="155" stroke="#6f7c92" stroke-width="1.5" marker-end="url(#arr7)"/>
+
+    <!-- Output label -->
+    <text x="380" y="195" text-anchor="middle" class="label-sm">↓ Output: text · image · audio · structured data</text>
+  </svg>
+
+  <h2 id="vision">17.2 Vision: image understanding</h2>
+  <p>
+    Vision capability cho phép model "nhìn" và hiểu nội dung visual. Các use case cốt lõi:
+  </p>
+
+  <h3>Image understanding &amp; description</h3>
+  <p>
+    Model nhận image (base64 hoặc URL) cùng với text prompt. Capability bao gồm: mô tả nội dung, trả lời câu hỏi về ảnh, phân tích composition, nhận diện objects/text/scenes.
+  </p>
+
+  <h3>OCR trong ảnh</h3>
+  <p>
+    Vision models đọc text trong ảnh tốt hơn traditional OCR trong nhiều trường hợp — đặc biệt với handwriting, stylized fonts, và text trong context. Tuy nhiên, với structured document extraction (table, form), specialized model như Azure Document Intelligence hoặc AWS Textract thường cho output có cấu trúc hơn.
+  </p>
+
+  <h3>Charts &amp; graphs</h3>
+  <p>
+    Claude và GPT-4o có thể đọc bar chart, line chart, pie chart và extract values hoặc trends. Hữu ích cho "chat with your dashboard" use cases. Lưu ý: accuracy không bằng bảng số liệu raw — nên supplement với data source khi có thể.
+  </p>
+
+  <h3>Screenshots &amp; UI analysis</h3>
+  <p>
+    Dùng vision để analyze screenshot của app, website, hoặc error message. Cursor và Claude Code dùng pattern này để hiểu UI context khi help debug frontend issues.
+  </p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Model</th><th>Vision strengths</th><th>Image input</th><th>Cost/image (~1024px)</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><strong>Claude 3.5 Sonnet</strong></td><td>Document analysis, OCR, detailed description, code in screenshots</td><td>Base64 hoặc URL, multiple images</td><td>~$0.004–0.008</td></tr>
+        <tr><td><strong>GPT-4o</strong></td><td>General vision, charts, real-world scenes, multi-image reasoning</td><td>Base64, URL, multiple images</td><td>~$0.003–0.01</td></tr>
+        <tr><td><strong>Gemini 1.5 Pro</strong></td><td>Long document (1000+ pages as images), video frames, interleaved</td><td>Up to 3600 images per request</td><td>~$0.002–0.005</td></tr>
+        <tr><td><strong>Qwen-VL</strong></td><td>Open-source, strong on Chinese text OCR, competitive general vision</td><td>Base64, local deploy</td><td>Self-hosted cost only</td></tr>
+        <tr><td><strong>LLaVA / InternVL</strong></td><td>Open-source, self-hostable, privacy-sensitive use cases</td><td>Local only</td><td>GPU cost only</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Vision prompt examples</h3>
+
+  <pre><code><span class="cm"># Analyze a chart image</span>
+prompt = <span class="str">"""Analyze this chart image and:
+1. Identify the chart type and axes
+2. Extract all data points/values shown
+3. Describe the main trend or insight
+4. Note any anomalies or notable data points
+
+Return as JSON: {type, x_axis, y_axis, data_points: [], insight, anomalies: []}"""</span>
+
+<span class="cm"># Extract data from a screenshot</span>
+prompt = <span class="str">"""This is a screenshot of a form/interface.
+Extract all visible field labels and their values.
+Return as a flat JSON object with field_name: value pairs."""</span>
+
+<span class="cm"># Multi-image comparison</span>
+prompt = <span class="str">"""Compare these two product screenshots [image1] [image2].
+List: UI differences, feature differences, design changes.
+Format as a side-by-side comparison table."""</span></code></pre>
+
+  <h2 id="document-ai">17.3 Document AI: layout understanding</h2>
+  <p>
+    Document AI là specialized subset của vision — tập trung vào documents (contracts, invoices, reports, forms) với mục tiêu extract structured information.
+  </p>
+
+  <h3>So sánh với traditional OCR pipeline</h3>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Approach</th><th>Pipeline</th><th>Ưu điểm</th><th>Nhược điểm</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><strong>Traditional OCR</strong></td><td>Preprocess → Tesseract/cloud OCR → regex/template matching → structure</td><td>Fast, cheap, deterministic, works offline</td><td>Fragile với layout variation, template per document type, kém với handwriting</td></tr>
+        <tr><td><strong>Specialized Document AI</strong></td><td>Azure DI / AWS Textract → structured JSON with bounding boxes, tables, key-value pairs</td><td>Layout-aware, table extraction native, pre-trained on forms</td><td>Cost, cloud dependency, cần config per doc type</td></tr>
+        <tr><td><strong>Vision LLM</strong></td><td>Image → Claude/GPT-4o vision → extraction prompt → structured output</td><td>Flexible, handles novel layouts, zero-shot, understands context</td><td>Cost cao, latency cao, less deterministic for structured extraction</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>
+    Production pattern phổ biến: Azure Document Intelligence hoặc AWS Textract để extract raw structure → LLM để validate, normalize, và reason về extracted data.
+  </p>
+
+  <h2 id="audio">17.4 Audio: STT, TTS, và Voice agents</h2>
+
+  <h3>Speech-to-Text (STT)</h3>
+  <p>
+    STT chuyển audio thành transcript text. Các options:
+  </p>
+  <ul>
+    <li><strong>Whisper (OpenAI)</strong>: open-source, self-hostable, rất tốt cho nhiều ngôn ngữ. Batch processing, không phải realtime. Faster-whisper cho throughput tốt hơn.</li>
+    <li><strong>Deepgram</strong>: API, realtime streaming, thấp latency, tốt cho live transcription. Nova-2 model rất competitive. Hỗ trợ tiếng Việt.</li>
+    <li><strong>AssemblyAI</strong>: API với additional AI features (speaker diarisation, sentiment, chapter detection).</li>
+    <li><strong>GPT-4o audio / Gemini Live</strong>: native audio input, không cần separate STT — model hiểu speech trực tiếp.</li>
+  </ul>
+
+  <h3>Text-to-Speech (TTS)</h3>
+  <ul>
+    <li><strong>ElevenLabs</strong>: chất lượng cao nhất cho voice cloning và natural prosody. Latency ~300ms với streaming.</li>
+    <li><strong>OpenAI TTS</strong>: tốt, nhanh, 6 voices, cost hợp lý. Streaming support.</li>
+    <li><strong>Google Cloud TTS</strong>: nhiều voices, WaveNet/Neural2 quality, multilingual tốt.</li>
+    <li><strong>Kokoro (open-source)</strong>: self-hostable, quality gần với commercial.</li>
+  </ul>
+
+  <h3>Realtime voice agents</h3>
+  <p>
+    Voice agents thực sự (không phải STT → LLM → TTS waterfall) cần native audio-in/audio-out models với ultra-low latency:
+  </p>
+
+  <!-- Voice agent loop SVG -->
+  <svg class="diagram" viewBox="0 0 760 160" role="img" aria-label="Voice agent loop: mic to STT to LLM to TTS to speaker">
+    <defs>
+      <marker id="arr8" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+        <polygon points="0 0, 8 3, 0 6" fill="#6f7c92"/>
+      </marker>
+    </defs>
+
+    <!-- User / Mic -->
+    <rect class="node-accent" x="20" y="55" width="110" height="50" rx="8"/>
+    <text x="75" y="76" text-anchor="middle" font-size="20">🎙</text>
+    <text x="75" y="97" text-anchor="middle" font-size="12">User speaks</text>
+    <line x1="130" y1="80" x2="158" y2="80" stroke="#6f7c92" stroke-width="1.5" marker-end="url(#arr8)"/>
+
+    <!-- STT -->
+    <rect class="node-blue" x="160" y="55" width="110" height="50" rx="8"/>
+    <text x="215" y="76" text-anchor="middle" font-weight="600">STT</text>
+    <text x="215" y="95" text-anchor="middle" class="label-sm">Whisper · Deepgram</text>
+    <line x1="270" y1="80" x2="298" y2="80" stroke="#6f7c92" stroke-width="1.5" marker-end="url(#arr8)"/>
+
+    <!-- LLM -->
+    <rect class="node-accent" x="300" y="45" width="160" height="70" rx="8"/>
+    <text x="380" y="70" text-anchor="middle" font-weight="600">LLM</text>
+    <text x="380" y="90" text-anchor="middle" class="label-sm">GPT-4o Realtime</text>
+    <text x="380" y="106" text-anchor="middle" class="label-sm">Gemini Live · Claude</text>
+    <line x1="460" y1="80" x2="488" y2="80" stroke="#6f7c92" stroke-width="1.5" marker-end="url(#arr8)"/>
+
+    <!-- TTS -->
+    <rect class="node-green" x="490" y="55" width="110" height="50" rx="8"/>
+    <text x="545" y="76" text-anchor="middle" font-weight="600">TTS</text>
+    <text x="545" y="95" text-anchor="middle" class="label-sm">ElevenLabs · OpenAI</text>
+    <line x1="600" y1="80" x2="628" y2="80" stroke="#6f7c92" stroke-width="1.5" marker-end="url(#arr8)"/>
+
+    <!-- Speaker output -->
+    <rect class="node-green" x="630" y="55" width="110" height="50" rx="8"/>
+    <text x="685" y="76" text-anchor="middle" font-size="20">🔊</text>
+    <text x="685" y="97" text-anchor="middle" font-size="12">Agent speaks</text>
+
+    <!-- Loop arrow back -->
+    <path d="M 685 105 Q 685 140 380 140 Q 75 140 75 105" stroke="#6f7c92" stroke-width="1" fill="none" stroke-dasharray="5,3" marker-end="url(#arr8)"/>
+    <text x="380" y="158" text-anchor="middle" class="label-sm">Continuous turn-taking loop</text>
+
+    <!-- Latency labels -->
+    <text x="215" y="140" text-anchor="middle" class="label-sm" fill="#7cc4ff">~100ms</text>
+    <text x="380" y="30" text-anchor="middle" class="label-sm" fill="#ffb86b">TTFT &lt; 300ms</text>
+    <text x="545" y="140" text-anchor="middle" class="label-sm" fill="#b4e07a">~200ms</text>
+  </svg>
+
+  <p>
+    GPT-4o Realtime API và Gemini Live hợp nhất STT + LLM + TTS vào một model — output streaming audio trực tiếp, interruption handling native. Total latency có thể dưới 500ms — đủ cho natural conversation.
+  </p>
+
+  <h3>Speaker diarisation</h3>
+  <p>
+    Meeting transcription cần biết ai nói gì. AssemblyAI, Pyannote (open-source), và Deepgram Nova-2 hỗ trợ diarisation — label từng segment với speaker ID (SPEAKER_1, SPEAKER_2). Kết hợp với LLM để assign tên thực từ context ("hello, I'm John...").
+  </p>
+
+  <h2 id="video">17.5 Video understanding</h2>
+  <p>
+    Video là sequence of frames + audio track. Approach phổ biến:
+  </p>
+
+  <h3>Frame sampling</h3>
+  <p>
+    Extract N frames từ video (uniform sampling hoặc keyframe detection), gửi kèm với prompt. GPT-4o nhận nhiều images, Gemini 1.5 Pro nhận up to 1 hour video (native). Hữu ích cho: video summarization, instruction extraction từ tutorial, content moderation.
+  </p>
+
+  <h3>Gemini long video</h3>
+  <p>
+    Gemini 1.5 Pro xử lý up to 1 giờ video native (nạp thẳng file hoặc YouTube URL). Model thấy temporal relationships, không chỉ isolated frames. Phù hợp cho: analyze meeting recordings, Q&amp;A về video content, generate transcript với timestamps.
+  </p>
+
+  <h3>Video generation (ngoài scope)</h3>
+  <p>
+    Sora (OpenAI), Veo (Google), Kling, Runway là các model generate video từ text/image. Đây là generative AI area phát triển nhanh nhưng ngoài scope của AI Engineering tập trung vào applications — chủ yếu vì API stability và production readiness còn hạn chế.
+  </p>
+
+  <h2 id="cross-modal">17.6 Cross-modal patterns</h2>
+  <p>
+    Cross-modal là khi output của một modality trở thành input của modality khác trong một pipeline. Các pattern phổ biến:
+  </p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Pattern</th><th>Flow</th><th>Use case</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><strong>Image → text → action</strong></td><td>Screenshot → extract UI state → LLM decide next action → execute</td><td>UI automation, visual testing, RPA</td></tr>
+        <tr><td><strong>Voice → text → response → voice</strong></td><td>Mic → STT → LLM → TTS → Speaker</td><td>Voice assistant, call center AI</td></tr>
+        <tr><td><strong>Document → chunks → QA</strong></td><td>PDF (image) → vision OCR → text chunks → embed → RAG</td><td>Document Q&amp;A with scanned PDFs</td></tr>
+        <tr><td><strong>Video → transcript → insight</strong></td><td>MP4 → Whisper → transcript → LLM summarize/analyze</td><td>Meeting notes, lecture summary</td></tr>
+        <tr><td><strong>Text → image → verify</strong></td><td>LLM generate description → DALL-E generate image → vision model verify accuracy</td><td>Content generation with visual QA</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Error propagation trong pipeline</h3>
+  <p>
+    Với multi-step cross-modal pipeline, lỗi ở step đầu lan theo. STT transcribe sai một term kỹ thuật → LLM nhận input sai → response sai → TTS đọc response sai. Cần:
+  </p>
+  <ul>
+    <li>Validate output tại mỗi bước có thể (confidence score, schema validation)</li>
+    <li>Log intermediate steps cho debugging</li>
+    <li>Handle modality-specific failure gracefully (STT fail → fallback to text input)</li>
+  </ul>
+
+  <h2 id="cost">17.7 Cost considerations</h2>
+  <p>
+    Multimodal input đắt hơn text đáng kể. Quan trọng phải budget đúng:
+  </p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Modality</th><th>Pricing model</th><th>Ví dụ cost</th><th>Optimization</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><strong>Image (vision)</strong></td><td>Tính theo "image tokens" (tile-based)</td><td>~$0.003–0.01 per 1024×1024 image</td><td>Resize xuống trước khi gửi; dùng "low detail" mode nếu không cần fine detail</td></tr>
+        <tr><td><strong>Audio (STT)</strong></td><td>Per minute của audio</td><td>~$0.006/min (Whisper), $0.0059/min (Deepgram)</td><td>Trim silence, downsample to 16kHz mono; batch nhiều short clips</td></tr>
+        <tr><td><strong>Audio (TTS)</strong></td><td>Per character hoặc per word</td><td>~$0.015/1000 chars (OpenAI), ~$0.10/1000 chars (ElevenLabs)</td><td>Cache common responses; chỉ TTS final response, không stream intermediate</td></tr>
+        <tr><td><strong>Video</strong></td><td>Per second hoặc per frame</td><td>~$0.002/sec (Gemini video)</td><td>Sample key frames thay vì full video; limit video length</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout warn">
+    <div class="icon">!</div>
+    <div>
+      <div class="title">Image cost không hiển nhiên</div>
+      <p>Claude và GPT-4o tính image tokens theo "tiles" (512×512 tiles). Một ảnh 1024×1024 = 4 tiles = ~1000 tokens overhead. Một ảnh 2048×2048 không resize = 16 tiles ≈ 4000 tokens. Với volume cao, resize images về 1024px trước khi gửi có thể giảm cost 50-75%.</p>
+    </div>
+  </div>
+
+  <h2 id="latency">17.8 Latency considerations</h2>
+  <p>
+    Mỗi modality có latency profile khác nhau. Voice là khắt khe nhất:
+  </p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Modality</th><th>Latency SLA điển hình</th><th>Latency bottleneck</th><th>Technique</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><strong>Text (chat)</strong></td><td>TTFT &lt; 3s</td><td>LLM prefill time</td><td>Streaming, caching</td></tr>
+        <tr><td><strong>Image (vision)</strong></td><td>&lt; 5s total</td><td>Image upload + prefill với image tokens</td><td>Resize trước, compress, CDN URLs thay vì base64</td></tr>
+        <tr><td><strong>Voice (non-realtime)</strong></td><td>&lt; 3s end-to-end</td><td>STT latency + LLM TTFT + TTS start</td><td>Streaming TTS song song với LLM generation</td></tr>
+        <tr><td><strong>Voice (realtime)</strong></td><td>&lt; 500ms end-to-end</td><td>Network RTT + model decode</td><td>Native audio model (GPT-4o Realtime), edge deployment</td></tr>
+        <tr><td><strong>Video analysis</strong></td><td>&lt; 30s (non-realtime OK)</td><td>Video upload + processing</td><td>Pre-process offline, cache analysis results</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout tip">
+    <div class="icon">★</div>
+    <div>
+      <div class="title">Voice là strict realtime — không có negotiation</div>
+      <p>&gt; 500ms end-to-end latency cho voice agent nghe rất awkward với humans. &gt; 1s là unacceptable. Pipeline STT → LLM → TTS waterfall thường không thể đạt dưới 500ms — cần native audio-in/audio-out model như GPT-4o Realtime hoặc Gemini Live.</p>
+    </div>
+  </div>
+
+  <h2 id="use-cases">17.9 Common use cases</h2>
+
+  <h3>Visual search</h3>
+  <p>
+    User upload ảnh (sản phẩm, phong cảnh, text trong ảnh) → vision model extract features/text → search trong catalog hoặc knowledge base. Ví dụ: "Tôi thấy chai này ở store, giá bao nhiêu?" (ảnh → sản phẩm matching). Cần kết hợp vision embedding + text search.
+  </p>
+
+  <h3>Document Q&amp;A với scanned PDFs</h3>
+  <p>
+    Scanned PDF không có text layer — chỉ có images. Pipeline: PDF → extract page images → vision model hoặc OCR engine → text → chunk → embed → RAG. Với LlamaParse hoặc Azure Document Intelligence, có thể giữ được table structure và layout.
+  </p>
+
+  <h3>Voice assistant</h3>
+  <p>
+    Smart speaker, customer service bot, accessibility tool cho người khiếm thị. Core pattern: always-on VAD (Voice Activity Detection) → STT on speech detect → LLM → TTS → speaker. Cần handle background noise, speaker diarisation nếu multi-user.
+  </p>
+
+  <h3>Accessibility</h3>
+  <p>
+    Vision AI có thể mô tả ảnh cho người khiếm thị. TTS convert text content thành audio. STT cho phép voice input thay keyboard. Đây là ứng dụng AI có impact xã hội rõ nhất và không cần justify bằng ROI.
+  </p>
+
+  <h3>Meeting intelligence</h3>
+  <p>
+    Record meeting → Whisper/Deepgram STT + diarisation → LLM summarize → action items extraction → Slack/email notification. Tools như Otter.ai, Fireflies, và Grain làm đúng pipeline này. Dùng LLM để extract "decisions made", "action items", "open questions" là differentiated value so với raw transcript.
+  </p>
+
+  <h2 id="tom-tat">Tóm tắt</h2>
+  <ol>
+    <li><strong>Hai kiến trúc chính</strong>: single-model multi-input (cross-modal reasoning tốt hơn) vs pipeline của specialized models (modular, dễ swap). Production thường là hybrid.</li>
+    <li><strong>Vision</strong>: GPT-4o và Claude 3.5 Sonnet mạnh ngang nhau cho document/UI analysis. Gemini 1.5 Pro cho volume lớn (1000+ pages). Resize ảnh trước khi gửi để giảm cost.</li>
+    <li><strong>Document AI</strong>: Azure DI/Textract cho structured extraction, vision LLM cho flexible/novel layouts. Combine cả hai trong production.</li>
+    <li><strong>Audio</strong>: Whisper cho batch STT (tốt, free), Deepgram cho realtime streaming, ElevenLabs cho chất lượng TTS cao nhất. GPT-4o Realtime cho native audio-in/audio-out.</li>
+    <li><strong>Voice agent realtime</strong> cần &lt; 500ms — chỉ đạt được với native audio model, không phải waterfall STT→LLM→TTS.</li>
+    <li><strong>Cost</strong>: image tokens đắt hơn text tokens đáng kể. Audio per-minute tích lũy nhanh. Luôn resize và compress trước khi gửi.</li>
+    <li><strong>Error propagation</strong> trong cross-modal pipeline: validate output tại mỗi bước, log intermediates, handle per-modality failure gracefully.</li>
+  </ol>
+
+  <nav class="section-footer">
+    <a href="16-designing-ai-products.html" class="prev">
+      <div class="label">← trước</div>
+      <div class="title">16 — Designing AI Products (UX)</div>
+    </a>
+    <a href="18-code-generating-ai.html" class="next">
+      <div class="label">tiếp theo →</div>
+      <div class="title">18 — Code-generating AI Systems</div>
+    </a>
+  </nav>
+
+</main>
+
+<script src="../assets/script.js"></script>
+</body>
+</html>

@@ -1,0 +1,940 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mục lục — AI Engineering · 2026 Edition</title>
+<link rel="stylesheet" href="assets/style.css">
+<style>
+  /* Index-specific styles */
+  .index-page { max-width: 1080px; margin: 0 auto; padding: 32px 24px 96px; }
+
+  /* Part sections */
+  .part { margin: 48px 0 0; }
+  .part-header {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    margin-bottom: 20px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--line-soft);
+  }
+  .part-number {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    white-space: nowrap;
+  }
+  .part-title {
+    font-size: 22px;
+    font-weight: 600;
+    color: var(--text);
+    margin: 0;
+  }
+
+  /* Section cards grid */
+  .sections-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 12px;
+  }
+
+  .section-card {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 16px 18px;
+    background: var(--bg-card);
+    border: 1px solid var(--line-soft);
+    border-radius: var(--radius);
+    text-decoration: none;
+    color: inherit;
+    border-bottom: 1px solid var(--line-soft);
+    transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+    box-shadow: var(--shadow-card);
+  }
+  .section-card:hover {
+    background: var(--bg-elev);
+    border-color: var(--accent);
+    transform: translateY(-2px);
+    border-bottom: 1px solid var(--accent);
+  }
+  .section-card-num {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-mute);
+    letter-spacing: 0.08em;
+  }
+  .section-card-title {
+    font-weight: 600;
+    font-size: 14.5px;
+    color: var(--text);
+    line-height: 1.3;
+  }
+  .section-card:hover .section-card-title { color: var(--accent); }
+  .section-card-desc {
+    font-size: 13px;
+    color: var(--text-soft);
+    line-height: 1.5;
+    margin-top: 2px;
+  }
+  .section-card-tags { margin-top: 8px; }
+
+  /* Intro section */
+  .intro-block {
+    background: var(--bg-elev);
+    border: 1px solid var(--line-soft);
+    border-radius: var(--radius-lg);
+    padding: 28px 32px;
+    margin: 40px 0;
+  }
+  .intro-block h2 {
+    margin: 0 0 14px;
+    padding-bottom: 0;
+    border-bottom: 0;
+    font-size: 20px;
+  }
+  .intro-block p { color: var(--text-soft); font-size: 15.5px; line-height: 1.7; }
+
+  /* Reading paths */
+  .paths-section {
+    margin: 60px 0 0;
+    padding: 28px 32px;
+    background: var(--bg-card);
+    border: 1px solid var(--line-soft);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-card);
+  }
+  .paths-section h2 {
+    margin: 0 0 8px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--line-soft);
+    font-size: 22px;
+  }
+  .paths-section .sub { color: var(--text-mute); font-size: 14px; margin-bottom: 24px; }
+  .paths-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 14px;
+  }
+  .path-card {
+    background: var(--bg-elev);
+    border: 1px solid var(--line-soft);
+    border-radius: var(--radius);
+    padding: 16px;
+  }
+  .path-label {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-mute);
+    margin-bottom: 6px;
+  }
+  .path-title {
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--accent);
+    margin-bottom: 10px;
+  }
+  .path-steps {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+  }
+  .path-step {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255,184,107,0.10);
+    color: var(--accent);
+    border: 1px solid rgba(255,184,107,0.22);
+    border-radius: 6px;
+    padding: 3px 9px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 600;
+    text-decoration: none;
+  }
+  .path-step:hover { background: rgba(255,184,107,0.22); border-color: var(--accent); border-bottom-color: var(--accent); }
+  .path-arrow { color: var(--text-mute); font-size: 12px; }
+
+  /* Footer */
+  .index-footer {
+    margin-top: 72px;
+    padding-top: 20px;
+    border-top: 1px solid var(--line-soft);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text-mute);
+  }
+  .index-footer .version { color: var(--accent); }
+
+  /* Stats bar */
+  .stats-bar {
+    display: flex;
+    gap: 24px;
+    margin-top: 14px;
+    flex-wrap: wrap;
+  }
+  .stat { display: flex; flex-direction: column; }
+  .stat-value { font-size: 28px; font-weight: 700; color: var(--accent); line-height: 1; }
+  .stat-label { font-size: 12px; color: var(--text-mute); margin-top: 2px; }
+
+  @media (max-width: 700px) {
+    .sections-grid { grid-template-columns: 1fr; }
+    .paths-grid { grid-template-columns: 1fr; }
+    .intro-block { padding: 20px; }
+    .paths-section { padding: 20px; }
+    .index-footer { flex-direction: column; }
+  }
+</style>
+</head>
+<body>
+
+<nav class="top-nav">
+  <div class="brand"><span class="dot"></span> AI Engineering</div>
+  <div class="crumbs"><span>Mục lục · 2026 Edition</span></div>
+  <div class="nav-actions">
+    <a href="sections/01-what-is-ai-engineering.html">Bắt đầu →</a>
+  </div>
+</nav>
+
+<main class="index-page">
+
+  <!-- Hero -->
+  <section class="hero">
+    <span class="eyebrow">AI ENGINEERING · 2026 EDITION</span>
+    <h1>AI Engineering — Sổ tay đầy đủ</h1>
+    <p class="lede">
+      Dành cho software engineer muốn xây dựng sản phẩm AI — từ nền tảng foundation models,
+      RAG, agents, đến production engineering. Có thể đọc tuyến tính hoặc nhảy thẳng vào phần
+      cần thiết.
+    </p>
+    <div class="stats-bar">
+      <div class="stat"><span class="stat-value">12</span><span class="stat-label">Phần chủ đề</span></div>
+      <div class="stat"><span class="stat-value">42</span><span class="stat-label">Bài viết</span></div>
+      <div class="stat"><span class="stat-value">2026</span><span class="stat-label">Cập nhật</span></div>
+    </div>
+    <img class="hero-image" src="images/cover.png" alt="AI Engineering cover" onerror="this.style.display='none'">
+  </section>
+
+  <!-- Introduction -->
+  <div class="intro-block">
+    <h2>Giới thiệu</h2>
+    <p>
+      <strong>AI Engineering</strong> là ngành kỹ thuật tập trung vào việc xây dựng sản phẩm và hệ thống
+      sử dụng <em>foundation models</em> — không phải nghiên cứu hay huấn luyện model từ đầu. Đây là
+      một discipline mới xuất hiện sau làn sóng ChatGPT, khi một software engineer bình thường có thể
+      tích hợp năng lực AI vào sản phẩm chỉ qua API.
+    </p>
+    <p>
+      Năm 2026, AI Engineering đã trưởng thành thành một lĩnh vực có lộ trình rõ ràng: từ cách chọn
+      model phù hợp, xây dựng pipeline RAG, thiết kế agent, đến vận hành hệ thống AI ở quy mô production.
+      Ecosystem xung quanh — vector database, observability, eval framework, prompt management — đã
+      đủ chín để xây dựng sản phẩm nghiêm túc.
+    </p>
+    <p>
+      <strong>Series này dành cho ai?</strong> Lập trình viên đang hoặc sắp build sản phẩm AI —
+      không cần background ML sâu, chỉ cần biết lập trình và muốn hiểu cách làm đúng. Mỗi bài
+      kết hợp lý thuyết vừa đủ với ví dụ thực tế và quyết định thiết kế cụ thể.
+    </p>
+    <p>
+      <strong>Cách đọc:</strong> Nếu mới bắt đầu, đọc Phần 1 → 2 theo thứ tự để xây nền tảng.
+      Nếu đã có kinh nghiệm, nhảy thẳng vào phần bạn cần — mỗi bài có thể đọc độc lập. Cuối trang
+      có gợi ý lộ trình theo từng mục tiêu cụ thể.
+    </p>
+    <p>
+      <strong>Track nâng cao (Phần 9–12):</strong> Sau khi nắm Phần 1–8, các phần advanced đi sâu vào
+      Agent Engineering (design patterns, harness, memory, durability, eval, orchestration), AI Security
+      (prompt injection deep-dive, agent threats, sandboxing, red-team, privacy, compliance), Advanced
+      Eval &amp; Quality (dataset design, reward modeling, continuous eval), và Production Patterns 2026+
+      (inference-time scaling, computer-use agents, code execution, distributed runtime, edge AI).
+    </p>
+  </div>
+
+  <!-- ===== PART 1 ===== -->
+  <div class="part">
+    <div class="part-header">
+      <span class="part-number">Phần 1</span>
+      <h2 class="part-title">Nền tảng (Foundations)</h2>
+    </div>
+    <div class="sections-grid">
+
+      <a href="sections/01-what-is-ai-engineering.html" class="section-card">
+        <span class="section-card-num">§ 01</span>
+        <span class="section-card-title">AI Engineering là gì?</span>
+        <span class="section-card-desc">Định nghĩa, phân biệt vai trò, và stack 3 layer của AI Engineer hiện đại.</span>
+        <div class="section-card-tags">
+          <span class="tag">foundations</span>
+        </div>
+      </a>
+
+      <a href="sections/02-foundation-models.html" class="section-card">
+        <span class="section-card-num">§ 02</span>
+        <span class="section-card-title">Foundation Models cơ bản</span>
+        <span class="section-card-desc">Pre-training, post-training, scaling laws, và so sánh open vs closed models.</span>
+        <div class="section-card-tags">
+          <span class="tag">models</span>
+        </div>
+      </a>
+
+      <a href="sections/03-how-llm-works.html" class="section-card">
+        <span class="section-card-num">§ 03</span>
+        <span class="section-card-title">Cách LLM hoạt động</span>
+        <span class="section-card-desc">Tokenization, attention mechanism, sampling strategies, và context window.</span>
+        <div class="section-card-tags">
+          <span class="tag">internals</span>
+        </div>
+      </a>
+
+    </div>
+  </div>
+
+  <!-- ===== PART 2 ===== -->
+  <div class="part">
+    <div class="part-header">
+      <span class="part-number">Phần 2</span>
+      <h2 class="part-title">Làm việc với Models</h2>
+    </div>
+    <div class="sections-grid">
+
+      <a href="sections/04-prompt-engineering.html" class="section-card">
+        <span class="section-card-num">§ 04</span>
+        <span class="section-card-title">Prompt Engineering</span>
+        <span class="section-card-desc">Zero/few-shot, Chain-of-Thought, structured output, và defensive prompting.</span>
+        <div class="section-card-tags">
+          <span class="tag">prompting</span>
+        </div>
+      </a>
+
+      <a href="sections/05-model-selection.html" class="section-card">
+        <span class="section-card-num">§ 05</span>
+        <span class="section-card-title">Model Selection &amp; Evaluation</span>
+        <span class="section-card-desc">Benchmarks, xây dựng custom evals, và kỹ thuật LLM-as-judge.</span>
+        <div class="section-card-tags">
+          <span class="tag">evaluation</span>
+        </div>
+      </a>
+
+      <a href="sections/06-fine-tuning.html" class="section-card">
+        <span class="section-card-num">§ 06</span>
+        <span class="section-card-title">Fine-tuning &amp; Customization</span>
+        <span class="section-card-desc">SFT, LoRA, DPO — khi nào nên fine-tune thay vì chỉ prompt.</span>
+        <div class="section-card-tags">
+          <span class="tag">fine-tuning</span>
+        </div>
+      </a>
+
+    </div>
+  </div>
+
+  <!-- ===== PART 3 ===== -->
+  <div class="part">
+    <div class="part-header">
+      <span class="part-number">Phần 3</span>
+      <h2 class="part-title">Data Engineering cho AI</h2>
+    </div>
+    <div class="sections-grid">
+
+      <a href="sections/07-data-pipeline.html" class="section-card">
+        <span class="section-card-num">§ 07</span>
+        <span class="section-card-title">Data Pipeline</span>
+        <span class="section-card-desc">Ingest, parse, clean, enrich, và chiến lược refresh data cho hệ thống AI.</span>
+        <div class="section-card-tags">
+          <span class="tag blue">data</span>
+        </div>
+      </a>
+
+      <a href="sections/08-vector-search.html" class="section-card">
+        <span class="section-card-num">§ 08</span>
+        <span class="section-card-title">Vector Search &amp; Knowledge Stores</span>
+        <span class="section-card-desc">HNSW indexing, hybrid retrieval, và multitenancy trong vector database.</span>
+        <div class="section-card-tags">
+          <span class="tag blue">search</span>
+          <span class="tag blue">vectors</span>
+        </div>
+      </a>
+
+    </div>
+  </div>
+
+  <!-- ===== PART 4 ===== -->
+  <div class="part">
+    <div class="part-header">
+      <span class="part-number">Phần 4</span>
+      <h2 class="part-title">Augmentation Patterns</h2>
+    </div>
+    <div class="sections-grid">
+
+      <a href="sections/09-rag.html" class="section-card">
+        <span class="section-card-num">§ 09</span>
+        <span class="section-card-title">RAG</span>
+        <span class="section-card-desc">Ingestion, chunking, embeddings, retrieval, reranking, và các pattern nâng cao.</span>
+        <div class="section-card-tags">
+          <span class="tag">rag</span>
+          <span class="tag blue">retrieval</span>
+        </div>
+      </a>
+
+      <a href="sections/10-agents.html" class="section-card">
+        <span class="section-card-num">§ 10</span>
+        <span class="section-card-title">Agents &amp; Tool Use</span>
+        <span class="section-card-desc">ReAct loop, planning, memory, và kiến trúc multi-agent.</span>
+        <div class="section-card-tags">
+          <span class="tag">agents</span>
+          <span class="tag blue">tools</span>
+        </div>
+      </a>
+
+      <a href="sections/11-workflows-vs-agents.html" class="section-card">
+        <span class="section-card-num">§ 11</span>
+        <span class="section-card-title">Workflows vs Agents</span>
+        <span class="section-card-desc">Anthropic patterns, khi nào dùng workflow cố định và khi nào cần agent tự quyết.</span>
+        <div class="section-card-tags">
+          <span class="tag">design</span>
+        </div>
+      </a>
+
+    </div>
+  </div>
+
+  <!-- ===== PART 5 ===== -->
+  <div class="part">
+    <div class="part-header">
+      <span class="part-number">Phần 5</span>
+      <h2 class="part-title">Production Engineering</h2>
+    </div>
+    <div class="sections-grid">
+
+      <a href="sections/12-inference-serving.html" class="section-card">
+        <span class="section-card-num">§ 12</span>
+        <span class="section-card-title">Inference &amp; Serving</span>
+        <span class="section-card-desc">Hosted vs self-hosted, tối ưu latency, throughput, và batching strategies.</span>
+        <div class="section-card-tags">
+          <span class="tag green">infra</span>
+        </div>
+      </a>
+
+      <a href="sections/13-observability.html" class="section-card">
+        <span class="section-card-num">§ 13</span>
+        <span class="section-card-title">Observability &amp; Evaluation</span>
+        <span class="section-card-desc">Tracing, online evaluation, drift detection, và dashboards cho hệ thống AI.</span>
+        <div class="section-card-tags">
+          <span class="tag green">ops</span>
+        </div>
+      </a>
+
+      <a href="sections/14-reliability-safety.html" class="section-card">
+        <span class="section-card-num">§ 14</span>
+        <span class="section-card-title">Reliability &amp; Safety</span>
+        <span class="section-card-desc">Guardrails, fallback strategies, và kỹ thuật giảm thiểu hallucination.</span>
+        <div class="section-card-tags">
+          <span class="tag">safety</span>
+        </div>
+      </a>
+
+      <a href="sections/15-security.html" class="section-card">
+        <span class="section-card-num">§ 15</span>
+        <span class="section-card-title">Security</span>
+        <span class="section-card-desc">OWASP LLM Top 10, prompt injection, và tool abuse prevention.</span>
+        <div class="section-card-tags">
+          <span class="tag">security</span>
+        </div>
+      </a>
+
+    </div>
+  </div>
+
+  <!-- ===== PART 6 ===== -->
+  <div class="part">
+    <div class="part-header">
+      <span class="part-number">Phần 6</span>
+      <h2 class="part-title">Application Architecture</h2>
+    </div>
+    <div class="sections-grid">
+
+      <a href="sections/16-designing-ai-products.html" class="section-card">
+        <span class="section-card-num">§ 16</span>
+        <span class="section-card-title">Designing AI Products (UX)</span>
+        <span class="section-card-desc">Streaming response, citations, Human-in-the-Loop, và graceful degradation.</span>
+        <div class="section-card-tags">
+          <span class="tag lilac">ux</span>
+        </div>
+      </a>
+
+      <a href="sections/17-multimodal.html" class="section-card">
+        <span class="section-card-num">§ 17</span>
+        <span class="section-card-title">Multimodal Applications</span>
+        <span class="section-card-desc">Vision, audio, voice agents, và document AI — thiết kế hệ thống đa phương tiện.</span>
+        <div class="section-card-tags">
+          <span class="tag lilac">multimodal</span>
+        </div>
+      </a>
+
+      <a href="sections/18-code-generating-ai.html" class="section-card">
+        <span class="section-card-num">§ 18</span>
+        <span class="section-card-title">Code-generating AI Systems</span>
+        <span class="section-card-desc">Copilots, code sandboxes, và kiến trúc coding agents tự động.</span>
+        <div class="section-card-tags">
+          <span class="tag lilac">code-ai</span>
+        </div>
+      </a>
+
+    </div>
+  </div>
+
+  <!-- ===== PART 7 ===== -->
+  <div class="part">
+    <div class="part-header">
+      <span class="part-number">Phần 7</span>
+      <h2 class="part-title">Operations &amp; Team</h2>
+    </div>
+    <div class="sections-grid">
+
+      <a href="sections/19-mlops-llmops.html" class="section-card">
+        <span class="section-card-num">§ 19</span>
+        <span class="section-card-title">MLOps / LLMOps</span>
+        <span class="section-card-desc">CI/CD cho prompts, experiment tracking, và chiến lược rollback trong AI system.</span>
+        <div class="section-card-tags">
+          <span class="tag green">ops</span>
+        </div>
+      </a>
+
+      <a href="sections/20-cost-finops.html" class="section-card">
+        <span class="section-card-num">§ 20</span>
+        <span class="section-card-title">Cost &amp; FinOps</span>
+        <span class="section-card-desc">Prompt caching, model routing, và chiến lược budgeting cho AI workloads.</span>
+        <div class="section-card-tags">
+          <span class="tag green">cost</span>
+        </div>
+      </a>
+
+      <a href="sections/21-team-process.html" class="section-card">
+        <span class="section-card-num">§ 21</span>
+        <span class="section-card-title">Team &amp; Process</span>
+        <span class="section-card-desc">Hiring, vòng lặp cải tiến, và những bẫy tổ chức thường gặp với AI teams.</span>
+        <div class="section-card-tags">
+          <span class="tag green">team</span>
+        </div>
+      </a>
+
+    </div>
+  </div>
+
+  <!-- ===== PART 8 ===== -->
+  <div class="part">
+    <div class="part-header">
+      <span class="part-number">Phần 8</span>
+      <h2 class="part-title">Tương lai &amp; Nâng cao</h2>
+    </div>
+    <div class="sections-grid">
+
+      <a href="sections/22-future-advanced.html" class="section-card">
+        <span class="section-card-num">§ 22</span>
+        <span class="section-card-title">Reasoning, Long Context &amp; Edge AI</span>
+        <span class="section-card-desc">Reasoning models, long context engineering, edge AI deployment, và autonomous agents — nhìn về phía trước.</span>
+        <div class="section-card-tags">
+          <span class="tag lilac">advanced</span>
+          <span class="tag lilac">future</span>
+        </div>
+      </a>
+
+    </div>
+  </div>
+
+  <!-- ===== PART 9 ===== -->
+  <div class="part">
+    <div class="part-header">
+      <span class="part-number">Phần 9 · advanced</span>
+      <h2 class="part-title">Agent Engineering (chuyên sâu)</h2>
+    </div>
+    <div class="sections-grid">
+
+      <a href="sections/23-agent-design-patterns.html" class="section-card">
+        <span class="section-card-num">§ 23</span>
+        <span class="section-card-title">Agent Design Patterns nâng cao</span>
+        <span class="section-card-desc">Tool composition, sub-agent, dispatcher, swarm, MoA, critic-actor — và khi nào dùng cái nào.</span>
+        <div class="section-card-tags">
+          <span class="tag">agents</span>
+          <span class="tag blue">patterns</span>
+        </div>
+      </a>
+
+      <a href="sections/24-agent-harness.html" class="section-card">
+        <span class="section-card-num">§ 24</span>
+        <span class="section-card-title">Agent Harness là gì</span>
+        <span class="section-card-desc">Anatomy của Claude Code / Codex CLI / Cursor / Devin; MCP; cách tự xây harness.</span>
+        <div class="section-card-tags">
+          <span class="tag">harness</span>
+          <span class="tag blue">mcp</span>
+        </div>
+      </a>
+
+      <a href="sections/25-agent-memory.html" class="section-card">
+        <span class="section-card-num">§ 25</span>
+        <span class="section-card-title">Agent Memory Architectures</span>
+        <span class="section-card-desc">Episodic, semantic, procedural memory; MemGPT, Letta, mem0, Zep — chiến lược write &amp; retrieve.</span>
+        <div class="section-card-tags">
+          <span class="tag">memory</span>
+        </div>
+      </a>
+
+      <a href="sections/26-durable-agents.html" class="section-card">
+        <span class="section-card-num">§ 26</span>
+        <span class="section-card-title">Long-running &amp; Durable Agents</span>
+        <span class="section-card-desc">Checkpoint, pause/resume; Temporal, Inngest, Restate; agent-as-workflow.</span>
+        <div class="section-card-tags">
+          <span class="tag green">durability</span>
+        </div>
+      </a>
+
+      <a href="sections/27-agent-eval.html" class="section-card">
+        <span class="section-card-num">§ 27</span>
+        <span class="section-card-title">Agent Eval &amp; Benchmarking</span>
+        <span class="section-card-desc">SWE-bench, GAIA, OSWorld, WebArena, Tau-bench, BFCL; trajectory eval + tool-call eval.</span>
+        <div class="section-card-tags">
+          <span class="tag">evaluation</span>
+        </div>
+      </a>
+
+      <a href="sections/28-multi-agent-orchestration.html" class="section-card">
+        <span class="section-card-num">§ 28</span>
+        <span class="section-card-title">Multi-agent Orchestration</span>
+        <span class="section-card-desc">Hierarchical, debate, parallel-critic, MoA, blackboard; AutoGen, CrewAI, LangGraph.</span>
+        <div class="section-card-tags">
+          <span class="tag">multi-agent</span>
+        </div>
+      </a>
+
+    </div>
+  </div>
+
+  <!-- ===== PART 10 ===== -->
+  <div class="part">
+    <div class="part-header">
+      <span class="part-number">Phần 10 · advanced</span>
+      <h2 class="part-title">AI Security (chuyên sâu)</h2>
+    </div>
+    <div class="sections-grid">
+
+      <a href="sections/29-prompt-injection-deep.html" class="section-card">
+        <span class="section-card-num">§ 29</span>
+        <span class="section-card-title">Prompt Injection Deep-dive</span>
+        <span class="section-card-desc">Direct &amp; indirect injection, ASCII smuggling, Unicode tag bypass, RAG poisoning, multi-modal injection.</span>
+        <div class="section-card-tags">
+          <span class="tag">security</span>
+          <span class="tag">injection</span>
+        </div>
+      </a>
+
+      <a href="sections/30-agent-threats.html" class="section-card">
+        <span class="section-card-num">§ 30</span>
+        <span class="section-card-title">Agent-specific Threats</span>
+        <span class="section-card-desc">Tool abuse, lateral movement, credential exfil, runaway loops — và mitigation framework.</span>
+        <div class="section-card-tags">
+          <span class="tag">security</span>
+          <span class="tag">agents</span>
+        </div>
+      </a>
+
+      <a href="sections/31-sandboxing.html" class="section-card">
+        <span class="section-card-num">§ 31</span>
+        <span class="section-card-title">Sandboxing &amp; Isolation</span>
+        <span class="section-card-desc">Process → container → microVM (Firecracker/gVisor) → VM; E2B, Modal, Daytona, Anthropic CU.</span>
+        <div class="section-card-tags">
+          <span class="tag green">infra</span>
+          <span class="tag">security</span>
+        </div>
+      </a>
+
+      <a href="sections/32-ai-red-team.html" class="section-card">
+        <span class="section-card-num">§ 32</span>
+        <span class="section-card-title">AI Red-teaming</span>
+        <span class="section-card-desc">Methodology, PyRIT, garak, automated jailbreak (PAIR, GCG, TAP); continuous red-team trong CI.</span>
+        <div class="section-card-tags">
+          <span class="tag">red-team</span>
+        </div>
+      </a>
+
+      <a href="sections/33-privacy.html" class="section-card">
+        <span class="section-card-num">§ 33</span>
+        <span class="section-card-title">Privacy &amp; Data Protection</span>
+        <span class="section-card-desc">Training data extraction, DP, PII redaction, ACL-aware RAG, ZDR, on-device strategy.</span>
+        <div class="section-card-tags">
+          <span class="tag">privacy</span>
+        </div>
+      </a>
+
+      <a href="sections/34-compliance.html" class="section-card">
+        <span class="section-card-num">§ 34</span>
+        <span class="section-card-title">Compliance &amp; Governance</span>
+        <span class="section-card-desc">EU AI Act, NIST AI RMF, ISO 42001, model cards &amp; datasheets, audit trails.</span>
+        <div class="section-card-tags">
+          <span class="tag">compliance</span>
+        </div>
+      </a>
+
+    </div>
+  </div>
+
+  <!-- ===== PART 11 ===== -->
+  <div class="part">
+    <div class="part-header">
+      <span class="part-number">Phần 11 · advanced</span>
+      <h2 class="part-title">Advanced Eval &amp; Quality</h2>
+    </div>
+    <div class="sections-grid">
+
+      <a href="sections/35-eval-dataset-design.html" class="section-card">
+        <span class="section-card-num">§ 35</span>
+        <span class="section-card-title">Eval Dataset Design</span>
+        <span class="section-card-desc">Stratified sampling, sample size, IAA (Cohen's kappa, Krippendorff), eval set lifecycle.</span>
+        <div class="section-card-tags">
+          <span class="tag">evaluation</span>
+        </div>
+      </a>
+
+      <a href="sections/36-reward-modeling.html" class="section-card">
+        <span class="section-card-num">§ 36</span>
+        <span class="section-card-title">Reward Modeling &amp; Process Supervision</span>
+        <span class="section-card-desc">ORM vs PRM cho reasoning models; RLHF/DPO/ORPO/SimPO/KTO; reward hacking.</span>
+        <div class="section-card-tags">
+          <span class="tag">training</span>
+          <span class="tag">rl</span>
+        </div>
+      </a>
+
+      <a href="sections/37-continuous-eval.html" class="section-card">
+        <span class="section-card-num">§ 37</span>
+        <span class="section-card-title">Continuous Eval &amp; Regression</span>
+        <span class="section-card-desc">Eval as code, CI gates, drift detection, golden/regression/smoke/canary sets.</span>
+        <div class="section-card-tags">
+          <span class="tag green">ci</span>
+        </div>
+      </a>
+
+    </div>
+  </div>
+
+  <!-- ===== PART 12 ===== -->
+  <div class="part">
+    <div class="part-header">
+      <span class="part-number">Phần 12 · advanced</span>
+      <h2 class="part-title">Production Patterns 2026+</h2>
+    </div>
+    <div class="sections-grid">
+
+      <a href="sections/38-inference-compute-scaling.html" class="section-card">
+        <span class="section-card-num">§ 38</span>
+        <span class="section-card-title">Inference-time Compute Scaling</span>
+        <span class="section-card-desc">Best-of-N, self-consistency, ToT, MCTS; reasoning models (o-series, R1, Claude thinking) internals.</span>
+        <div class="section-card-tags">
+          <span class="tag lilac">reasoning</span>
+        </div>
+      </a>
+
+      <a href="sections/39-computer-use-agents.html" class="section-card">
+        <span class="section-card-num">§ 39</span>
+        <span class="section-card-title">Computer-use &amp; Browser-use Agents</span>
+        <span class="section-card-desc">Claude Computer Use, OpenAI Operator, browser-use, Skyvern; visual vs DOM grounding.</span>
+        <div class="section-card-tags">
+          <span class="tag lilac">agents</span>
+        </div>
+      </a>
+
+      <a href="sections/40-code-execution-tool.html" class="section-card">
+        <span class="section-card-num">§ 40</span>
+        <span class="section-card-title">Code Execution as a Tool</span>
+        <span class="section-card-desc">Code Interpreter, E2B, Modal sandboxes; verifier pattern (generate → run → check → correct).</span>
+        <div class="section-card-tags">
+          <span class="tag lilac">code-exec</span>
+        </div>
+      </a>
+
+      <a href="sections/41-distributed-agent-runtimes.html" class="section-card">
+        <span class="section-card-num">§ 41</span>
+        <span class="section-card-title">Distributed Agent Runtimes</span>
+        <span class="section-card-desc">Queue + worker pool, agent mesh, sticky session, Ray/Temporal/Modal — scale &amp; fault tolerance.</span>
+        <div class="section-card-tags">
+          <span class="tag green">scale</span>
+        </div>
+      </a>
+
+      <a href="sections/42-edge-on-device.html" class="section-card">
+        <span class="section-card-num">§ 42</span>
+        <span class="section-card-title">Edge &amp; On-device Agents</span>
+        <span class="section-card-desc">Apple Intelligence + PCC, Phi-4, Gemini Nano, Llama 3.2; MLX, Core ML, hybrid edge-cloud routing.</span>
+        <div class="section-card-tags">
+          <span class="tag lilac">edge</span>
+        </div>
+      </a>
+
+    </div>
+  </div>
+
+  <!-- ===== READING PATHS ===== -->
+  <section class="paths-section">
+    <h2>Bắt đầu từ đâu?</h2>
+    <p class="sub">Chọn lộ trình phù hợp với mục tiêu của bạn</p>
+    <div class="paths-grid">
+
+      <div class="path-card">
+        <div class="path-label">Lộ trình 1</div>
+        <div class="path-title">Khởi đầu</div>
+        <div class="path-steps">
+          <a href="sections/01-what-is-ai-engineering.html" class="path-step">§01</a>
+          <span class="path-arrow">→</span>
+          <a href="sections/02-foundation-models.html" class="path-step">§02</a>
+          <span class="path-arrow">→</span>
+          <a href="sections/03-how-llm-works.html" class="path-step">§03</a>
+          <span class="path-arrow">→</span>
+          <a href="sections/04-prompt-engineering.html" class="path-step">§04</a>
+          <span class="path-arrow">→</span>
+          <a href="sections/05-model-selection.html" class="path-step">§05</a>
+        </div>
+      </div>
+
+      <div class="path-card">
+        <div class="path-label">Lộ trình 2</div>
+        <div class="path-title">RAG end-to-end</div>
+        <div class="path-steps">
+          <a href="sections/02-foundation-models.html" class="path-step">§02</a>
+          <span class="path-arrow">→</span>
+          <a href="sections/07-data-pipeline.html" class="path-step">§07</a>
+          <span class="path-arrow">→</span>
+          <a href="sections/08-vector-search.html" class="path-step">§08</a>
+          <span class="path-arrow">→</span>
+          <a href="sections/09-rag.html" class="path-step">§09</a>
+          <span class="path-arrow">→</span>
+          <a href="sections/13-observability.html" class="path-step">§13</a>
+          <span class="path-arrow">→</span>
+          <a href="sections/15-security.html" class="path-step">§15</a>
+        </div>
+      </div>
+
+      <div class="path-card">
+        <div class="path-label">Lộ trình 3</div>
+        <div class="path-title">Agent cơ bản</div>
+        <div class="path-steps">
+          <a href="sections/10-agents.html" class="path-step">§10</a>
+          <span class="path-arrow">→</span>
+          <a href="sections/11-workflows-vs-agents.html" class="path-step">§11</a>
+          <span class="path-arrow">→</span>
+          <a href="sections/14-reliability-safety.html" class="path-step">§14</a>
+          <span class="path-arrow">→</span>
+          <a href="sections/18-code-generating-ai.html" class="path-step">§18</a>
+        </div>
+      </div>
+
+      <div class="path-card">
+        <div class="path-label">Lộ trình 4 · advanced</div>
+        <div class="path-title">Agent chuyên sâu</div>
+        <div class="path-steps">
+          <a href="sections/23-agent-design-patterns.html" class="path-step">§23</a>
+          <span class="path-arrow">→</span>
+          <a href="sections/24-agent-harness.html" class="path-step">§24</a>
+          <span class="path-arrow">→</span>
+          <a href="sections/25-agent-memory.html" class="path-step">§25</a>
+          <span class="path-arrow">→</span>
+          <a href="sections/26-durable-agents.html" class="path-step">§26</a>
+          <span class="path-arrow">→</span>
+          <a href="sections/27-agent-eval.html" class="path-step">§27</a>
+          <span class="path-arrow">→</span>
+          <a href="sections/28-multi-agent-orchestration.html" class="path-step">§28</a>
+        </div>
+      </div>
+
+      <div class="path-card">
+        <div class="path-label">Lộ trình 5</div>
+        <div class="path-title">Production-ready</div>
+        <div class="path-steps">
+          <a href="sections/12-inference-serving.html" class="path-step">§12</a>
+          <span class="path-arrow">→</span>
+          <a href="sections/13-observability.html" class="path-step">§13</a>
+          <span class="path-arrow">→</span>
+          <a href="sections/14-reliability-safety.html" class="path-step">§14</a>
+          <span class="path-arrow">→</span>
+          <a href="sections/19-mlops-llmops.html" class="path-step">§19</a>
+          <span class="path-arrow">→</span>
+          <a href="sections/20-cost-finops.html" class="path-step">§20</a>
+        </div>
+      </div>
+
+      <div class="path-card">
+        <div class="path-label">Lộ trình 6 · advanced</div>
+        <div class="path-title">Security &amp; harden</div>
+        <div class="path-steps">
+          <a href="sections/15-security.html" class="path-step">§15</a>
+          <span class="path-arrow">→</span>
+          <a href="sections/29-prompt-injection-deep.html" class="path-step">§29</a>
+          <span class="path-arrow">→</span>
+          <a href="sections/30-agent-threats.html" class="path-step">§30</a>
+          <span class="path-arrow">→</span>
+          <a href="sections/31-sandboxing.html" class="path-step">§31</a>
+          <span class="path-arrow">→</span>
+          <a href="sections/32-ai-red-team.html" class="path-step">§32</a>
+          <span class="path-arrow">→</span>
+          <a href="sections/33-privacy.html" class="path-step">§33</a>
+          <span class="path-arrow">→</span>
+          <a href="sections/34-compliance.html" class="path-step">§34</a>
+        </div>
+      </div>
+
+      <div class="path-card">
+        <div class="path-label">Lộ trình 7 · advanced</div>
+        <div class="path-title">Eval-driven dev</div>
+        <div class="path-steps">
+          <a href="sections/05-model-selection.html" class="path-step">§05</a>
+          <span class="path-arrow">→</span>
+          <a href="sections/35-eval-dataset-design.html" class="path-step">§35</a>
+          <span class="path-arrow">→</span>
+          <a href="sections/27-agent-eval.html" class="path-step">§27</a>
+          <span class="path-arrow">→</span>
+          <a href="sections/36-reward-modeling.html" class="path-step">§36</a>
+          <span class="path-arrow">→</span>
+          <a href="sections/37-continuous-eval.html" class="path-step">§37</a>
+        </div>
+      </div>
+
+      <div class="path-card">
+        <div class="path-label">Lộ trình 8 · advanced</div>
+        <div class="path-title">2026+ frontier</div>
+        <div class="path-steps">
+          <a href="sections/22-future-advanced.html" class="path-step">§22</a>
+          <span class="path-arrow">→</span>
+          <a href="sections/38-inference-compute-scaling.html" class="path-step">§38</a>
+          <span class="path-arrow">→</span>
+          <a href="sections/39-computer-use-agents.html" class="path-step">§39</a>
+          <span class="path-arrow">→</span>
+          <a href="sections/40-code-execution-tool.html" class="path-step">§40</a>
+          <span class="path-arrow">→</span>
+          <a href="sections/41-distributed-agent-runtimes.html" class="path-step">§41</a>
+          <span class="path-arrow">→</span>
+          <a href="sections/42-edge-on-device.html" class="path-step">§42</a>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="index-footer">
+    <span>AI Engineering · Sổ tay dành cho software engineers</span>
+    <span class="version">Soạn tháng 5/2026 · v1</span>
+  </footer>
+
+</main>
+
+<script src="assets/script.js"></script>
+</body>
+</html>

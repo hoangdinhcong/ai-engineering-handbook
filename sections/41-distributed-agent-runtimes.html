@@ -1,0 +1,1004 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>41 · Distributed Agent Runtimes — AI Engineering</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<nav class="top-nav">
+  <div class="brand"><span class="dot"></span> AI Engineering</div>
+  <div class="crumbs"><a href="../index.html">Mục lục</a> › Phần 12 · <span>41 — Distributed Agent Runtimes</span></div>
+  <div class="nav-actions">
+    <a href="40-code-execution-tool.html">← Trước</a>
+    <a href="42-edge-on-device.html">Tiếp →</a>
+  </div>
+</nav>
+
+<main class="page">
+
+  <section class="hero">
+    <span class="eyebrow">Phần 12 · §41</span>
+    <h1>Distributed Agent Runtimes</h1>
+    <p class="lede">
+      Từ một Python script đơn độc đến fleet of workers chạy song song — kiến trúc phân tán cho AI agents: queue, worker pool, agent mesh, sticky session, và cách đảm bảo hệ thống không sập khi một phần thất bại.
+    </p>
+    <img class="hero-image" src="../images/41-distributed-agent-runtimes.png" alt="Hero illustration" onerror="this.style.display='none'">
+  </section>
+
+  <aside class="toc">
+    <div class="toc-title">Trong trang này</div>
+    <ul>
+      <li><a href="#why-distribute">41.1 Tại sao cần phân tán agent</a></li>
+      <li><a href="#single-host-limits">41.2 Giới hạn single-host</a></li>
+      <li><a href="#queue-orchestration">41.3 Queue-based orchestration</a></li>
+      <li><a href="#worker-pool">41.4 Worker pool architecture</a></li>
+      <li><a href="#agent-mesh">41.5 Agent mesh / service-oriented</a></li>
+      <li><a href="#shared-memory">41.6 Chia sẻ memory phân tán</a></li>
+      <li><a href="#sticky-session">41.7 Sticky session / session affinity</a></li>
+      <li><a href="#multi-tenancy">41.8 Multi-tenancy at scale</a></li>
+      <li><a href="#frameworks">41.9 Frameworks: Ray, Dask, K8s, Modal</a></li>
+      <li><a href="#workflow-orchestrators">41.10 Workflow orchestrators: Temporal / Inngest</a></li>
+      <li><a href="#observability">41.11 Observability phân tán</a></li>
+      <li><a href="#failure-modes">41.12 Failure modes</a></li>
+      <li><a href="#cost-optimization">41.13 Tối ưu chi phí at scale</a></li>
+      <li><a href="#cold-start">41.14 Cold start mitigation</a></li>
+      <li><a href="#old-vs-new">41.15 Cách cũ vs cách hiện tại</a></li>
+      <li><a href="#tom-tat">Tóm tắt</a></li>
+    </ul>
+  </aside>
+
+  <h2 id="why-distribute">41.1 Tại sao cần phân tán agent?</h2>
+  <p>
+    Một AI agent đơn lẻ chạy trên một process có thể xử lý vài chục request đồng thời trước khi
+    chạm giới hạn. Khi sản phẩm scale, bốn lý do buộc ta phải nghĩ đến <strong>distributed agent runtime</strong>:
+  </p>
+
+  <div class="grid-2">
+    <div class="card">
+      <h4>Horizontal Scale</h4>
+      <p>
+        Thêm instance = thêm capacity. Không bị giới hạn bởi RAM/CPU của một máy.
+        Mỗi worker xử lý một subset task — tổng throughput tăng tuyến tính (lý tưởng).
+      </p>
+    </div>
+    <div class="card">
+      <h4>Parallelism</h4>
+      <p>
+        Nhiều agent con (sub-agents) trong một workflow có thể chạy song song.
+        Ví dụ: phân tích 50 tài liệu cùng lúc thay vì tuần tự — giảm wall-clock time từ hàng giờ xuống vài phút.
+      </p>
+    </div>
+    <div class="card">
+      <h4>Fault Isolation</h4>
+      <p>
+        Một worker crash không kéo chết toàn bộ hệ thống. Task bị trả lại queue để worker khác
+        tiếp tục. Failure scope được kiểm soát ở mức process/pod, không phải mức toàn ứng dụng.
+      </p>
+    </div>
+    <div class="card">
+      <h4>Geo-distribution</h4>
+      <p>
+        Deploy workers gần người dùng (us-east, eu-west, ap-southeast) để giảm round-trip latency.
+        Đặc biệt quan trọng với real-time agents cần phản hồi dưới 2 giây.
+      </p>
+    </div>
+  </div>
+
+  <h2 id="single-host-limits">41.2 Giới hạn của single-host model</h2>
+  <p>
+    Trước khi phân tán, cần hiểu tại sao chạy agent trên một máy lại có trần:
+  </p>
+
+  <h3>1 agent per process model</h3>
+  <p>
+    Nhiều agent framework (LangChain, CrewAI v1) thiết kế agent như một object Python chạy trong
+    một thread. Concurrency giới hạn bởi <em>asyncio event loop</em> — ổn với I/O-bound tasks (gọi API),
+    nhưng nếu một agent block thread (CPU-bound, long sleep), các agent khác phải chờ.
+  </p>
+
+  <h3>GIL — Global Interpreter Lock</h3>
+  <p>
+    CPython có GIL: chỉ một thread Python thực thi bytecode tại một thời điểm. Multi-threading không
+    giúp CPU-bound code. Giải pháp: <code>multiprocessing</code> — mỗi worker là một process riêng,
+    có GIL riêng. Đây là lý do tại sao queue + worker process là pattern đúng đắn, không phải thread pool.
+  </p>
+
+  <h3>GPU sharing issues</h3>
+  <p>
+    Nếu agent cần dùng local model (embedding, reranker, nhỏ), nhiều process cùng load model lên GPU
+    gây OOM hoặc context switch tốn kém. Giải pháp: tách model serving ra một microservice riêng
+    (dùng vLLM/TGI), các workers chỉ gọi HTTP/gRPC — không giữ GPU context trong worker process.
+  </p>
+
+  <div class="callout warn">
+    <div class="icon">⚠</div>
+    <div>
+      <div class="title">Anti-pattern: Thread pool cho agent</div>
+      <p>
+        <code>ThreadPoolExecutor</code> với N threads không bypass GIL cho CPU-bound code.
+        Và nếu một thread bị stuck (rate limit backoff dài, I/O timeout), nó chiếm slot trong pool.
+        Dùng <strong>process-based worker</strong> (separate process) + message queue là pattern đúng
+        cho distributed agent workloads.
+      </p>
+    </div>
+  </div>
+
+  <h2 id="queue-orchestration">41.3 Queue-based orchestration</h2>
+  <p>
+    Pattern cơ bản nhất cho distributed agents: <strong>producer–consumer qua message queue</strong>.
+    Producer tạo task và đẩy vào queue; worker pool (consumers) lấy task ra, xử lý, và acknowledge.
+  </p>
+
+  <h3>Các lựa chọn queue phổ biến</h3>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Queue</th>
+          <th>Throughput</th>
+          <th>Delivery guarantee</th>
+          <th>Visibility timeout</th>
+          <th>Phù hợp với agent</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>SQS (AWS)</strong></td>
+          <td>Rất cao</td>
+          <td>At-least-once</td>
+          <td>Có (visibility timeout)</td>
+          <td>Serverless workers, Lambda, ECS tasks</td>
+        </tr>
+        <tr>
+          <td><strong>RabbitMQ</strong></td>
+          <td>Cao</td>
+          <td>At-least-once (với ack)</td>
+          <td>Qua manual ack/nack</td>
+          <td>On-prem, nhiều routing pattern phức tạp</td>
+        </tr>
+        <tr>
+          <td><strong>Redis Streams</strong></td>
+          <td>Rất cao</td>
+          <td>At-least-once (consumer group)</td>
+          <td>Pending entries list (PEL)</td>
+          <td>Khi đã có Redis, latency thấp, self-hosted</td>
+        </tr>
+        <tr>
+          <td><strong>Kafka</strong></td>
+          <td>Cực cao</td>
+          <td>At-least-once / exactly-once (transactions)</td>
+          <td>Replay từ offset</td>
+          <td>Event sourcing, audit log, ML pipeline scale lớn</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Producer–Consumer pattern cho agent tasks</h3>
+  <p>
+    Workflow điển hình: một <em>orchestrator</em> nhận request từ người dùng, chia nhỏ thành
+    <em>agent tasks</em>, đẩy từng task vào queue. Workers lấy task, chạy agent loop,
+    ghi kết quả vào database, và gửi event "done" lại để orchestrator tổng hợp.
+  </p>
+
+  <pre><code><span class="cm"># Producer: Orchestrator đẩy task vào queue</span>
+<span class="kw">import</span> json, boto3
+
+sqs = boto3.<span class="fn">client</span>(<span class="str">'sqs'</span>)
+QUEUE_URL = <span class="str">'https://sqs.us-east-1.amazonaws.com/123/agent-tasks'</span>
+
+<span class="kw">def</span> <span class="fn">dispatch_agent_task</span>(task_id: str, task_type: str, payload: dict):
+
+  message = {
+    <span class="str">'task_id'</span>: task_id,
+    <span class="str">'task_type'</span>: task_type,
+    <span class="str">'payload'</span>: payload,
+    <span class="str">'retry_count'</span>: <span class="num">0</span>,
+  }
+  sqs.<span class="fn">send_message</span>(
+    QueueUrl=QUEUE_URL,
+    MessageBody=json.<span class="fn">dumps</span>(message),
+    <span class="cm"># Route cùng session vào cùng worker (message group)</span>
+    MessageGroupId=payload.<span class="fn">get</span>(<span class="str">'session_id'</span>, task_id),
+  )
+
+<span class="cm"># Consumer: Worker lấy task và xử lý</span>
+<span class="kw">async def</span> <span class="fn">worker_loop</span>():
+
+  <span class="kw">while</span> <span class="kw">True</span>:
+    msgs = sqs.<span class="fn">receive_message</span>(
+      QueueUrl=QUEUE_URL,
+      MaxNumberOfMessages=<span class="num">1</span>,
+      WaitTimeSeconds=<span class="num">20</span>,         <span class="cm"># long polling</span>
+      VisibilityTimeout=<span class="num">300</span>,       <span class="cm"># 5 phút để xử lý</span>
+    ).<span class="fn">get</span>(<span class="str">'Messages'</span>, [])
+
+    <span class="kw">for</span> msg <span class="kw">in</span> msgs:
+      task = json.<span class="fn">loads</span>(msg[<span class="str">'Body'</span>])
+      <span class="kw">try</span>:
+        result = <span class="kw">await</span> <span class="fn">run_agent</span>(task)
+        <span class="kw">await</span> db.<span class="fn">save_result</span>(task[<span class="str">'task_id'</span>], result)
+        sqs.<span class="fn">delete_message</span>(   <span class="cm"># ACK</span>
+          QueueUrl=QUEUE_URL,
+          ReceiptHandle=msg[<span class="str">'ReceiptHandle'</span>],
+        )
+      <span class="kw">except</span> Exception <span class="kw">as</span> e:
+        <span class="fn">log_error</span>(task[<span class="str">'task_id'</span>], e)
+        <span class="cm"># Không delete → SQS tự retry sau visibility timeout</span></code></pre>
+
+  <h2 id="worker-pool">41.4 Worker pool architecture</h2>
+  <p>
+    Worker pool là trụ cột của distributed agent runtime: một tập hợp các <strong>stateless worker</strong>
+    kéo task từ queue, xử lý độc lập, và ghi state vào <em>external persistent store</em> (database, object storage).
+  </p>
+
+  <!-- SVG: Distributed Runtime Architecture -->
+  <svg class="diagram" viewBox="0 0 760 440" role="img" aria-label="Distributed agent runtime: queue + workers + shared state">
+    <defs>
+      <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#6f7c92"/>
+      </marker>
+    </defs>
+
+    <!-- Title -->
+    <text x="380" y="26" text-anchor="middle" font-weight="700" font-size="15">Distributed Agent Runtime Architecture</text>
+
+    <!-- API Gateway / Orchestrator -->
+    <rect class="node-accent" x="20" y="50" width="140" height="60" rx="10"/>
+    <text x="90" y="75" text-anchor="middle" font-weight="700" font-size="13">Orchestrator</text>
+    <text x="90" y="93" text-anchor="middle" font-size="11" fill="#ffb86b">API Gateway</text>
+
+    <!-- Arrow to queue -->
+    <line x1="160" y1="80" x2="218" y2="80" class="arrow" marker-end="url(#arrowhead)"/>
+    <text x="189" y="72" text-anchor="middle" class="label-sm">enqueue</text>
+
+    <!-- Message Queue -->
+    <rect class="node-blue" x="220" y="50" width="150" height="60" rx="10"/>
+    <text x="295" y="73" text-anchor="middle" font-weight="700" font-size="13">Message Queue</text>
+    <text x="295" y="91" text-anchor="middle" font-size="11" fill="#7cc4ff">SQS / RabbitMQ / Kafka</text>
+
+    <!-- Arrow to workers -->
+    <line x1="370" y1="65" x2="418" y2="55" class="arrow" marker-end="url(#arrowhead)"/>
+    <line x1="370" y1="80" x2="418" y2="80" class="arrow" marker-end="url(#arrowhead)"/>
+    <line x1="370" y1="95" x2="418" y2="105" class="arrow" marker-end="url(#arrowhead)"/>
+    <text x="394" y="76" text-anchor="middle" class="label-sm">poll</text>
+
+    <!-- Workers -->
+    <rect class="node-green" x="420" y="30" width="120" height="45" rx="8"/>
+    <text x="480" y="50" text-anchor="middle" font-weight="700" font-size="12">Worker 1</text>
+    <text x="480" y="66" text-anchor="middle" class="label-sm">Agent Loop</text>
+
+    <rect class="node-green" x="420" y="58" width="120" height="45" rx="8"/>
+    <text x="480" y="78" text-anchor="middle" font-weight="700" font-size="12">Worker 2</text>
+    <text x="480" y="94" text-anchor="middle" class="label-sm">Agent Loop</text>
+
+    <rect class="node-green" x="420" y="86" width="120" height="45" rx="8"/>
+    <text x="480" y="106" text-anchor="middle" font-weight="700" font-size="12">Worker 3</text>
+    <text x="480" y="122" text-anchor="middle" class="label-sm">Agent Loop</text>
+
+    <!-- Worker -> Tools (LLM, External) -->
+    <line x1="540" y1="52" x2="588" y2="52" class="arrow" marker-end="url(#arrowhead)"/>
+    <line x1="540" y1="80" x2="588" y2="80" class="arrow" marker-end="url(#arrowhead)"/>
+    <line x1="540" y1="108" x2="588" y2="108" class="arrow" marker-end="url(#arrowhead)"/>
+
+    <rect class="node-bg" x="590" y="40" width="150" height="80" rx="8"/>
+    <text x="665" y="62" text-anchor="middle" font-weight="700" font-size="12">External Services</text>
+    <text x="665" y="80" text-anchor="middle" font-size="11" fill="#7cc4ff">LLM API · Tools</text>
+    <text x="665" y="97" text-anchor="middle" font-size="11" fill="#b4e07a">Web Search · DB</text>
+
+    <!-- Shared State Store -->
+    <rect class="node-bg" x="100" y="180" width="540" height="80" rx="10"/>
+    <text x="370" y="210" text-anchor="middle" font-weight="700" font-size="14">Shared State Store (External, Persistent)</text>
+    <text x="210" y="235" text-anchor="middle" font-size="12" fill="#d3a4ff">Redis (working memory)</text>
+    <text x="370" y="235" text-anchor="middle" font-size="12" fill="#7cc4ff">Vector DB (long-term memory)</text>
+    <text x="540" y="235" text-anchor="middle" font-size="12" fill="#b4e07a">MongoDB/Postgres (task state)</text>
+
+    <!-- Workers -> Shared State -->
+    <line x1="480" y1="133" x2="480" y2="178" class="arrow" marker-end="url(#arrowhead)"/>
+    <text x="497" y="160" class="label-sm">read/write state</text>
+
+    <!-- Autoscale label -->
+    <rect class="node-accent" x="420" y="150" width="120" height="24" rx="6"/>
+    <text x="480" y="166" text-anchor="middle" font-size="11">↕ Autoscale (HPA)</text>
+
+    <!-- Result store -->
+    <rect class="node-bg" x="100" y="310" width="540" height="60" rx="10"/>
+    <text x="370" y="338" text-anchor="middle" font-weight="700" font-size="13">Result Store + Event Bus</text>
+    <text x="370" y="356" text-anchor="middle" font-size="12" fill="#6f7c92">Workers publish "task_done" events → Orchestrator polls / subscribes</text>
+
+    <!-- Shared State -> Result Store -->
+    <line x1="370" y1="260" x2="370" y2="308" class="arrow" marker-end="url(#arrowhead)"/>
+
+    <!-- Orchestrator -> Result Store (callback) -->
+    <line x1="90" y1="110" x2="90" y2="338" class="arrow" marker-end="url(#arrowhead)"/>
+    <line x1="91" y1="338" x2="99" y2="338" class="arrow" marker-end="url(#arrowhead)"/>
+    <text x="50" y="230" text-anchor="middle" class="label-sm" style="writing-mode:vertical-lr;transform:rotate(180deg);transform-origin:50px 230px;">subscribe/poll</text>
+
+    <!-- Stateless annotation -->
+    <text x="480" y="400" text-anchor="middle" font-size="12" fill="#b4e07a">Workers: STATELESS — state sống ở external store, không trong process</text>
+    <text x="480" y="420" text-anchor="middle" class="label-sm">Horizontal autoscale = thêm/bớt worker pods mà không mất state</text>
+  </svg>
+
+  <h3>Nguyên tắc worker stateless</h3>
+  <p>
+    Worker phải hoàn toàn <em>stateless</em>: không giữ conversation history, không cache model outputs
+    trong RAM giữa các requests. Tất cả state phải sống ở external store. Điều này cho phép:
+  </p>
+  <ul>
+    <li>Autoscale in/out bất cứ lúc nào mà không lo mất data</li>
+    <li>Bất kỳ worker nào cũng có thể tiếp tục task mà worker khác bỏ dở (sau crash)</li>
+    <li>Rolling deploy mà không cần drain session</li>
+  </ul>
+
+  <h2 id="agent-mesh">41.5 Agent mesh / service-oriented architecture</h2>
+  <p>
+    Bước tiếp theo: thay vì các worker generic, mỗi <strong>loại agent</strong> được triển khai như
+    một microservice riêng biệt với API riêng. Agent "orchestrator" gọi các agent "chuyên biệt"
+    qua HTTP hoặc gRPC/NATS.
+  </p>
+
+  <!-- SVG: Agent Mesh Service-to-Service -->
+  <svg class="diagram" viewBox="0 0 760 360" role="img" aria-label="Agent mesh: service-to-service calls">
+    <defs>
+      <marker id="arrowhead-mesh" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#6f7c92"/>
+      </marker>
+    </defs>
+
+    <text x="380" y="26" text-anchor="middle" font-weight="700" font-size="15">Agent Mesh — Service-oriented</text>
+
+    <!-- User -->
+    <rect class="node-bg" x="20" y="140" width="80" height="50" rx="8"/>
+    <text x="60" y="161" text-anchor="middle" font-size="12">User /</text>
+    <text x="60" y="178" text-anchor="middle" font-size="12">Client</text>
+
+    <!-- Orchestrator Agent -->
+    <rect class="node-accent" x="140" y="120" width="130" height="70" rx="10"/>
+    <text x="205" y="148" text-anchor="middle" font-weight="700" font-size="13">Orchestrator</text>
+    <text x="205" y="165" text-anchor="middle" font-size="11" fill="#ffb86b">Agent Service</text>
+    <text x="205" y="181" text-anchor="middle" class="label-sm">:8000</text>
+
+    <line x1="100" y1="165" x2="138" y2="165" class="arrow" marker-end="url(#arrowhead-mesh)"/>
+
+    <!-- Research Agent -->
+    <rect class="node-blue" x="340" y="50" width="130" height="70" rx="10"/>
+    <text x="405" y="78" text-anchor="middle" font-weight="700" font-size="13">Research</text>
+    <text x="405" y="95" text-anchor="middle" font-size="11" fill="#7cc4ff">Agent Service</text>
+    <text x="405" y="111" text-anchor="middle" class="label-sm">:8001 · gRPC</text>
+
+    <!-- Code Agent -->
+    <rect class="node-green" x="340" y="145" width="130" height="70" rx="10"/>
+    <text x="405" y="173" text-anchor="middle" font-weight="700" font-size="13">Code Executor</text>
+    <text x="405" y="190" text-anchor="middle" font-size="11" fill="#b4e07a">Agent Service</text>
+    <text x="405" y="206" text-anchor="middle" class="label-sm">:8002 · HTTP</text>
+
+    <!-- Summary Agent -->
+    <rect class="node-bg" x="340" y="240" width="130" height="70" rx="10"/>
+    <text x="405" y="268" text-anchor="middle" font-weight="700" font-size="13">Summarizer</text>
+    <text x="405" y="285" text-anchor="middle" font-size="11">Agent Service</text>
+    <text x="405" y="301" text-anchor="middle" class="label-sm">:8003 · NATS</text>
+
+    <!-- Arrows from orchestrator to agents -->
+    <line x1="270" y1="145" x2="338" y2="95" class="arrow" marker-end="url(#arrowhead-mesh)"/>
+    <line x1="270" y1="165" x2="338" y2="180" class="arrow" marker-end="url(#arrowhead-mesh)"/>
+    <line x1="270" y1="185" x2="338" y2="265" class="arrow" marker-end="url(#arrowhead-mesh)"/>
+
+    <!-- Agents calling downstream services -->
+    <rect class="node-bg" x="540" y="50" width="140" height="280" rx="10"/>
+    <text x="610" y="78" text-anchor="middle" font-weight="700" font-size="13">Backend Services</text>
+    <text x="610" y="105" text-anchor="middle" font-size="12" fill="#7cc4ff">LLM Inference</text>
+    <text x="610" y="125" text-anchor="middle" class="label-sm">(vLLM cluster)</text>
+    <text x="610" y="155" text-anchor="middle" font-size="12" fill="#b4e07a">Vector DB</text>
+    <text x="610" y="175" text-anchor="middle" class="label-sm">(Qdrant / Weaviate)</text>
+    <text x="610" y="205" text-anchor="middle" font-size="12" fill="#d3a4ff">Code Sandbox</text>
+    <text x="610" y="225" text-anchor="middle" class="label-sm">(E2B / Firecracker)</text>
+    <text x="610" y="255" text-anchor="middle" font-size="12" fill="#ffb86b">External APIs</text>
+    <text x="610" y="275" text-anchor="middle" class="label-sm">(Search, DB, ...)</text>
+    <text x="610" y="305" text-anchor="middle" font-size="12" fill="#6f7c92">Tracing (Jaeger)</text>
+
+    <line x1="470" y1="85" x2="538" y2="130" class="arrow" marker-end="url(#arrowhead-mesh)"/>
+    <line x1="470" y1="180" x2="538" y2="200" class="arrow" marker-end="url(#arrowhead-mesh)"/>
+    <line x1="470" y1="275" x2="538" y2="260" class="arrow" marker-end="url(#arrowhead-mesh)"/>
+
+    <!-- NATS/Service Mesh label -->
+    <text x="380" y="345" text-anchor="middle" font-size="12" fill="#6f7c92">gRPC / NATS cho internal service-to-service · Service mesh (Istio/Linkerd) cho mTLS + circuit breaker</text>
+  </svg>
+
+  <h3>gRPC vs NATS vs HTTP</h3>
+  <ul>
+    <li><strong>gRPC:</strong> strongly typed (protobuf), bi-directional streaming, hiệu quả cho internal agent-to-agent. Phù hợp khi cần schema contract chặt giữa các team.</li>
+    <li><strong>NATS:</strong> pub/sub siêu nhanh, fire-and-forget hoặc request-reply, latency ~1ms, không cần schema. Phù hợp cho event-driven agent orchestration.</li>
+    <li><strong>HTTP/REST:</strong> đơn giản nhất, dễ debug, nhưng overhead hơn gRPC. Phù hợp cho cross-team hoặc khi agent cần expose public API.</li>
+  </ul>
+
+  <h2 id="shared-memory">41.6 Chia sẻ memory giữa distributed agents</h2>
+  <p>
+    Memory của agent (§37) phải được externalize hoàn toàn khi chạy distributed. Ba tier thường gặp:
+  </p>
+
+  <div class="grid-2">
+    <div class="card">
+      <h4>Working Memory (Redis)</h4>
+      <p>
+        Conversation history, tool results trong một session hiện tại. Redis hash với key
+        <code>session:{id}:context</code>. TTL 1-24h. Chia sẻ nhanh giữa workers trong
+        cùng region với sub-millisecond read.
+      </p>
+    </div>
+    <div class="card">
+      <h4>Long-term Memory (Vector DB)</h4>
+      <p>
+        Facts, user preferences, past interactions dưới dạng embedding. Qdrant / Weaviate / Pinecone.
+        Workers đọc/ghi qua API. Coherence đảm bảo bởi DB — không cần lock nếu chỉ append.
+      </p>
+    </div>
+    <div class="card">
+      <h4>Task State (Document DB)</h4>
+      <p>
+        Trạng thái toàn bộ agent task: input, intermediate steps, output, status.
+        MongoDB / DynamoDB. Dùng optimistic locking nếu nhiều workers cùng ghi một document.
+      </p>
+    </div>
+    <div class="card">
+      <h4>Artifact Store (Object Storage)</h4>
+      <p>
+        Files lớn: generated code, PDFs, images. S3 / GCS / R2. Workers upload artifact
+        và lưu URL vào task state. Tránh chuyển binary qua message queue.
+      </p>
+    </div>
+  </div>
+
+  <h3>Coherence concerns</h3>
+  <p>
+    Khi nhiều workers đọc/ghi cùng một memory slot, có thể xảy ra:
+  </p>
+  <ul>
+    <li><strong>Lost update:</strong> hai workers đọc cùng state, cả hai ghi lại sau khi modify — một bản ghi bị mất. Giải pháp: optimistic locking (<code>WATCH + MULTI</code> trong Redis, <code>_version</code> trong Elasticsearch).</li>
+    <li><strong>Stale read:</strong> worker đọc snapshot cũ trong khi một worker khác vừa cập nhật. Chấp nhận được nếu memory dùng cho retrieval (RAG), không phải cho coordination.</li>
+    <li><strong>Thundering herd trên cache:</strong> nhiều workers cùng miss cache, cùng gọi LLM để generate, rồi cùng ghi lại. Dùng "lock-before-generate" pattern (distributed lock với Redis SETNX).</li>
+  </ul>
+
+  <h2 id="sticky-session">41.7 Sticky session / session affinity</h2>
+  <p>
+    Trong nhiều tình huống, muốn <em>route các request từ cùng một session về cùng một worker instance</em>.
+    Lý do chính: <strong>KV cache warmth</strong> — nếu worker đã xử lý prompt hệ thống và context của session đó,
+    KV cache trong GPU/RAM của worker đã warm. Gọi lại worker cũ = bỏ qua prefill, tiết kiệm latency và compute.
+  </p>
+
+  <!-- SVG: Sticky Session Routing -->
+  <svg class="diagram" viewBox="0 0 760 320" role="img" aria-label="Sticky session routing: same session goes to same worker">
+    <defs>
+      <marker id="arrowhead-sticky" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#6f7c92"/>
+      </marker>
+    </defs>
+
+    <text x="380" y="26" text-anchor="middle" font-weight="700" font-size="15">Sticky Session Routing</text>
+
+    <!-- Load Balancer -->
+    <rect class="node-accent" x="280" y="50" width="200" height="60" rx="10"/>
+    <text x="380" y="75" text-anchor="middle" font-weight="700" font-size="13">Load Balancer / Router</text>
+    <text x="380" y="93" text-anchor="middle" font-size="11" fill="#ffb86b">hash(session_id) % N_workers</text>
+
+    <!-- Session A requests -->
+    <rect class="node-blue" x="20" y="55" width="100" height="45" rx="8"/>
+    <text x="70" y="74" text-anchor="middle" font-size="12" fill="#7cc4ff">Session A</text>
+    <text x="70" y="90" text-anchor="middle" class="label-sm">req 1, 2, 3...</text>
+    <line x1="120" y1="78" x2="278" y2="78" class="arrow" marker-end="url(#arrowhead-sticky)"/>
+
+    <!-- Session B requests -->
+    <rect class="node-green" x="20" y="120" width="100" height="45" rx="8"/>
+    <text x="70" y="139" text-anchor="middle" font-size="12" fill="#b4e07a">Session B</text>
+    <text x="70" y="155" text-anchor="middle" class="label-sm">req 1, 2, 3...</text>
+    <line x1="120" y1="143" x2="278" y2="100" class="arrow" marker-end="url(#arrowhead-sticky)"/>
+
+    <!-- Session C requests -->
+    <rect class="node-bg" x="20" y="185" width="100" height="45" rx="8"/>
+    <text x="70" y="204" text-anchor="middle" font-size="12">Session C</text>
+    <text x="70" y="220" text-anchor="middle" class="label-sm">req 1, 2, 3...</text>
+    <line x1="120" y1="207" x2="278" y2="100" class="arrow" marker-end="url(#arrowhead-sticky)"/>
+
+    <!-- Workers -->
+    <rect class="node-blue" x="550" y="40" width="160" height="70" rx="10"/>
+    <text x="630" y="65" text-anchor="middle" font-weight="700" font-size="13">Worker 1</text>
+    <text x="630" y="82" text-anchor="middle" font-size="11" fill="#7cc4ff">Session A (warm cache)</text>
+    <text x="630" y="98" text-anchor="middle" class="label-sm">KV Cache hit ✓</text>
+
+    <rect class="node-green" x="550" y="130" width="160" height="70" rx="10"/>
+    <text x="630" y="155" text-anchor="middle" font-weight="700" font-size="13">Worker 2</text>
+    <text x="630" y="172" text-anchor="middle" font-size="11" fill="#b4e07a">Session B + C (warm)</text>
+    <text x="630" y="188" text-anchor="middle" class="label-sm">KV Cache hit ✓</text>
+
+    <rect class="node-bg" x="550" y="220" width="160" height="70" rx="10"/>
+    <text x="630" y="245" text-anchor="middle" font-weight="700" font-size="13">Worker 3</text>
+    <text x="630" y="262" text-anchor="middle" font-size="11" fill="#6f7c92">(idle / other)</text>
+    <text x="630" y="278" text-anchor="middle" class="label-sm">No cache needed</text>
+
+    <!-- Router to workers -->
+    <line x1="480" y1="68" x2="548" y2="75" class="arrow" marker-end="url(#arrowhead-sticky)"/>
+    <line x1="480" y1="85" x2="548" y2="165" class="arrow" marker-end="url(#arrowhead-sticky)"/>
+
+    <!-- Warning: failover -->
+    <rect class="node-accent" x="100" y="260" width="400" height="50" rx="8"/>
+    <text x="300" y="281" text-anchor="middle" font-size="12">⚠ Fallback: nếu worker gán chết → route sang worker khác</text>
+    <text x="300" y="300" text-anchor="middle" class="label-sm">Cold miss một lần, sau đó warm lại — acceptable</text>
+  </svg>
+
+  <h3>Cách implement sticky routing</h3>
+  <ul>
+    <li><strong>Consistent hashing:</strong> <code>hash(session_id) % N</code> — đơn giản nhưng redistribute khi N thay đổi. Dùng consistent hash ring để tối thiểu redistribution khi scale.</li>
+    <li><strong>Session table:</strong> lưu mapping <code>session_id → worker_id</code> trong Redis. Flexible nhưng cần cleanup khi worker down.</li>
+    <li><strong>K8s Service với session affinity:</strong> <code>sessionAffinity: ClientIP</code> (thô) hoặc dùng Nginx/Envoy với cookie-based affinity.</li>
+  </ul>
+
+  <div class="callout note">
+    <div class="icon">≡</div>
+    <div>
+      <div class="title">Sticky session không phải "stateful worker"</div>
+      <p>
+        Worker vẫn phải stateless theo nghĩa: nếu nó crash và task được route sang worker khác,
+        worker mới phải đọc state từ external store và tiếp tục được. Sticky là <em>optimization</em>
+        (cache warmth), không phải dependency. Luôn có fallback path.
+      </p>
+    </div>
+  </div>
+
+  <h2 id="multi-tenancy">41.8 Multi-tenancy at scale</h2>
+  <p>
+    Khi serve nhiều tenant (công ty, người dùng) trên cùng một distributed runtime, cần giải quyết
+    ba bài toán: noisy neighbor, quota enforcement, và isolation model.
+  </p>
+
+  <h3>Noisy Neighbor Problem</h3>
+  <p>
+    Một tenant chạy batch job lớn (ví dụ: analyze 10,000 documents) có thể chiếm toàn bộ worker pool,
+    làm tenant khác bị delay. Giải pháp:
+  </p>
+  <ul>
+    <li><strong>Per-tenant queues:</strong> mỗi tenant có hàng đợi riêng. Worker pool lấy task theo <em>weighted round-robin</em> — công bằng giữa các tenant.</li>
+    <li><strong>Priority queues:</strong> premium tier đi queue ưu tiên cao hơn, được serve trước.</li>
+    <li><strong>Rate limiting tại queue đầu vào:</strong> giới hạn tốc độ enqueue của mỗi tenant.</li>
+  </ul>
+
+  <h3>Per-tenant quota</h3>
+  <pre><code><span class="cm"># Redis-based sliding window rate limit</span>
+<span class="kw">import</span> time
+
+<span class="kw">async def</span> <span class="fn">check_tenant_quota</span>(tenant_id: str, limit_per_min: int = <span class="num">100</span>) -> bool:
+
+  now = time.<span class="fn">time</span>()
+  key = <span class="str">f"quota:{tenant_id}:{int(now // 60)}"</span>
+  count = <span class="kw">await</span> redis.<span class="fn">incr</span>(key)
+  <span class="kw">if</span> count == <span class="num">1</span>:
+    <span class="kw">await</span> redis.<span class="fn">expire</span>(key, <span class="num">120</span>)   <span class="cm"># TTL 2 phút</span>
+  <span class="kw">return</span> count <= limit_per_min</code></pre>
+
+  <h3>Dedicated vs Shared workers</h3>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Model</th>
+          <th>Isolation</th>
+          <th>Chi phí</th>
+          <th>Phù hợp</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td><strong>Shared workers</strong></td><td>Logical (quota)</td><td>Thấp — dùng chung infra</td><td>SMB, free/starter tier</td></tr>
+        <tr><td><strong>Dedicated worker pool per tenant</strong></td><td>Process-level</td><td>Cao — N pools × infra cost</td><td>Enterprise, SLA guarantee</td></tr>
+        <tr><td><strong>Dedicated namespace (K8s)</strong></td><td>Network + resource quota</td><td>Vừa</td><td>Mid-market, cần compliance</td></tr>
+        <tr><td><strong>Dedicated cluster</strong></td><td>Infra-level</td><td>Rất cao</td><td>Bank, government, data residency</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 id="frameworks">41.9 Frameworks: Ray, Dask, Kubernetes, Modal, Bento</h2>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Framework</th>
+          <th>Use case chính</th>
+          <th>Ngôn ngữ</th>
+          <th>Durability</th>
+          <th>Cost model</th>
+          <th>Đặc điểm nổi bật</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Ray / Ray Serve</strong></td>
+          <td>Distributed Python compute, model serving, agent parallelism</td>
+          <td>Python-first</td>
+          <td>Ephemeral (state cần external store)</td>
+          <td>Self-host hoặc Anyscale cloud</td>
+          <td><code>@ray.remote</code> cho distributed actor; Ray Serve cho HTTP; tốt cho map-reduce trên nhiều agent</td>
+        </tr>
+        <tr>
+          <td><strong>Temporal</strong></td>
+          <td>Durable workflow orchestration, long-running agents</td>
+          <td>Python, Go, Java, TypeScript</td>
+          <td>Cao — event sourcing, replay</td>
+          <td>Self-host (Temporal server) hoặc Temporal Cloud</td>
+          <td>Workflow tự recover sau crash; activity retry built-in; history replay; tốt cho multi-step agent</td>
+        </tr>
+        <tr>
+          <td><strong>Kubernetes Jobs</strong></td>
+          <td>Batch agent tasks, one-off jobs, CronJobs</td>
+          <td>Bất kỳ (container)</td>
+          <td>Job level (restart on failure)</td>
+          <td>Self-host (EKS, GKE, AKS)</td>
+          <td>Chuẩn infra, HPA, KEDA cho autoscale; không có built-in agent logic</td>
+        </tr>
+        <tr>
+          <td><strong>Modal</strong></td>
+          <td>Serverless GPU functions, cold start &lt;1s, scale-to-zero</td>
+          <td>Python</td>
+          <td>Ephemeral (stateless functions)</td>
+          <td>Pay per second GPU usage</td>
+          <td>Đơn giản nhất để bắt đầu; built-in container + GPU; tốt cho event-triggered agent workloads</td>
+        </tr>
+        <tr>
+          <td><strong>Inferless / BentoML</strong></td>
+          <td>Model serving + agent backend</td>
+          <td>Python</td>
+          <td>Stateless serving</td>
+          <td>Managed cloud hoặc self-host</td>
+          <td>BentoML dễ đóng gói model + agent thành service; Inferless serverless GPU hosting</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Ray Actors cho distributed agent state</h3>
+  <pre><code><span class="kw">import</span> ray
+
+@ray.<span class="fn">remote</span>
+<span class="kw">class</span> <span class="fn">AgentWorker</span>:
+  <span class="kw">def</span> <span class="fn">__init__</span>(self, agent_type: str):
+
+    self.agent_type = agent_type
+    self.llm = <span class="fn">LLMClient</span>()
+
+  <span class="kw">async def</span> <span class="fn">run_task</span>(self, task: dict) -> dict:
+
+    context = <span class="kw">await</span> redis.<span class="fn">get</span>(task[<span class="str">'session_id'</span>])
+    result = <span class="kw">await</span> self.llm.<span class="fn">run_agent_loop</span>(task, context)
+    <span class="kw">await</span> redis.<span class="fn">set</span>(task[<span class="str">'session_id'</span>], result[<span class="str">'new_context'</span>])
+    <span class="kw">return</span> result
+
+<span class="cm"># Tạo pool 10 workers, phân tán qua Ray cluster</span>
+workers = [AgentWorker.<span class="fn">remote</span>(<span class="str">'research'</span>) <span class="kw">for</span> _ <span class="kw">in</span> <span class="fn">range</span>(<span class="num">10</span>)]
+tasks = [w.<span class="fn">run_task</span>.<span class="fn">remote</span>(t) <span class="kw">for</span> w, t <span class="kw">in</span> <span class="fn">zip</span>(workers, batch)]
+results = ray.<span class="fn">get</span>(tasks)   <span class="cm"># parallel execution</span></code></pre>
+
+  <h2 id="workflow-orchestrators">41.10 Workflow orchestrators: Temporal và Inngest</h2>
+  <p>
+    Queue-based worker pool giải quyết parallelism và scale, nhưng thiếu một thứ quan trọng:
+    <strong>durability</strong> — khả năng resume từ đúng bước mà không mất progress khi hệ thống crash.
+    Đây là lúc <em>workflow orchestrators</em> phát huy.
+  </p>
+
+  <h3>Temporal cho distributed agent coordination</h3>
+  <p>
+    Temporal lưu toàn bộ workflow execution history dưới dạng events. Khi workflow crash,
+    Temporal <em>replay</em> history để reconstruct state — agent tiếp tục từ đúng bước cuối cùng.
+    Không cần viết retry logic, checkpoint logic thủ công.
+  </p>
+  <pre><code><span class="cm"># Temporal workflow cho multi-step agent</span>
+<span class="kw">from</span> temporalio <span class="kw">import</span> workflow, activity
+
+@activity.<span class="fn">defn</span>
+<span class="kw">async def</span> <span class="fn">run_research_agent</span>(query: str) -> str:
+
+  <span class="kw">return await</span> research_agent.<span class="fn">run</span>(query)
+
+@activity.<span class="fn">defn</span>
+<span class="kw">async def</span> <span class="fn">run_code_agent</span>(spec: str) -> str:
+
+  <span class="kw">return await</span> code_agent.<span class="fn">run</span>(spec)
+
+@workflow.<span class="fn">defn</span>
+<span class="kw">class</span> <span class="fn">MultiAgentWorkflow</span>:
+  @workflow.<span class="fn">run</span>
+  <span class="kw">async def</span> <span class="fn">run</span>(self, user_request: str) -> str:
+
+    <span class="cm"># Step 1: Research — retry tự động nếu thất bại</span>
+    research = <span class="kw">await</span> workflow.<span class="fn">execute_activity</span>(
+      run_research_agent,
+      user_request,
+      start_to_close_timeout=timedelta(minutes=<span class="num">5</span>),
+      retry_policy=RetryPolicy(maximum_attempts=<span class="num">3</span>),
+    )
+    <span class="cm"># Step 2: Code gen — chỉ chạy nếu research thành công</span>
+    code = <span class="kw">await</span> workflow.<span class="fn">execute_activity</span>(
+      run_code_agent, research,
+      start_to_close_timeout=timedelta(minutes=<span class="num">10</span>),
+    )
+    <span class="kw">return</span> code
+    <span class="cm"># Nếu crash ở step 2 → Temporal replay lại, bỏ qua step 1 (đã done)</span></code></pre>
+
+  <h3>Inngest — event-driven, dễ tích hợp</h3>
+  <p>
+    Inngest tương tự Temporal nhưng dùng HTTP webhook thay vì gRPC, dễ tích hợp vào Next.js/Vercel/serverless.
+    Phù hợp với stack JavaScript/TypeScript. Workflow định nghĩa bằng <code>inngest.createFunction()</code>,
+    trigger bởi events, tự retry với backoff.
+  </p>
+
+  <h2 id="observability">41.11 Observability qua distributed system</h2>
+  <p>
+    Khi agent chạy qua nhiều process/service/region, <em>một log trong một container không đủ</em>.
+    Cần <strong>distributed tracing</strong> để hiểu toàn bộ hành trình của một request.
+  </p>
+
+  <h3>Trace propagation</h3>
+  <p>
+    Mỗi request sinh ra một <code>trace_id</code> duy nhất. Khi orchestrator gọi worker, nó truyền
+    <code>traceparent</code> header (W3C Trace Context). Worker tạo <em>span</em> con trong cùng trace.
+    Cuối cùng toàn bộ execution visualized như một cây span trong Jaeger / Tempo / Honeycomb.
+  </p>
+  <pre><code><span class="kw">from</span> opentelemetry <span class="kw">import</span> trace
+<span class="kw">from</span> opentelemetry.propagate <span class="kw">import</span> inject, extract
+
+tracer = trace.<span class="fn">get_tracer</span>(<span class="str">"agent-worker"</span>)
+
+<span class="kw">async def</span> <span class="fn">handle_task</span>(task: dict, carrier: dict):
+
+  <span class="cm"># Khôi phục trace context từ queue message header</span>
+  ctx = <span class="fn">extract</span>(carrier)
+  <span class="kw">with</span> tracer.<span class="fn">start_as_current_span</span>(<span class="str">"agent.run_task"</span>, context=ctx) <span class="kw">as</span> span:
+    span.<span class="fn">set_attribute</span>(<span class="str">"task.type"</span>, task[<span class="str">'task_type'</span>])
+    span.<span class="fn">set_attribute</span>(<span class="str">"task.id"</span>, task[<span class="str">'task_id'</span>])
+    result = <span class="kw">await</span> <span class="fn">run_agent</span>(task)
+    span.<span class="fn">set_attribute</span>(<span class="str">"agent.tool_calls"</span>, result[<span class="str">'tool_count'</span>])
+    <span class="kw">return</span> result
+
+<span class="cm"># Producer: inject trace context vào message</span>
+<span class="kw">def</span> <span class="fn">enqueue_task</span>(task: dict):
+
+  carrier = {}
+  <span class="fn">inject</span>(carrier)   <span class="cm"># thêm traceparent vào carrier</span>
+  sqs.<span class="fn">send_message</span>(Body=json.<span class="fn">dumps</span>(task), MessageAttributes=carrier)</code></pre>
+
+  <h3>Key metrics cần monitor</h3>
+  <ul>
+    <li><strong>Queue depth:</strong> số task đang chờ — spike báo hiệu worker thiếu hoặc task đột biến.</li>
+    <li><strong>Task duration P50/P95/P99:</strong> phát hiện tasks bị stuck hoặc slow worker.</li>
+    <li><strong>Worker utilization:</strong> tỷ lệ worker đang xử lý task — quá thấp = over-provisioned, quá cao = cần scale.</li>
+    <li><strong>Error rate per task type:</strong> phân loại lỗi theo agent type để debug nhanh.</li>
+    <li><strong>LLM token usage per session:</strong> detect runaway agents tiêu thụ token bất thường.</li>
+  </ul>
+
+  <h2 id="failure-modes">41.12 Failure modes trong distributed agent systems</h2>
+  <p>
+    Distributed systems fail theo nhiều cách. Dưới đây là các failure mode phổ biến nhất và cách xử lý:
+  </p>
+
+  <!-- SVG: Failure Mode — Partial Failure with Retry -->
+  <svg class="diagram" viewBox="0 0 760 380" role="img" aria-label="Partial failure and retry storm in distributed agent system">
+    <defs>
+      <marker id="arrowhead-fail" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#6f7c92"/>
+      </marker>
+      <marker id="arrowhead-red" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#ff8a8a"/>
+      </marker>
+      <marker id="arrowhead-green" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#b4e07a"/>
+      </marker>
+    </defs>
+
+    <text x="380" y="26" text-anchor="middle" font-weight="700" font-size="15">Partial Failure → Retry → Recovery</text>
+
+    <!-- Normal flow -->
+    <rect class="node-accent" x="20" y="60" width="100" height="45" rx="8"/>
+    <text x="70" y="80" text-anchor="middle" font-size="12">Queue</text>
+    <text x="70" y="96" text-anchor="middle" class="label-sm">Task A,B,C</text>
+
+    <line x1="120" y1="82" x2="168" y2="82" stroke="#b4e07a" stroke-width="1.5" marker-end="url(#arrowhead-green)"/>
+
+    <rect class="node-green" x="170" y="50" width="110" height="45" rx="8"/>
+    <text x="225" y="70" text-anchor="middle" font-size="12">Worker 1</text>
+    <text x="225" y="86" text-anchor="middle" class="label-sm" style="fill:#b4e07a">Processing A</text>
+
+    <line x1="120" y1="93" x2="168" y2="130" stroke="#b4e07a" stroke-width="1.5" marker-end="url(#arrowhead-green)"/>
+
+    <rect class="node-green" x="170" y="120" width="110" height="45" rx="8"/>
+    <text x="225" y="140" text-anchor="middle" font-size="12">Worker 2</text>
+    <text x="225" y="156" text-anchor="middle" class="label-sm" style="fill:#b4e07a">Processing B</text>
+
+    <!-- Worker 3 fails -->
+    <line x1="120" y1="105" x2="168" y2="190" stroke="#ff8a8a" stroke-width="1.5" stroke-dasharray="4" marker-end="url(#arrowhead-red)"/>
+
+    <rect x="170" y="190" width="110" height="45" rx="8" fill="rgba(255,138,138,0.15)" stroke="#ff8a8a" stroke-width="1.5"/>
+    <text x="225" y="210" text-anchor="middle" font-size="12" fill="#ff8a8a">Worker 3</text>
+    <text x="225" y="226" text-anchor="middle" class="label-sm" style="fill:#ff8a8a">CRASH (task C)</text>
+
+    <!-- Task C back to queue -->
+    <path d="M 170 215 Q 100 215 70 175" stroke="#ffb86b" stroke-width="1.5" fill="none" stroke-dasharray="5" marker-end="url(#arrowhead-fail)"/>
+    <text x="95" y="200" text-anchor="middle" font-size="11" fill="#ffb86b">visibility timeout</text>
+    <text x="95" y="215" text-anchor="middle" font-size="11" fill="#ffb86b">→ task C về queue</text>
+
+    <!-- Worker 4 picks up C -->
+    <line x1="120" y1="75" x2="168" y2="255" stroke="#b4e07a" stroke-width="1.5" marker-end="url(#arrowhead-green)"/>
+
+    <rect class="node-blue" x="170" y="260" width="110" height="45" rx="8"/>
+    <text x="225" y="280" text-anchor="middle" font-size="12">Worker 4</text>
+    <text x="225" y="296" text-anchor="middle" class="label-sm" style="fill:#7cc4ff">Retry task C ✓</text>
+
+    <!-- Retry storm warning -->
+    <rect x="340" y="50" width="390" height="165" rx="10" fill="rgba(255,138,138,0.08)" stroke="#ff8a8a" stroke-width="1"/>
+    <text x="535" y="78" text-anchor="middle" font-weight="700" font-size="13" fill="#ff8a8a">⚠ Retry Storm Anti-pattern</text>
+    <text x="535" y="100" text-anchor="middle" font-size="12">Mọi worker fail cùng lúc (LLM down)</text>
+    <text x="535" y="118" text-anchor="middle" font-size="12">→ hàng trăm task về queue đồng thời</text>
+    <text x="535" y="136" text-anchor="middle" font-size="12">→ workers retry ngay, LLM tiếp tục quá tải</text>
+    <text x="535" y="154" text-anchor="middle" font-size="12">→ cascading failure</text>
+    <text x="535" y="178" text-anchor="middle" class="label-sm" style="fill:#b4e07a">Fix: exponential backoff + jitter trên retry</text>
+    <text x="535" y="195" text-anchor="middle" class="label-sm" style="fill:#b4e07a">+ circuit breaker trước LLM calls</text>
+
+    <!-- Cascading failure box -->
+    <rect x="340" y="235" width="390" height="120" rx="10" fill="rgba(211,164,255,0.08)" stroke="#d3a4ff" stroke-width="1"/>
+    <text x="535" y="258" text-anchor="middle" font-weight="700" font-size="13" fill="#d3a4ff">Network Partition</text>
+    <text x="535" y="278" text-anchor="middle" font-size="12">Worker mất kết nối DB trong lúc xử lý</text>
+    <text x="535" y="296" text-anchor="middle" font-size="12">→ task timeout, visibility hết → task re-queued</text>
+    <text x="535" y="314" text-anchor="middle" font-size="12">→ task chạy 2 lần (at-least-once delivery)</text>
+    <text x="535" y="338" text-anchor="middle" class="label-sm" style="fill:#b4e07a">Fix: idempotency key + check-before-execute</text>
+  </svg>
+
+  <h3>Checklist failure handling</h3>
+  <ul>
+    <li><strong>Idempotency:</strong> mỗi task có <code>idempotency_key</code>. Trước khi xử lý, check xem task đã done chưa. Nếu đã done, skip và ACK.</li>
+    <li><strong>Dead letter queue (DLQ):</strong> sau N lần retry thất bại, task vào DLQ để debug thủ công, không loop vô tận.</li>
+    <li><strong>Circuit breaker:</strong> nếu LLM API trả 429/503 liên tiếp, open circuit — không gọi tiếp trong T giây. Giảm load lên downstream khi nó đang căng thẳng.</li>
+    <li><strong>Timeout mọi LLM call:</strong> không để worker block vô thời hạn. Hard timeout + deadline propagation.</li>
+    <li><strong>Backpressure:</strong> nếu queue depth vượt threshold, từ chối nhận task mới và trả lỗi 429 về phía client.</li>
+  </ul>
+
+  <h2 id="cost-optimization">41.13 Tối ưu chi phí at scale</h2>
+
+  <h3>Spot instances / Preemptible VMs</h3>
+  <p>
+    Spot instances (AWS) / Preemptible VMs (GCP) rẻ hơn on-demand 60-90%. Workers là stateless
+    và task được re-queued khi spot bị reclaim — hoàn toàn phù hợp với spot.
+    Chỉ cần handle <em>spot interruption signal</em>: worker drain task hiện tại (tối đa 2 phút),
+    không nhận task mới, graceful shutdown.
+  </p>
+
+  <h3>Autoscale to zero</h3>
+  <p>
+    Nếu queue empty, scale worker count về 0. Khi task mới đến, scale up.
+    KEDA (Kubernetes Event-driven Autoscaling) có native support cho SQS, RabbitMQ, Kafka queue depth.
+  </p>
+  <pre><code><span class="cm"># KEDA ScaledObject — scale workers theo SQS queue depth</span>
+<span class="kw">apiVersion</span>: keda.sh/v1alpha1
+<span class="kw">kind</span>: ScaledObject
+<span class="kw">spec</span>:
+  scaleTargetRef:
+    name: agent-worker-deployment
+  minReplicaCount: <span class="num">0</span>        <span class="cm"># scale to zero khi idle</span>
+  maxReplicaCount: <span class="num">50</span>
+  triggers:
+  - type: aws-sqs-queue
+    metadata:
+      queueURL: <span class="str">https://sqs.us-east-1.amazonaws.com/123/agent-tasks</span>
+      queueLength: <span class="str">"5"</span>       <span class="cm"># 1 worker per 5 messages in queue</span>
+      awsRegion: <span class="str">us-east-1</span></code></pre>
+
+  <h3>Batch scheduling</h3>
+  <p>
+    Không phải task nào cũng cần xử lý ngay. Nhóm non-urgent tasks vào batch:
+    chạy vào giờ thấp điểm (3-6 AM), dùng spot instances, fill idle capacity.
+    Dùng K8s CronJob hoặc <code>delay</code> trong Temporal workflow để defer execution.
+  </p>
+
+  <h2 id="cold-start">41.14 Cold start mitigation</h2>
+  <p>
+    Agent worker cold start bao gồm: container pull, process start, model load (nếu có local model),
+    kết nối DB/Redis/LLM. Tổng có thể mất 10-60 giây — quá lâu cho real-time agents.
+  </p>
+
+  <h3>Warm pool strategy</h3>
+  <p>
+    Duy trì một số lượng tối thiểu workers đã khởi động và sẵn sàng nhận task (nhưng không nhận task
+    cho đến khi được promote). Khi scale event xảy ra, promote warm instance ra production pool ngay lập tức
+    (sub-second), đồng thời spin up thêm warm instance để bù vào.
+  </p>
+
+  <div class="card">
+    <h4>Các kỹ thuật giảm cold start</h4>
+    <ul>
+      <li><strong>Container image pre-pull:</strong> pull image sẵn trên mọi node, không chờ khi scale.</li>
+      <li><strong>Lazy model loading:</strong> nếu worker gọi external LLM API (không load local model), cold start chỉ là process start — vài giây.</li>
+      <li><strong>Connection pool warm-up:</strong> khi worker start, mở sẵn DB/Redis connections trước khi nhận task đầu tiên.</li>
+      <li><strong>Minimum replicas = 1 hoặc 2:</strong> không scale về 0 nếu traffic thường xuyên, trừ khi overnight downtime chấp nhận được.</li>
+      <li><strong>Provisioned concurrency (Lambda):</strong> giữ N Lambda instance warm với provisioned concurrency — trả phí khi idle nhưng không có cold start.</li>
+    </ul>
+  </div>
+
+  <h2 id="old-vs-new">41.15 Cách cũ vs cách hiện tại (2026)</h2>
+  <p>
+    Hành trình từ "một Python script trong container" đến "distributed agent runtime đầy đủ":
+  </p>
+
+  <div class="tabs" data-tabs>
+    <div class="tab-buttons">
+      <button class="active">Cách cũ (2021–2023)</button>
+      <button>Cách hiện tại (2024–2026)</button>
+    </div>
+    <div class="tab-panel active">
+      <p><strong>Triển khai:</strong> Một Python script (hoặc Flask app) chạy trong một Docker container, xử lý request đồng bộ. Muốn scale thì nhân bản container và để load balancer chia đều — nhưng tất cả state nằm trong RAM của process.</p>
+
+      <p><strong>Concurrency:</strong> <code>ThreadPoolExecutor</code> với 4-8 threads, hoặc <code>asyncio</code> event loop đơn. GIL không được bypass. CPU-bound agent step block toàn bộ.</p>
+
+      <p><strong>Fault handling:</strong> Crash = mất tất cả. Phải restart container, task đang xử lý biến mất. Retry logic viết thủ công mỗi nơi một kiểu.</p>
+
+      <p><strong>Observability:</strong> <code>print()</code> và log file. Không trace context, không metric. Debug = SSH vào container xem log.</p>
+
+      <p><strong>Scale:</strong> Scale thủ công — thêm container khi CPU cao, bớt khi thấp. Không scale to zero.</p>
+
+      <p class="label-sm" style="color:var(--danger)">→ Fragile, không fault-tolerant, tốn chi phí, debug khó, không scale well</p>
+    </div>
+    <div class="tab-panel">
+      <p><strong>Triển khai:</strong> Message queue (SQS/RabbitMQ) + stateless worker pool. Orchestrator đẩy task vào queue, workers kéo task ra xử lý. State externalized vào Redis + VectorDB + MongoDB. Spot instances cho cost efficiency.</p>
+
+      <p><strong>Concurrency:</strong> N worker processes, mỗi process là một asyncio event loop. Scale = thêm pod. KEDA autoscale theo queue depth, scale to zero khi idle.</p>
+
+      <p><strong>Fault handling:</strong> Task có idempotency key. Worker crash → task về queue (visibility timeout) → worker khác retry. DLQ cho tasks fail nhiều lần. Circuit breaker trước LLM API. Temporal/Inngest cho durable multi-step workflow.</p>
+
+      <p><strong>Observability:</strong> OpenTelemetry distributed tracing với trace context propagated qua queue headers. Spans cho mỗi agent step, LLM call, tool call. Dashboard Grafana với queue depth, P95 latency, error rate by task type.</p>
+
+      <p><strong>Scale:</strong> KEDA autoscale 0 → 50 workers theo queue depth. Warm pool cho latency-sensitive path. Spot instances. Batch scheduling cho non-urgent tasks vào giờ thấp điểm.</p>
+
+      <p class="label-sm" style="color:var(--accent-3)">→ Fault-tolerant, observable, cost-optimized, horizontally scalable</p>
+    </div>
+  </div>
+
+  <div class="callout tip">
+    <div class="icon">★</div>
+    <div>
+      <div class="title">Đừng over-engineer quá sớm</div>
+      <p>
+        Phần lớn startups không cần Temporal + Ray + KEDA ngay từ đầu.
+        Bắt đầu với SQS + ECS Tasks hoặc thậm chí Redis Queue + 3 worker containers là đủ cho 99% use cases
+        dưới 1000 concurrent agents. Add complexity <em>khi bạn có bằng chứng cần nó</em>,
+        không phải khi bạn đọc docs và thấy "hay ho".
+      </p>
+    </div>
+  </div>
+
+  <h2 id="tom-tat">Tóm tắt</h2>
+  <ol>
+    <li><strong>Lý do phân tán:</strong> horizontal scale, parallelism, fault isolation, geo-distribution — bốn lý do cốt lõi buộc agent rời single process.</li>
+    <li><strong>Worker stateless là bắt buộc:</strong> mọi state sống ở external store (Redis, VectorDB, MongoDB, S3). Worker có thể crash và task được retry bởi worker khác.</li>
+    <li><strong>Queue-based orchestration là nền tảng:</strong> SQS / RabbitMQ / Redis Streams / Kafka — producer đẩy task, consumer (worker) kéo ra, ACK khi done, không ACK nếu fail.</li>
+    <li><strong>Sticky session là optimization:</strong> route cùng session về cùng worker để tận dụng KV cache warmth, không phải requirement. Luôn có fallback path.</li>
+    <li><strong>Multi-tenancy:</strong> per-tenant queue + weighted round-robin + rate limiting tại đầu vào. Dedicated vs shared worker pool tuỳ theo tier và SLA.</li>
+    <li><strong>Workflow orchestrators (Temporal/Inngest):</strong> dùng khi cần durable multi-step agent với retry tự động và replay-on-crash — không phải cho mọi use case.</li>
+    <li><strong>Observability phân tán:</strong> propagate trace context qua queue headers, dùng OpenTelemetry spans cho mọi agent step. Không có distributed tracing = debugging mù.</li>
+    <li><strong>Failure modes:</strong> retry storm → exponential backoff + jitter; partial failure → at-least-once + idempotency key; cascading → circuit breaker + backpressure.</li>
+    <li><strong>Cost:</strong> spot instances + autoscale to zero + batch scheduling có thể giảm 70-80% chi phí compute so với on-demand constant capacity.</li>
+    <li><strong>Cold start:</strong> warm pool + lazy model loading + connection pre-warming. Scale to zero chỉ khi chấp nhận được cold start latency (batch workload, overnight jobs).</li>
+  </ol>
+
+  <nav class="section-footer">
+    <a href="40-code-execution-tool.html" class="prev">
+      <div class="label">← trước</div>
+      <div class="title">40 — Code Execution Tool</div>
+    </a>
+    <a href="42-edge-on-device.html" class="next">
+      <div class="label">tiếp theo →</div>
+      <div class="title">42 — Edge &amp; On-Device AI</div>
+    </a>
+  </nav>
+
+</main>
+
+<script src="../assets/script.js"></script>
+</body>
+</html>

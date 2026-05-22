@@ -1,0 +1,1284 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>28 · Multi-agent Orchestration (chuyên sâu) — AI Engineering</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<nav class="top-nav">
+  <div class="brand"><span class="dot"></span> AI Engineering</div>
+  <div class="crumbs"><a href="../index.html">Mục lục</a> › Phần 9 · <span>28 — Multi-agent Orchestration (chuyên sâu)</span></div>
+  <div class="nav-actions">
+    <a href="27-agent-eval.html">← Trước</a>
+    <a href="29-prompt-injection-deep.html">Tiếp →</a>
+  </div>
+</nav>
+
+<main class="page">
+
+  <section class="hero">
+    <span class="eyebrow">Phần 9 · §28</span>
+    <h1>Multi-agent Orchestration (chuyên sâu)</h1>
+    <p class="lede">
+      Từ hierarchical manager–worker đến Mixture-of-Agents, debate pattern, và blackboard — hiểu khi nào nhiều agent thực sự tốt hơn một agent mạnh, và cái giá phải trả về cost/latency.
+    </p>
+    <img class="hero-image" src="../images/28-multi-agent-orchestration.png" alt="Multi-agent Orchestration illustration" onerror="this.style.display='none'">
+  </section>
+
+  <aside class="toc">
+    <div class="toc-title">Trong trang này</div>
+    <ul>
+      <li><a href="#single-vs-multi">28.1 Multi-agent vs Single agent + tools</a></li>
+      <li><a href="#hierarchical">28.2 Hierarchical: Manager → Workers</a></li>
+      <li><a href="#debate">28.3 Debate / Multi-perspective</a></li>
+      <li><a href="#parallel-critic">28.4 Parallel Critic: Generator + Critics</a></li>
+      <li><a href="#moa">28.5 Mixture-of-Agents (MoA)</a></li>
+      <li><a href="#blackboard">28.6 Blackboard Pattern</a></li>
+      <li><a href="#market">28.7 Market-based / Bidding</a></li>
+      <li><a href="#communication">28.8 Agent Communication</a></li>
+      <li><a href="#conflict">28.9 Conflict Resolution &amp; Termination</a></li>
+      <li><a href="#cost">28.10 Cost &amp; Latency Multiplication</a></li>
+      <li><a href="#frameworks">28.11 Frameworks 2026</a></li>
+      <li><a href="#antipatterns">28.12 Anti-patterns</a></li>
+      <li><a href="#old-vs-new">28.13 Cách cũ vs Cách hiện tại</a></li>
+      <li><a href="#tom-tat">Tóm tắt</a></li>
+    </ul>
+  </aside>
+
+  <!-- ═══════════════════════════════════════════════
+       28.1 Multi-agent vs Single agent
+  ════════════════════════════════════════════════ -->
+  <h2 id="single-vs-multi">28.1 Khi nào Multi-agent thực sự tốt hơn Single Agent + Tools?</h2>
+
+  <p>
+    Câu hỏi đầu tiên — và thường bị bỏ qua — là: <em>có cần nhiều agent không?</em>
+    Một agent đơn với đủ tools, context dài, và prompt tốt thường đơn giản hơn nhiều và ít bug hơn.
+    Multi-agent chỉ mang lại lợi ích thực sự trong một số điều kiện cụ thể.
+  </p>
+
+  <h3>Điều kiện để multi-agent thực sự có lợi</h3>
+
+  <div class="grid-2">
+    <div class="card">
+      <h4 style="margin-top:0; color:var(--accent-3)">Có lợi khi dùng Multi-agent</h4>
+      <ul style="margin-bottom:0">
+        <li><strong>Parallelism thực sự:</strong> Các sub-task độc lập nhau, có thể chạy đồng thời (giảm wall-clock time)</li>
+        <li><strong>Context window overflow:</strong> Task lớn hơn context của một model (long codebase, nhiều documents)</li>
+        <li><strong>Specialization rõ ràng:</strong> Sub-task cần prompt/model khác nhau (researcher vs. writer vs. validator)</li>
+        <li><strong>Fault isolation:</strong> Một agent fail không ảnh hưởng toàn bộ pipeline</li>
+        <li><strong>Quality via redundancy:</strong> Chạy N agents rồi vote/debate tăng accuracy cho high-stakes output</li>
+        <li><strong>Scalable workload:</strong> Xử lý hàng trăm items song song</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4 style="margin-top:0; color:var(--danger)">Không cần Multi-agent khi</h4>
+      <ul style="margin-bottom:0">
+        <li><strong>Task sequential:</strong> Mỗi bước phụ thuộc output của bước trước → parallelism = 0</li>
+        <li><strong>Context đủ:</strong> Toàn bộ information fit trong một context window</li>
+        <li><strong>Cost constraints:</strong> N agents = N× cost — không có budget</li>
+        <li><strong>Latency critical:</strong> Orchestration overhead (serialization, routing) làm chậm thêm</li>
+        <li><strong>Simple task:</strong> Prompt chaining đơn giản đủ dùng</li>
+        <li><strong>Team nhỏ:</strong> Complexity của multi-agent system vượt khả năng maintain</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="callout warn">
+    <div class="icon">⚠</div>
+    <div>
+      <div class="title">Rule of thumb quan trọng nhất</div>
+      <p>
+        Bắt đầu với <strong>single agent + tools</strong>. Nếu gặp context limit, parallelism bottleneck, hoặc cần specialization rõ ràng — lúc đó mới xem xét multi-agent.
+        "Thêm agent" không phải solution mặc định cho mọi vấn đề về quality.
+      </p>
+    </div>
+  </div>
+
+  <h3>Real benefit case: Software Development Pipeline</h3>
+  <p>
+    Một ví dụ điển hình thực sự có lợi từ multi-agent: CI/CD code review tự động.
+    Task bao gồm: phân tích security, kiểm tra performance, review business logic, viết test suggestions.
+    Bốn concern này <em>độc lập nhau</em>, có thể chạy song song, và cần expertise/prompt khác nhau.
+    Single agent cố handle cả 4 thường làm tốt nhất 2-3 trong khi bỏ sót 1-2.
+  </p>
+
+  <!-- ═══════════════════════════════════════════════
+       28.2 Hierarchical
+  ════════════════════════════════════════════════ -->
+  <h2 id="hierarchical">28.2 Hierarchical: Manager → Workers; Supervisor Pattern</h2>
+
+  <p>
+    Pattern phổ biến nhất trong production multi-agent systems. Một <strong>Manager (Orchestrator)</strong>
+    nhận task cấp cao, decompose thành sub-tasks, delegate cho <strong>Worker agents</strong> chuyên biệt,
+    rồi synthesize kết quả. Manager không làm việc tay chân — chỉ plan và coordinate.
+  </p>
+
+  <svg class="diagram" viewBox="0 0 760 320" role="img" aria-label="Hierarchical multi-agent pattern: manager và workers">
+    <defs>
+      <marker id="arr-h" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#6f7c92"/>
+      </marker>
+      <marker id="arr-h-back" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#b4e07a"/>
+      </marker>
+    </defs>
+
+    <!-- User request at top -->
+    <rect class="node-bg" x="290" y="10" width="180" height="40" rx="8"/>
+    <text x="380" y="28" text-anchor="middle" font-weight="600" font-size="13">User Request</text>
+    <text x="380" y="43" text-anchor="middle" class="label-sm">"Research &amp; write product brief"</text>
+    <line class="arrow" x1="380" y1="51" x2="380" y2="74" marker-end="url(#arr-h)"/>
+
+    <!-- Manager -->
+    <rect class="node-accent" x="210" y="76" width="340" height="52" rx="10"/>
+    <text x="380" y="98" text-anchor="middle" font-weight="700" font-size="14">Manager Agent</text>
+    <text x="380" y="116" text-anchor="middle" class="label-sm">Plans tasks · Delegates · Synthesizes final output</text>
+
+    <!-- Dispatch arrows down -->
+    <line class="arrow" x1="260" y1="128" x2="110" y2="178" marker-end="url(#arr-h)"/>
+    <line class="arrow" x1="320" y1="128" x2="270" y2="178" marker-end="url(#arr-h)"/>
+    <line class="arrow" x1="440" y1="128" x2="490" y2="178" marker-end="url(#arr-h)"/>
+    <line class="arrow" x1="500" y1="128" x2="650" y2="178" marker-end="url(#arr-h)"/>
+
+    <!-- Worker A -->
+    <rect class="node-blue" x="40" y="180" width="140" height="52" rx="8"/>
+    <text x="110" y="200" text-anchor="middle" font-weight="600" font-size="12">Researcher</text>
+    <text x="110" y="215" text-anchor="middle" class="label-sm">web_search</text>
+    <text x="110" y="228" text-anchor="middle" class="label-sm">fetch_url</text>
+
+    <!-- Worker B -->
+    <rect class="node-blue" x="200" y="180" width="140" height="52" rx="8"/>
+    <text x="270" y="200" text-anchor="middle" font-weight="600" font-size="12">Analyst</text>
+    <text x="270" y="215" text-anchor="middle" class="label-sm">query_db</text>
+    <text x="270" y="228" text-anchor="middle" class="label-sm">run_sql</text>
+
+    <!-- Worker C -->
+    <rect class="node-blue" x="420" y="180" width="140" height="52" rx="8"/>
+    <text x="490" y="200" text-anchor="middle" font-weight="600" font-size="12">Writer</text>
+    <text x="490" y="215" text-anchor="middle" class="label-sm">draft_section</text>
+    <text x="490" y="228" text-anchor="middle" class="label-sm">format_doc</text>
+
+    <!-- Worker D -->
+    <rect class="node-blue" x="580" y="180" width="140" height="52" rx="8"/>
+    <text x="650" y="200" text-anchor="middle" font-weight="600" font-size="12">Fact Checker</text>
+    <text x="650" y="215" text-anchor="middle" class="label-sm">verify_claim</text>
+    <text x="650" y="228" text-anchor="middle" class="label-sm">cite_source</text>
+
+    <!-- Return arrows (dashed-style via stroke-dasharray) -->
+    <line stroke="#b4e07a" stroke-width="1" stroke-dasharray="4,3" x1="110" y1="232" x2="260" y2="278" marker-end="url(#arr-h-back)"/>
+    <line stroke="#b4e07a" stroke-width="1" stroke-dasharray="4,3" x1="270" y1="232" x2="320" y2="278" marker-end="url(#arr-h-back)"/>
+    <line stroke="#b4e07a" stroke-width="1" stroke-dasharray="4,3" x1="490" y1="232" x2="440" y2="278" marker-end="url(#arr-h-back)"/>
+    <line stroke="#b4e07a" stroke-width="1" stroke-dasharray="4,3" x1="650" y1="232" x2="500" y2="278" marker-end="url(#arr-h-back)"/>
+
+    <!-- Synthesize box -->
+    <rect class="node-green" x="210" y="280" width="340" height="30" rx="8"/>
+    <text x="380" y="299" text-anchor="middle" font-weight="600" font-size="12">Manager synthesizes → Final Output</text>
+
+    <!-- Legend -->
+    <line stroke="#6f7c92" stroke-width="1.5" x1="40" y1="310" x2="70" y2="310" marker-end="url(#arr-h)"/>
+    <text x="75" y="314" font-size="11" fill="#6f7c92">dispatch</text>
+    <line stroke="#b4e07a" stroke-width="1" stroke-dasharray="4,3" x1="130" y1="310" x2="160" y2="310" marker-end="url(#arr-h-back)"/>
+    <text x="165" y="314" font-size="11" fill="#b4e07a">result return</text>
+  </svg>
+
+  <h3>LangGraph Supervisor Pattern</h3>
+  <p>
+    LangGraph implements supervisor pattern bằng cách dùng một <em>supervisor node</em> là LLM với
+    tool calls để route đến worker nodes. Supervisor quyết định worker nào cần gọi tiếp theo,
+    hoặc trả về <code>FINISH</code> khi xong.
+  </p>
+
+  <pre><code><span class="cm"># LangGraph Supervisor skeleton (2026 API)</span>
+<span class="kw">from</span> langgraph.prebuilt <span class="kw">import</span> create_react_agent
+<span class="kw">from</span> langgraph_supervisor <span class="kw">import</span> create_supervisor
+
+<span class="cm"># Tạo worker agents chuyên biệt</span>
+researcher = create_react_agent(
+    model=<span class="str">"claude-opus-4-5"</span>,
+    tools=[web_search, fetch_url],
+    name=<span class="str">"researcher"</span>,
+    prompt=<span class="str">"You are a research specialist. Find accurate sources."</span>
+)
+
+writer = create_react_agent(
+    model=<span class="str">"claude-sonnet-4-5"</span>,
+    tools=[draft_section, format_doc],
+    name=<span class="str">"writer"</span>,
+    prompt=<span class="str">"You are a technical writer. Write clear, structured content."</span>
+)
+
+fact_checker = create_react_agent(
+    model=<span class="str">"claude-haiku-4-5"</span>,
+    tools=[verify_claim, cite_source],
+    name=<span class="str">"fact_checker"</span>,
+    prompt=<span class="str">"You verify factual claims. Flag anything uncertain."</span>
+)
+
+<span class="cm"># Tạo supervisor orchestrating workers</span>
+workflow = create_supervisor(
+    agents=[researcher, writer, fact_checker],
+    model=<span class="str">"claude-opus-4-5"</span>,
+    prompt=<span class="str">"""You coordinate research and writing tasks.
+    Use researcher first, then writer, then fact_checker.
+    Return FINISH when the document is complete and verified."""</span>
+)
+
+app = workflow.compile()
+result = await app.ainvoke({<span class="str">"messages"</span>: [(<span class="str">"user"</span>, user_task)]})
+</code></pre>
+
+  <div class="callout note">
+    <div class="icon">≡</div>
+    <div>
+      <div class="title">Supervisor vs Orchestrator</div>
+      <p>
+        <strong>Supervisor</strong>: LLM-driven dynamic routing — supervisor <em>quyết định</em> gọi worker nào và khi nào.
+        Flexible nhưng non-deterministic.<br>
+        <strong>Orchestrator</strong>: Code-driven fixed graph — developer <em>hardcode</em> thứ tự workers.
+        Predictable và dễ debug hơn. Production systems thường bắt đầu với orchestrator, chuyển sang supervisor khi cần flexibility.
+      </p>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════
+       28.3 Debate Pattern
+  ════════════════════════════════════════════════ -->
+  <h2 id="debate">28.3 Debate / Multi-perspective (Du et al. — LLM Debate Improves Factuality)</h2>
+
+  <p>
+    Nghiên cứu của <strong>Du et al. (2023)</strong> — <em>"Improving Factuality and Reasoning in Language Models through Multiagent Debate"</em> — cho thấy khi nhiều LLM instances debate với nhau qua nhiều vòng,
+    factual accuracy và reasoning quality tăng đáng kể so với single-model chain-of-thought.
+    Mechanism: mỗi agent được expose với lập luận của agent khác → buộc phải refine hoặc defend.
+  </p>
+
+  <svg class="diagram" viewBox="0 0 760 280" role="img" aria-label="LLM debate pattern: round-robin multi-round">
+    <defs>
+      <marker id="arr-d" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#6f7c92"/>
+      </marker>
+    </defs>
+
+    <!-- Question -->
+    <rect class="node-bg" x="300" y="10" width="160" height="36" rx="8"/>
+    <text x="380" y="28" text-anchor="middle" font-weight="600" font-size="13">Question / Task</text>
+    <text x="380" y="43" text-anchor="middle" class="label-sm">same prompt to all agents</text>
+
+    <!-- Round 1 label -->
+    <text x="20" y="80" font-weight="700" font-size="12" fill="#ffb86b">Round 1: Initial Answers</text>
+
+    <!-- Agent A -->
+    <rect class="node-accent" x="20" y="88" width="120" height="52" rx="8"/>
+    <text x="80" y="108" text-anchor="middle" font-weight="700" font-size="12">Agent A</text>
+    <text x="80" y="123" text-anchor="middle" class="label-sm">Answer: X</text>
+    <text x="80" y="136" text-anchor="middle" class="label-sm">reasoning_A</text>
+
+    <!-- Agent B -->
+    <rect class="node-blue" x="320" y="88" width="120" height="52" rx="8"/>
+    <text x="380" y="108" text-anchor="middle" font-weight="700" font-size="12">Agent B</text>
+    <text x="380" y="123" text-anchor="middle" class="label-sm">Answer: Y</text>
+    <text x="380" y="136" text-anchor="middle" class="label-sm">reasoning_B</text>
+
+    <!-- Agent C -->
+    <rect class="node-green" x="620" y="88" width="120" height="52" rx="8"/>
+    <text x="680" y="108" text-anchor="middle" font-weight="700" font-size="12">Agent C</text>
+    <text x="680" y="123" text-anchor="middle" class="label-sm">Answer: X</text>
+    <text x="680" y="136" text-anchor="middle" class="label-sm">reasoning_C</text>
+
+    <!-- Round 2 label -->
+    <text x="20" y="168" font-weight="700" font-size="12" fill="#7cc4ff">Round 2: Critique &amp; Refine (sees all answers)</text>
+
+    <!-- Arrows between rounds — all agents see each other -->
+    <line class="arrow" x1="141" y1="114" x2="319" y2="114" marker-end="url(#arr-d)"/>
+    <line class="arrow" x1="441" y1="114" x2="619" y2="114" marker-end="url(#arr-d)"/>
+    <line class="arrow" x1="319" y1="108" x2="141" y2="108" marker-end="url(#arr-d)"/>
+    <line class="arrow" x1="619" y1="120" x2="441" y2="120" marker-end="url(#arr-d)"/>
+
+    <!-- Round 2 agents (updated) -->
+    <rect class="node-accent" x="20" y="176" width="120" height="52" rx="8"/>
+    <text x="80" y="196" text-anchor="middle" font-weight="700" font-size="12">Agent A'</text>
+    <text x="80" y="211" text-anchor="middle" class="label-sm">Revised: X</text>
+    <text x="80" y="224" text-anchor="middle" class="label-sm">stronger reasoning</text>
+
+    <rect class="node-blue" x="320" y="176" width="120" height="52" rx="8"/>
+    <text x="380" y="196" text-anchor="middle" font-weight="700" font-size="12">Agent B'</text>
+    <text x="380" y="211" text-anchor="middle" class="label-sm">Changed: X</text>
+    <text x="380" y="224" text-anchor="middle" class="label-sm">convinced by A,C</text>
+
+    <rect class="node-green" x="620" y="176" width="120" height="52" rx="8"/>
+    <text x="680" y="196" text-anchor="middle" font-weight="700" font-size="12">Agent C'</text>
+    <text x="680" y="211" text-anchor="middle" class="label-sm">Confirmed: X</text>
+    <text x="680" y="224" text-anchor="middle" class="label-sm">added evidence</text>
+
+    <!-- Aggregator -->
+    <line class="arrow" x1="80" y1="228" x2="290" y2="256" marker-end="url(#arr-d)"/>
+    <line class="arrow" x1="380" y1="228" x2="380" y2="256" marker-end="url(#arr-d)"/>
+    <line class="arrow" x1="680" y1="228" x2="470" y2="256" marker-end="url(#arr-d)"/>
+    <rect class="node-bg" x="270" y="258" width="220" height="14" rx="6"/>
+    <text x="380" y="270" text-anchor="middle" font-size="12" font-weight="600">Aggregate: majority vote → X ✓</text>
+  </svg>
+
+  <h3>Khi nào dùng Debate Pattern</h3>
+  <ul>
+    <li><strong>High-stakes factual questions:</strong> Medical advice, legal analysis, financial projections</li>
+    <li><strong>Ambiguous tasks:</strong> Nhiều cách interpret task — debate helps surface interpretations</li>
+    <li><strong>Creative tasks cần diversity:</strong> Brainstorming, ideation — nhiều perspectives = nhiều ideas</li>
+    <li><strong>Bias reduction:</strong> Single agent có thể có positional bias (hay ưu tiên answer đầu tiên của nó)</li>
+  </ul>
+
+  <p>
+    <strong>Chi phí thực tế:</strong> N agents × R rounds = N×R LLM calls + context phình to (mỗi round thêm tất cả answers trước).
+    2 agents × 2 rounds = ít nhất 4× cost, thường hơn vì context accumulation.
+  </p>
+
+  <!-- ═══════════════════════════════════════════════
+       28.4 Parallel Critic
+  ════════════════════════════════════════════════ -->
+  <h2 id="parallel-critic">28.4 Parallel Critic: Generator + Multiple Critics → Vote/Select</h2>
+
+  <p>
+    Pattern này tách biệt <strong>generation</strong> và <strong>evaluation</strong>. Một Generator tạo output;
+    nhiều Critics đánh giá từ các góc độ khác nhau; một Aggregator tổng hợp scores và chọn/cải thiện output.
+    Khác với debate ở chỗ: Critics không tranh luận với nhau — chúng độc lập evaluate.
+  </p>
+
+  <svg class="diagram" viewBox="0 0 760 260" role="img" aria-label="Parallel critic pattern: one generator, multiple critics, vote/select">
+    <defs>
+      <marker id="arr-c" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#6f7c92"/>
+      </marker>
+    </defs>
+
+    <!-- Input -->
+    <rect class="node-bg" x="300" y="10" width="160" height="36" rx="8"/>
+    <text x="380" y="29" text-anchor="middle" font-weight="600" font-size="13">Task Input</text>
+    <text x="380" y="43" text-anchor="middle" class="label-sm">+ evaluation criteria</text>
+    <line class="arrow" x1="380" y1="47" x2="380" y2="70" marker-end="url(#arr-c)"/>
+
+    <!-- Generator -->
+    <rect class="node-accent" x="270" y="72" width="220" height="44" rx="10"/>
+    <text x="380" y="92" text-anchor="middle" font-weight="700" font-size="13">Generator Agent</text>
+    <text x="380" y="109" text-anchor="middle" class="label-sm">Produces candidate output</text>
+
+    <!-- Fan out to critics -->
+    <line class="arrow" x1="300" y1="116" x2="120" y2="158" marker-end="url(#arr-c)"/>
+    <line class="arrow" x1="350" y1="116" x2="270" y2="158" marker-end="url(#arr-c)"/>
+    <line class="arrow" x1="410" y1="116" x2="490" y2="158" marker-end="url(#arr-c)"/>
+    <line class="arrow" x1="460" y1="116" x2="640" y2="158" marker-end="url(#arr-c)"/>
+
+    <!-- Critic A -->
+    <rect class="node-blue" x="40" y="160" width="160" height="52" rx="8"/>
+    <text x="120" y="181" text-anchor="middle" font-weight="600" font-size="12">Critic: Accuracy</text>
+    <text x="120" y="196" text-anchor="middle" class="label-sm">Checks factual claims</text>
+    <text x="120" y="209" text-anchor="middle" class="label-sm">Score: 8/10</text>
+
+    <!-- Critic B -->
+    <rect class="node-blue" x="210" y="160" width="160" height="52" rx="8"/>
+    <text x="290" y="181" text-anchor="middle" font-weight="600" font-size="12">Critic: Clarity</text>
+    <text x="290" y="196" text-anchor="middle" class="label-sm">Checks readability</text>
+    <text x="290" y="209" text-anchor="middle" class="label-sm">Score: 6/10 ⚠</text>
+
+    <!-- Critic C -->
+    <rect class="node-blue" x="390" y="160" width="160" height="52" rx="8"/>
+    <text x="470" y="181" text-anchor="middle" font-weight="600" font-size="12">Critic: Safety</text>
+    <text x="470" y="196" text-anchor="middle" class="label-sm">Checks harmful content</text>
+    <text x="470" y="209" text-anchor="middle" class="label-sm">Score: 10/10 ✓</text>
+
+    <!-- Critic D -->
+    <rect class="node-blue" x="560" y="160" width="160" height="52" rx="8"/>
+    <text x="640" y="181" text-anchor="middle" font-weight="600" font-size="12">Critic: Completeness</text>
+    <text x="640" y="196" text-anchor="middle" class="label-sm">Checks all criteria met</text>
+    <text x="640" y="209" text-anchor="middle" class="label-sm">Score: 7/10</text>
+
+    <!-- Fan in to aggregator -->
+    <line class="arrow" x1="120" y1="212" x2="310" y2="238" marker-end="url(#arr-c)"/>
+    <line class="arrow" x1="290" y1="212" x2="350" y2="238" marker-end="url(#arr-c)"/>
+    <line class="arrow" x1="470" y1="212" x2="410" y2="238" marker-end="url(#arr-c)"/>
+    <line class="arrow" x1="640" y1="212" x2="450" y2="238" marker-end="url(#arr-c)"/>
+
+    <!-- Aggregator -->
+    <rect class="node-green" x="280" y="240" width="200" height="14" rx="6"/>
+    <text x="380" y="252" text-anchor="middle" font-size="12" font-weight="600">Aggregator: avg 7.75 → Regenerate (Clarity)</text>
+  </svg>
+
+  <p>
+    Aggregator có thể hoạt động theo nhiều strategy: <strong>weighted average</strong> (từng critic có trọng số khác nhau),
+    <strong>gate-based</strong> (bất kỳ critic nào fail → regenerate), hoặc <strong>selective improvement</strong>
+    (chỉ gửi feedback từ low-score critics về Generator để tái tạo).
+  </p>
+
+  <pre><code><span class="cm"># Parallel critic skeleton</span>
+<span class="kw">import</span> asyncio
+
+<span class="kw">async def</span> <span class="fn">parallel_critic_loop</span>(task: str, max_iterations: int = <span class="num">3</span>) -> str:
+
+    <span class="kw">for</span> iteration <span class="kw">in</span> <span class="fn">range</span>(max_iterations):
+        <span class="cm"># 1. Generate candidate</span>
+        candidate = <span class="kw">await</span> generator_agent.<span class="fn">run</span>(task)
+
+        <span class="cm"># 2. Run all critics in parallel</span>
+        scores = <span class="kw">await</span> asyncio.<span class="fn">gather</span>(
+            accuracy_critic.<span class="fn">score</span>(candidate),
+            clarity_critic.<span class="fn">score</span>(candidate),
+            safety_critic.<span class="fn">score</span>(candidate),
+            completeness_critic.<span class="fn">score</span>(candidate),
+        )
+
+        <span class="cm"># 3. Aggregate and decide</span>
+        result = aggregator.<span class="fn">evaluate</span>(scores)
+        <span class="kw">if</span> result.passed:
+            <span class="kw">return</span> candidate.output
+
+        <span class="cm"># 4. Add failed-critic feedback to task context</span>
+        task = task + <span class="str">f"\n\nPrevious attempt issues:\n{result.feedback}"</span>
+
+    <span class="kw">return</span> candidate.output  <span class="cm"># return best attempt after max iterations</span>
+</code></pre>
+
+  <!-- ═══════════════════════════════════════════════
+       28.5 Mixture-of-Agents (MoA)
+  ════════════════════════════════════════════════ -->
+  <h2 id="moa">28.5 Mixture-of-Agents (MoA): Layered Proposers với Aggregator</h2>
+
+  <p>
+    <strong>Mixture-of-Agents</strong> (Together AI, Wang et al. 2024) là architecture lấy cảm hứng từ
+    Mixture-of-Experts nhưng áp dụng ở cấp agent thay vì cấp neural network.
+    Key insight: LLMs có <em>collaborativeness</em> — quality của output cải thiện khi model được cung cấp responses của các models khác.
+    MoA exploit điều này bằng cách stack nhiều "layers" của proposer agents.
+  </p>
+
+  <svg class="diagram" viewBox="0 0 760 300" role="img" aria-label="Mixture-of-Agents layered architecture">
+    <defs>
+      <marker id="arr-moa" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#6f7c92"/>
+      </marker>
+    </defs>
+
+    <!-- Input -->
+    <rect class="node-bg" x="300" y="8" width="160" height="32" rx="8"/>
+    <text x="380" y="28" text-anchor="middle" font-weight="600" font-size="13">Query / Task</text>
+
+    <!-- Layer 1 label -->
+    <text x="20" y="60" font-weight="700" font-size="12" fill="#ffb86b">Layer 1 — Proposers (diverse models)</text>
+
+    <line class="arrow" x1="280" y1="40" x2="100" y2="68" marker-end="url(#arr-moa)"/>
+    <line class="arrow" x1="340" y1="40" x2="300" y2="68" marker-end="url(#arr-moa)"/>
+    <line class="arrow" x1="420" y1="40" x2="460" y2="68" marker-end="url(#arr-moa)"/>
+    <line class="arrow" x1="470" y1="40" x2="640" y2="68" marker-end="url(#arr-moa)"/>
+
+    <rect class="node-accent" x="20" y="70" width="150" height="44" rx="8"/>
+    <text x="95" y="90" text-anchor="middle" font-weight="600" font-size="12">Proposer A</text>
+    <text x="95" y="106" text-anchor="middle" class="label-sm">GPT-4o</text>
+
+    <rect class="node-blue" x="200" y="70" width="150" height="44" rx="8"/>
+    <text x="275" y="90" text-anchor="middle" font-weight="600" font-size="12">Proposer B</text>
+    <text x="275" y="106" text-anchor="middle" class="label-sm">Claude Sonnet</text>
+
+    <rect class="node-green" x="380" y="70" width="150" height="44" rx="8"/>
+    <text x="455" y="90" text-anchor="middle" font-weight="600" font-size="12">Proposer C</text>
+    <text x="455" y="106" text-anchor="middle" class="label-sm">Gemini Flash</text>
+
+    <rect class="node-bg" x="560" y="70" width="150" height="44" rx="8"/>
+    <text x="635" y="90" text-anchor="middle" font-weight="600" font-size="12">Proposer D</text>
+    <text x="635" y="106" text-anchor="middle" class="label-sm">Llama-3.3</text>
+
+    <!-- Arrows to Layer 2 -->
+    <line class="arrow" x1="95" y1="114" x2="185" y2="158" marker-end="url(#arr-moa)"/>
+    <line class="arrow" x1="275" y1="114" x2="290" y2="158" marker-end="url(#arr-moa)"/>
+    <line class="arrow" x1="455" y1="114" x2="440" y2="158" marker-end="url(#arr-moa)"/>
+    <line class="arrow" x1="635" y1="114" x2="555" y2="158" marker-end="url(#arr-moa)"/>
+
+    <!-- Layer 2 label -->
+    <text x="20" y="155" font-weight="700" font-size="12" fill="#7cc4ff">Layer 2 — Proposers (see all Layer-1 outputs)</text>
+
+    <rect class="node-blue" x="100" y="160" width="185" height="44" rx="8"/>
+    <text x="192" y="180" text-anchor="middle" font-weight="600" font-size="12">Proposer E</text>
+    <text x="192" y="196" text-anchor="middle" class="label-sm">synthesizes A+B+C+D outputs</text>
+
+    <rect class="node-green" x="310" y="160" width="185" height="44" rx="8"/>
+    <text x="402" y="180" text-anchor="middle" font-weight="600" font-size="12">Proposer F</text>
+    <text x="402" y="196" text-anchor="middle" class="label-sm">synthesizes A+B+C+D outputs</text>
+
+    <rect class="node-accent" x="520" y="160" width="185" height="44" rx="8"/>
+    <text x="612" y="180" text-anchor="middle" font-weight="600" font-size="12">Proposer G</text>
+    <text x="612" y="196" text-anchor="middle" class="label-sm">synthesizes A+B+C+D outputs</text>
+
+    <!-- Arrow to aggregator -->
+    <line class="arrow" x1="192" y1="204" x2="320" y2="240" marker-end="url(#arr-moa)"/>
+    <line class="arrow" x1="402" y1="204" x2="390" y2="240" marker-end="url(#arr-moa)"/>
+    <line class="arrow" x1="612" y1="204" x2="460" y2="240" marker-end="url(#arr-moa)"/>
+
+    <!-- Aggregator label -->
+    <text x="20" y="238" font-weight="700" font-size="12" fill="#d3a4ff">Aggregator — Final Synthesis</text>
+    <rect style="fill:rgba(211,164,255,0.12); stroke:#d3a4ff; stroke-width:1.5;" x="240" y="243" width="280" height="44" rx="10"/>
+    <text x="380" y="263" text-anchor="middle" font-weight="700" font-size="13">Aggregator LLM</text>
+    <text x="380" y="280" text-anchor="middle" class="label-sm">Strongest model — sees all Layer-2 outputs → final answer</text>
+  </svg>
+
+  <p>
+    Theo paper của Together AI, MoA với top-4 models (GPT-4o, Claude 3 Opus, Gemini 1.5, WizardLM-8x22B) đạt
+    <strong>65.1% win rate trên AlpacaEval 2.0</strong>, vượt GPT-4o standalone (57.5%).
+    Key finding: <em>thậm chí "weak" proposers cũng cải thiện kết quả</em> khi output của chúng được dùng làm
+    context cho aggregator — vì chúng bổ sung diversity, không cần accuracy hoàn hảo.
+  </p>
+
+  <div class="callout tip">
+    <div class="icon">★</div>
+    <div>
+      <div class="title">Cost của MoA</div>
+      <p>
+        MoA với 2 layers × 4 proposers + 1 aggregator = ít nhất 9 LLM calls, và context của Layer 2 bằng
+        tổng tất cả Layer-1 outputs. Chi phí có thể gấp 20-50× single call.
+        Hợp lý cho evaluation benchmarks hoặc offline tasks; ít hợp lý cho real-time user-facing features.
+      </p>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════
+       28.6 Blackboard Pattern
+  ════════════════════════════════════════════════ -->
+  <h2 id="blackboard">28.6 Blackboard Pattern (Shared Scratchpad)</h2>
+
+  <p>
+    Lấy cảm hứng từ <strong>Blackboard architecture</strong> của AI cổ điển (HEARSAY-II, 1975).
+    Thay vì agents giao tiếp trực tiếp, tất cả chia sẻ một <em>blackboard</em> — một shared state/document
+    mà bất kỳ agent nào có thể đọc và ghi. Agents "subscribe" vào phần blackboard liên quan đến họ
+    và "post" kết quả của mình.
+  </p>
+
+  <svg class="diagram" viewBox="0 0 760 270" role="img" aria-label="Blackboard pattern: shared scratchpad architecture">
+    <defs>
+      <marker id="arr-bb" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#6f7c92"/>
+      </marker>
+    </defs>
+
+    <!-- Blackboard in center -->
+    <rect style="fill:rgba(124,196,255,0.08); stroke:#7cc4ff; stroke-width:2;" x="220" y="80" width="320" height="130" rx="12"/>
+    <text x="380" y="104" text-anchor="middle" font-weight="700" font-size="14" fill="#7cc4ff">BLACKBOARD (Shared State)</text>
+    <rect class="node-bg" x="234" y="112" width="130" height="26" rx="5"/>
+    <text x="299" y="130" text-anchor="middle" font-size="11">facts: [claim1, claim2]</text>
+    <rect class="node-bg" x="234" y="142" width="130" height="26" rx="5"/>
+    <text x="299" y="160" text-anchor="middle" font-size="11">drafts: [section_1]</text>
+    <rect class="node-bg" x="234" y="172" width="130" height="26" rx="5"/>
+    <text x="299" y="190" text-anchor="middle" font-size="11">status: {step: 3}</text>
+    <rect class="node-bg" x="376" y="112" width="150" height="26" rx="5"/>
+    <text x="451" y="130" text-anchor="middle" font-size="11">hypothesis: "cause = X"</text>
+    <rect class="node-bg" x="376" y="142" width="150" height="26" rx="5"/>
+    <text x="451" y="160" text-anchor="middle" font-size="11">errors: [issue_A]</text>
+    <rect class="node-bg" x="376" y="172" width="150" height="26" rx="5"/>
+    <text x="451" y="190" text-anchor="middle" font-size="11">verified: [claim1 ✓]</text>
+
+    <!-- Controller -->
+    <rect class="node-accent" x="290" y="10" width="180" height="40" rx="8"/>
+    <text x="380" y="28" text-anchor="middle" font-weight="600" font-size="12">Controller / Scheduler</text>
+    <text x="380" y="43" text-anchor="middle" class="label-sm">monitors blackboard → triggers agents</text>
+    <line class="arrow" x1="380" y1="50" x2="380" y2="79" marker-end="url(#arr-bb)"/>
+
+    <!-- Agents reading/writing -->
+    <rect class="node-green" x="20" y="110" width="140" height="44" rx="8"/>
+    <text x="90" y="130" text-anchor="middle" font-weight="600" font-size="12">Researcher Agent</text>
+    <text x="90" y="146" text-anchor="middle" class="label-sm">reads: status; writes: facts</text>
+    <!-- bidirectional arrow -->
+    <line class="arrow" x1="161" y1="132" x2="219" y2="145" marker-end="url(#arr-bb)"/>
+    <line class="arrow" x1="219" y1="152" x2="161" y2="139" marker-end="url(#arr-bb)"/>
+
+    <rect class="node-blue" x="20" y="180" width="140" height="44" rx="8"/>
+    <text x="90" y="200" text-anchor="middle" font-weight="600" font-size="12">Analyst Agent</text>
+    <text x="90" y="216" text-anchor="middle" class="label-sm">reads: facts; writes: hypothesis</text>
+    <line class="arrow" x1="161" y1="200" x2="219" y2="182" marker-end="url(#arr-bb)"/>
+    <line class="arrow" x1="219" y1="190" x2="161" y2="208" marker-end="url(#arr-bb)"/>
+
+    <rect class="node-accent" x="600" y="110" width="140" height="44" rx="8"/>
+    <text x="670" y="130" text-anchor="middle" font-weight="600" font-size="12">Writer Agent</text>
+    <text x="670" y="146" text-anchor="middle" class="label-sm">reads: facts,hyp; writes: drafts</text>
+    <line class="arrow" x1="599" y1="132" x2="541" y2="145" marker-end="url(#arr-bb)"/>
+    <line class="arrow" x1="541" y1="152" x2="599" y2="139" marker-end="url(#arr-bb)"/>
+
+    <rect class="node-green" x="600" y="180" width="140" height="44" rx="8"/>
+    <text x="670" y="200" text-anchor="middle" font-weight="600" font-size="12">Validator Agent</text>
+    <text x="670" y="216" text-anchor="middle" class="label-sm">reads: drafts; writes: verified</text>
+    <line class="arrow" x1="599" y1="200" x2="541" y2="182" marker-end="url(#arr-bb)"/>
+    <line class="arrow" x1="541" y1="190" x2="599" y2="208" marker-end="url(#arr-bb)"/>
+
+    <!-- Final output -->
+    <line class="arrow" x1="380" y1="211" x2="380" y2="238" marker-end="url(#arr-bb)"/>
+    <rect class="node-bg" x="290" y="240" width="180" height="24" rx="8"/>
+    <text x="380" y="256" text-anchor="middle" font-size="12" font-weight="600">Final Output</text>
+  </svg>
+
+  <h3>Điểm mạnh của Blackboard</h3>
+  <ul>
+    <li><strong>Loose coupling:</strong> Agents không biết nhau — chỉ biết blackboard schema. Dễ add/remove agent.</li>
+    <li><strong>Emergent collaboration:</strong> Agents tự react với state thay vì cần explicit orchestration</li>
+    <li><strong>Persistent state:</strong> Blackboard là audit log tự nhiên — có thể resume sau crash</li>
+    <li><strong>Async-friendly:</strong> Agents có thể chạy bất kỳ lúc nào có relevant data trên blackboard</li>
+  </ul>
+
+  <h3>Implement với shared document/database</h3>
+  <p>
+    Trong LLM systems, blackboard thường được implement bằng: <strong>shared dict/JSON</strong> trong memory
+    (single process), <strong>Redis key-value store</strong> (distributed), hoặc <strong>database document</strong>
+    (persistent). LangGraph's <code>State</code> object là một dạng in-process blackboard.
+  </p>
+
+  <!-- ═══════════════════════════════════════════════
+       28.7 Market-based
+  ════════════════════════════════════════════════ -->
+  <h2 id="market">28.7 Market-based / Bidding (ít phổ biến nhưng tồn tại)</h2>
+
+  <p>
+    Pattern lấy cảm hứng từ kinh tế học: agents "bid" cho tasks dựa trên khả năng và workload của mình.
+    Một <strong>Auctioneer</strong> giao task cho agent có bid tốt nhất (theo criteria: cost, confidence, latency).
+    Phổ biến trong distributed AI research nhưng hiếm trong production LLM systems vì complexity cao.
+  </p>
+
+  <div class="card">
+    <h4 style="margin-top:0">Use case hợp lý nhất cho Market-based</h4>
+    <ul style="margin-bottom:0">
+      <li><strong>Resource allocation:</strong> Nhiều tasks queue, nhiều agent instances với capacity khác nhau</li>
+      <li><strong>Heterogeneous agents:</strong> Agents thực sự có khả năng khác nhau và biết điểm mạnh của mình</li>
+      <li><strong>Dynamic scaling:</strong> Số agent thay đổi theo load — bid mechanism tự cân bằng workload</li>
+    </ul>
+  </div>
+
+  <p>
+    Trong practice 2026, market-based agent thường được simplify thành <strong>priority queue + load balancer</strong>
+    với confidence scoring từ agents — không dùng full auction protocol.
+  </p>
+
+  <!-- ═══════════════════════════════════════════════
+       28.8 Agent Communication
+  ════════════════════════════════════════════════ -->
+  <h2 id="communication">28.8 Agent Communication: Shared Memory vs Message Passing; Structured Channels</h2>
+
+  <h3>Hai paradigm chính</h3>
+
+  <div class="grid-2">
+    <div class="card">
+      <h4 style="margin-top:0; color:var(--accent)">Shared Memory</h4>
+      <p>Agents đọc/ghi vào một state chung. Không có explicit messages.</p>
+      <ul style="margin-bottom:0; font-size:14px">
+        <li><span class="tag green">Pro:</span> Đơn giản, không cần serialize messages</li>
+        <li><span class="tag green">Pro:</span> Agents thấy toàn bộ context</li>
+        <li><span class="tag">Con:</span> Race conditions khi nhiều agents write đồng thời</li>
+        <li><span class="tag">Con:</span> Khó scale sang distributed systems</li>
+        <li><strong>Implements:</strong> Python dict, LangGraph State, Redis</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4 style="margin-top:0; color:var(--accent-2)">Message Passing</h4>
+      <p>Agents giao tiếp qua explicit messages / channels. Không shared state.</p>
+      <ul style="margin-bottom:0; font-size:14px">
+        <li><span class="tag green">Pro:</span> Loose coupling, dễ distribute</li>
+        <li><span class="tag green">Pro:</span> Clear audit trail — mọi communication là message</li>
+        <li><span class="tag">Con:</span> Phải serialize/deserialize, schema management</li>
+        <li><span class="tag">Con:</span> Agent cần biết channel names/topics</li>
+        <li><strong>Implements:</strong> RabbitMQ, Kafka, AutoGen MessageProtocol</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3>Structured Channels — Best Practice 2026</h3>
+  <p>
+    Production systems xu hướng dùng <strong>structured, typed channels</strong> thay vì free-form text messages:
+    mỗi message có schema rõ ràng (Pydantic model), loại message được enumerate, và agents chỉ
+    accept messages của loại nhất định. Điều này giảm mạnh lỗi "agent hiểu sai message".
+  </p>
+
+  <pre><code><span class="cm"># Structured agent communication với Pydantic</span>
+<span class="kw">from</span> pydantic <span class="kw">import</span> BaseModel
+<span class="kw">from</span> enum <span class="kw">import</span> Enum
+<span class="kw">from</span> typing <span class="kw">import</span> Literal, Union
+<span class="kw">import</span> uuid
+
+<span class="kw">class</span> MessageType(Enum):
+    TASK_ASSIGNMENT = <span class="str">"task_assignment"</span>
+    TASK_RESULT     = <span class="str">"task_result"</span>
+    CLARIFICATION   = <span class="str">"clarification"</span>
+    ERROR           = <span class="str">"error"</span>
+    TERMINATE       = <span class="str">"terminate"</span>
+
+<span class="kw">class</span> AgentMessage(BaseModel):
+    id:          str = <span class="fn">Field</span>(default_factory=<span class="kw">lambda</span>: <span class="fn">str</span>(uuid.<span class="fn">uuid4</span>()))
+    type:        MessageType
+    sender_id:   str
+    receiver_id: str
+    payload:     dict          <span class="cm"># typed per MessageType</span>
+    timestamp:   float
+    trace_id:    str           <span class="cm"># cho observability — link toàn bộ conversation</span>
+
+<span class="cm"># Worker agent chỉ accept TASK_ASSIGNMENT</span>
+<span class="kw">class</span> ResearchWorker:
+    <span class="kw">async def</span> <span class="fn">handle_message</span>(self, msg: AgentMessage) -> AgentMessage:
+
+        <span class="kw">if</span> msg.type != MessageType.TASK_ASSIGNMENT:
+            <span class="kw">raise</span> <span class="fn">ValueError</span>(<span class="str">f"Unexpected message type: {msg.type}"</span>)
+        result = <span class="kw">await</span> self.<span class="fn">do_research</span>(msg.payload[<span class="str">"task"</span>])
+        <span class="kw">return</span> <span class="fn">AgentMessage</span>(
+            type=MessageType.TASK_RESULT,
+            sender_id=self.agent_id,
+            receiver_id=msg.sender_id,
+            payload={<span class="str">"result"</span>: result, <span class="str">"confidence"</span>: <span class="num">0.87</span>},
+            timestamp=<span class="fn">time</span>.<span class="fn">time</span>(),
+            trace_id=msg.trace_id  <span class="cm"># preserve trace</span>
+        )
+</code></pre>
+
+  <!-- ═══════════════════════════════════════════════
+       28.9 Conflict, Deadlock, Termination
+  ════════════════════════════════════════════════ -->
+  <h2 id="conflict">28.9 Conflict Resolution, Deadlock Prevention, Termination Conditions</h2>
+
+  <h3>Conflict Resolution</h3>
+  <p>Xảy ra khi hai agents đưa ra output mâu thuẫn. Chiến lược:</p>
+  <ul>
+    <li><strong>Priority-based:</strong> Agent với role cao hơn wins (e.g., safety critic always overrides writer)</li>
+    <li><strong>Voting:</strong> Majority của N agents wins — cần odd N để tránh tie</li>
+    <li><strong>Confidence-weighted:</strong> Agent có confidence score cao hơn wins — cần agents tự report confidence calibrated</li>
+    <li><strong>Human escalation:</strong> Khi conflict score vượt threshold — route to human</li>
+    <li><strong>Tiebreaker LLM:</strong> Một "judge" LLM được cung cấp cả hai outputs và quyết định</li>
+  </ul>
+
+  <h3>Deadlock Prevention</h3>
+  <p>
+    Deadlock xảy ra khi Agent A chờ Agent B, và Agent B chờ Agent A. Trong LLM systems, thường là
+    circular dependency trong task graph.
+  </p>
+  <ul>
+    <li><strong>Timeout mỗi agent:</strong> Mỗi agent call có timeout riêng, không chờ vô hạn</li>
+    <li><strong>Dependency validation:</strong> Validate DAG trước khi chạy — từ chối circular dependencies</li>
+    <li><strong>Max iterations:</strong> Supervisor có counter — dừng sau N vòng bất kể kết quả</li>
+    <li><strong>Heartbeat monitoring:</strong> Nếu agent không respond trong T seconds → kill và retry hoặc skip</li>
+  </ul>
+
+  <h3>Termination Conditions — Quan trọng nhất</h3>
+  <div class="callout danger">
+    <div class="icon">!</div>
+    <div>
+      <div class="title">Thiếu termination condition là lỗi phổ biến nhất</div>
+      <p>
+        Agent loop không có điều kiện dừng rõ ràng sẽ chạy vô tận (hoặc đến khi hết budget/rate limit).
+        Mỗi multi-agent system PHẢI có: <strong>explicit success condition</strong>,
+        <strong>max_iterations</strong>, <strong>max_cost budget</strong>, và <strong>timeout tổng</strong>.
+      </p>
+    </div>
+  </div>
+
+  <pre><code><span class="cm"># Termination conditions đầy đủ</span>
+<span class="kw">class</span> OrchestratorConfig(BaseModel):
+    max_iterations:    int   = <span class="num">10</span>      <span class="cm"># không chạy quá N vòng</span>
+    max_total_cost:    float = <span class="num">2.00</span>    <span class="cm"># USD — dừng khi vượt budget</span>
+    timeout_seconds:   int   = <span class="num">120</span>     <span class="cm"># wall-clock timeout</span>
+    success_condition: str   = <span class="str">"task_complete"</span>  <span class="cm"># sentinel value</span>
+
+<span class="kw">async def</span> <span class="fn">run_with_guardrails</span>(task, config: OrchestratorConfig):
+
+    start    = <span class="fn">time</span>.<span class="fn">time</span>()
+    total_cost = <span class="num">0.0</span>
+    iteration  = <span class="num">0</span>
+
+    <span class="kw">while</span> <span class="num">True</span>:
+        <span class="cm"># Termination checks — run BEFORE each iteration</span>
+        <span class="kw">if</span> iteration >= config.max_iterations:
+            <span class="kw">return</span> <span class="fn">PartialResult</span>(<span class="str">"max_iterations_reached"</span>)
+        <span class="kw">if</span> total_cost >= config.max_total_cost:
+            <span class="kw">return</span> <span class="fn">PartialResult</span>(<span class="str">"budget_exceeded"</span>)
+        <span class="kw">if</span> <span class="fn">time</span>.<span class="fn">time</span>() - start >= config.timeout_seconds:
+            <span class="kw">return</span> <span class="fn">PartialResult</span>(<span class="str">"timeout"</span>)
+
+        result, cost = <span class="kw">await</span> <span class="fn">run_iteration</span>(task)
+        total_cost += cost
+        iteration  += <span class="num">1</span>
+
+        <span class="kw">if</span> result.status == config.success_condition:
+            <span class="kw">return</span> result  <span class="cm"># happy path</span>
+</code></pre>
+
+  <!-- ═══════════════════════════════════════════════
+       28.10 Cost & Latency
+  ════════════════════════════════════════════════ -->
+  <h2 id="cost">28.10 Cost &amp; Latency Multiplication — Multi-agent = N× Cost dễ dàng</h2>
+
+  <p>
+    Đây là thực tế cần hiểu rõ trước khi adopt multi-agent. Cost và latency không cộng tuyến tính —
+    chúng nhân lên do context accumulation, coordination overhead, và retry logic.
+  </p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Architecture</th>
+          <th>LLM Calls</th>
+          <th>Relative Cost</th>
+          <th>Latency</th>
+          <th>Khi nào justify</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Single LLM call</strong></td>
+          <td>1</td>
+          <td><span class="tag green">1×</span></td>
+          <td><span class="tag green">~2–5s</span></td>
+          <td>Simple, self-contained task</td>
+        </tr>
+        <tr>
+          <td><strong>Prompt chaining (3 steps)</strong></td>
+          <td>3</td>
+          <td><span class="tag green">3×</span></td>
+          <td><span class="tag green">~6–15s</span></td>
+          <td>Complex task, sequential decompose</td>
+        </tr>
+        <tr>
+          <td><strong>Parallelization (4 workers)</strong></td>
+          <td>4+1</td>
+          <td><span class="tag blue">5×</span></td>
+          <td><span class="tag green">~3–8s (parallel)</span></td>
+          <td>Independent sub-tasks, throughput matters</td>
+        </tr>
+        <tr>
+          <td><strong>Hierarchical (1 mgr + 4 workers)</strong></td>
+          <td>5–8</td>
+          <td><span class="tag blue">6–10×</span></td>
+          <td><span class="tag">~15–40s</span></td>
+          <td>Complex task needing specialization</td>
+        </tr>
+        <tr>
+          <td><strong>Debate (3 agents × 2 rounds)</strong></td>
+          <td>6+1</td>
+          <td><span class="tag">8–15×</span></td>
+          <td><span class="tag">~20–60s</span></td>
+          <td>High-stakes factual output only</td>
+        </tr>
+        <tr>
+          <td><strong>MoA (4 proposers × 2 layers + agg)</strong></td>
+          <td>9–12</td>
+          <td><span class="tag">15–40×</span></td>
+          <td><span class="tag">~30–90s</span></td>
+          <td>Benchmark/offline, accuracy critical</td>
+        </tr>
+        <tr>
+          <td><strong>Parallel critic (1 gen + 4 critics)</strong></td>
+          <td>5–15 (loops)</td>
+          <td><span class="tag">5–20×</span></td>
+          <td><span class="tag">~10–50s</span></td>
+          <td>Quality threshold required, can retry</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Context Accumulation — Hidden Cost</h3>
+  <p>
+    Ngoài số LLM calls, cost còn tăng do <strong>context window phình to</strong>:
+    mỗi agent trong debate/MoA phải nhận toàn bộ outputs của agents trước.
+    Ví dụ: MoA Layer 2 với 4 Layer-1 outputs × 500 tokens/output = 2000 tokens thêm vào context của mỗi Layer-2 agent.
+    Với model charge theo input tokens, điều này cộng thêm nhanh.
+  </p>
+
+  <div class="callout tip">
+    <div class="icon">★</div>
+    <div>
+      <div class="title">Cost optimization cho multi-agent</div>
+      <p>
+        <strong>Cheap workers:</strong> Dùng smaller model (Haiku, Flash) cho workers chuyên biệt; chỉ dùng Opus/GPT-4 cho orchestrator và final synthesis.
+        <strong>Context compression:</strong> Summarize worker outputs trước khi pass vào context của orchestrator.
+        <strong>Early termination:</strong> Stop khi có kết quả đủ tốt — không cần chạy hết N iterations.
+      </p>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════
+       28.11 Frameworks 2026
+  ════════════════════════════════════════════════ -->
+  <h2 id="frameworks">28.11 Frameworks 2026: AutoGen 0.4, CrewAI, LangGraph Multi-agent, Magentic-One, Swarm</h2>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Framework</th>
+          <th>Paradigm</th>
+          <th>Strengths</th>
+          <th>Weaknesses</th>
+          <th>Best for</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>AutoGen 0.4</strong><br><span class="tag blue">Microsoft</span></td>
+          <td>Conversational agents — agents giao tiếp qua dialogue</td>
+          <td>Flexible conversation topology; strong async support; AgentChat API đơn giản hơn 0.2</td>
+          <td>Conversation-first có thể overhead với task-based flows; community docs chưa hoàn thiện</td>
+          <td>Research, code generation, debate patterns</td>
+        </tr>
+        <tr>
+          <td><strong>CrewAI</strong><br><span class="tag blue">OSS</span></td>
+          <td>Role-based crews — define agents as roles với backstory và goals</td>
+          <td>Intuitive role definition; built-in memory (short/long); Process support (sequential/hierarchical)</td>
+          <td>Abstraction leaky khi cần fine-grained control; performance overhead</td>
+          <td>Business workflows, content creation, non-technical teams</td>
+        </tr>
+        <tr>
+          <td><strong>LangGraph Multi-agent</strong><br><span class="tag blue">LangChain</span></td>
+          <td>Graph-based stateful workflows — nodes là agents, edges là transitions</td>
+          <td>Fine-grained state control; human-in-the-loop built-in; excellent observability via LangSmith; production-ready</td>
+          <td>Verbose graph definition; learning curve; tied to LangChain ecosystem</td>
+          <td>Production systems needing reliability, audit, complex state</td>
+        </tr>
+        <tr>
+          <td><strong>Magentic-One</strong><br><span class="tag blue">Microsoft Research</span></td>
+          <td>Generalist multi-agent system — orchestrator + specialist agents (WebSurfer, FileSurfer, Coder, ComputerTerminal)</td>
+          <td>Out-of-the-box computer use; good benchmark results; modular specialists</td>
+          <td>Heavy infra requirements; không phải production-ready off-shelf; cost cao</td>
+          <td>Computer use, web automation, research tasks</td>
+        </tr>
+        <tr>
+          <td><strong>Swarm</strong><br><span class="tag blue">OpenAI (experimental)</span></td>
+          <td>Lightweight handoffs — agents chuyển control qua function calls</td>
+          <td>Cực kỳ đơn giản; không có framework overhead; dễ understand; tốt để học</td>
+          <td>Experimental — không production-ready; thiếu persistence, observability, error handling</td>
+          <td>Learning, prototyping, simple handoff patterns</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Lựa chọn framework 2026</h3>
+  <div class="card">
+    <ul style="margin-bottom:0">
+      <li><strong>Production với complex state &amp; observability cần:</strong> LangGraph</li>
+      <li><strong>Business workflows với non-technical stakeholders:</strong> CrewAI</li>
+      <li><strong>Research &amp; conversational patterns:</strong> AutoGen 0.4</li>
+      <li><strong>Computer use / web automation:</strong> Magentic-One hoặc Claude computer-use API trực tiếp</li>
+      <li><strong>Học multi-agent concepts:</strong> Swarm (đọc code — dưới 1000 lines)</li>
+      <li><strong>Maximum control, minimum magic:</strong> Build custom với asyncio + Pydantic messages</li>
+    </ul>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════
+       28.12 Anti-patterns
+  ════════════════════════════════════════════════ -->
+  <h2 id="antipatterns">28.12 Anti-patterns: Too Many Agents, Unclear Boundaries, No Termination</h2>
+
+  <h3>Anti-pattern 1: Agent Proliferation</h3>
+  <p>
+    <em>"Thêm agent = thêm quality"</em> — sai. Nhiều agent nhỏ với overlapping responsibilities tạo ra
+    token waste (mỗi agent cần full context), coordination overhead tăng theo quadratic, và emergent
+    behavior khó predict. Rule of thumb: bắt đầu với 2–3 agents, chỉ add khi có clear specialization.
+  </p>
+
+  <h3>Anti-pattern 2: Unclear Agent Boundaries</h3>
+  <p>
+    Khi hai agents có thể handle cùng một task — system non-deterministic và expensive.
+    Mỗi agent phải có một responsibility rõ ràng, không overlap: <em>"Agent X handles A và KHÔNG handle B."</em>
+    Viết system prompt cho agent bao gồm cả điều agent <em>không được</em> làm.
+  </p>
+
+  <h3>Anti-pattern 3: No Termination Condition</h3>
+  <p>
+    Đã cover ở 28.9 nhưng nhắc lại: đây là lỗi dẫn đến production incidents thực sự.
+    Một agent loop chạy 200 iterations × $0.01/call = $2 cho 1 request.
+    Scale lên 1000 concurrent users = $2000 trong vài phút.
+  </p>
+
+  <h3>Anti-pattern 4: Agents Passing Full Context Mỗi Hop</h3>
+  <p>
+    Orchestrator forward toàn bộ conversation history cho mỗi worker → context phình to.
+    Worker thường chỉ cần: <em>task description + relevant subset of state</em>.
+    Implement context distillation layer giữa orchestrator và workers.
+  </p>
+
+  <h3>Anti-pattern 5: Dùng Multi-agent cho Task Sequential</h3>
+  <p>
+    Nếu Worker B luôn cần output của Worker A, không có parallelism. Đây là prompt chaining,
+    không cần agent framework — overhead không mang lại benefit.
+  </p>
+
+  <h3>Anti-pattern 6: No Observability</h3>
+  <p>
+    Multi-agent system không có trace/span logging là black box. Khi fail (và sẽ fail), không biết
+    agent nào fail, step nào, với input gì. Minimum: log mỗi agent call với timestamp, input hash, output hash, cost.
+  </p>
+
+  <div class="callout warn">
+    <div class="icon">⚠</div>
+    <div>
+      <div class="title">Heuristic đơn giản để tránh anti-patterns</div>
+      <p>
+        Trước khi deploy multi-agent system, hỏi: <em>"Nếu single agent mạnh nhất có thể handle task này trong context window, tại sao tôi cần nhiều agents?"</em>
+        Nếu không có câu trả lời rõ ràng (parallelism, specialization, context limit, quality via redundancy) — dùng single agent.
+      </p>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════
+       28.13 Old vs New
+  ════════════════════════════════════════════════ -->
+  <h2 id="old-vs-new">28.13 "Cách cũ" vs "Cách hiện tại" — Single Monolith vs Specialized Agents</h2>
+
+  <div class="tabs" data-tabs>
+    <div class="tab-buttons">
+      <button class="active">Cách cũ (2022–2023)</button>
+      <button>Cách hiện tại (2024–2026)</button>
+      <button>Ví dụ so sánh thực tế</button>
+    </div>
+    <div class="tab-panel active">
+      <h4 style="margin-top:0; color:var(--accent)">Single Agent, Monolithic Prompt</h4>
+      <p>
+        Approach phổ biến thời kỳ đầu LLM: nhét mọi thứ vào một mega-prompt.
+        System prompt dài 5000+ tokens mô tả tất cả capabilities.
+        Agent cố handle research, writing, fact-checking, formatting trong một loop.
+      </p>
+      <pre><code><span class="cm"># Cách cũ — one agent cố làm tất cả</span>
+system_prompt = <span class="str">"""You are an AI assistant. You can:
+- Search the web for information
+- Analyze data and draw conclusions
+- Write professional reports
+- Check facts and cite sources
+- Format documents in multiple styles
+- Translate between languages
+- Review and critique content
+... (500 more lines of instructions)
+"""</span>
+
+<span class="cm"># Mọi task đều dùng same agent</span>
+response = agent.<span class="fn">run</span>(
+    system=system_prompt,
+    task=<span class="str">"Research competitors and write a 10-page report"</span>
+)</code></pre>
+      <p><strong>Vấn đề:</strong></p>
+      <ul style="margin-bottom:0">
+        <li>Context window bị chiếm bởi instructions không liên quan đến task hiện tại</li>
+        <li>Agent "attention" bị diluted — không focus vào sub-task hiện tại</li>
+        <li>Khó test: change instruction A có thể break behavior B</li>
+        <li>Không có parallelism — mọi thứ sequential</li>
+        <li>Debugging khó: không biết agent đang "suy nghĩ" gì tại mỗi step</li>
+      </ul>
+    </div>
+    <div class="tab-panel">
+      <h4 style="margin-top:0; color:var(--accent-2)">Specialized Agents với Clear Handoff Protocols</h4>
+      <p>
+        2024–2026: Decompose thành agents chuyên biệt, mỗi agent có:
+        focused system prompt, relevant tools only, clear input/output contract,
+        và explicit handoff conditions.
+      </p>
+      <pre><code><span class="cm"># Cách hiện tại — specialized agents, clear contracts</span>
+researcher = Agent(
+    model=<span class="str">"claude-haiku-4-5"</span>,   <span class="cm"># cheap for fast lookups</span>
+    system=<span class="str">"""You are a researcher. Your ONLY job is to find
+    accurate information from given sources. You do NOT
+    write reports, analyze data, or format documents.
+    Output: structured JSON with sources + confidence."""</span>,
+    tools=[web_search, fetch_url]
+)
+
+analyst = Agent(
+    model=<span class="str">"claude-sonnet-4-5"</span>,
+    system=<span class="str">"""You are a data analyst. Your ONLY job is to
+    analyze structured research data and draw insights.
+    You do NOT search the web or write final reports.
+    Output: JSON with insights + supporting evidence."""</span>,
+    tools=[run_python, query_db]
+)
+
+writer = Agent(
+    model=<span class="str">"claude-opus-4-5"</span>,   <span class="cm"># best model for final output</span>
+    system=<span class="str">"""You are a professional writer. Your ONLY job
+    is to write clear, structured reports from provided
+    research and analysis. You do NOT search or analyze.
+    Output: formatted markdown report."""</span>,
+    tools=[format_doc, check_style]
+)
+
+<span class="cm"># Orchestrator with explicit handoff protocol</span>
+<span class="kw">async def</span> <span class="fn">research_pipeline</span>(task: str) -> str:
+
+    <span class="cm"># Step 1: Parallel research</span>
+    research_results = <span class="kw">await</span> asyncio.<span class="fn">gather</span>(
+        researcher.<span class="fn">run</span>(f<span class="str">"Research: {task} — competitor landscape"</span>),
+        researcher.<span class="fn">run</span>(f<span class="str">"Research: {task} — market data"</span>),
+        researcher.<span class="fn">run</span>(f<span class="str">"Research: {task} — recent news"</span>),
+    )
+
+    <span class="cm"># Step 2: Analyze (depends on research)</span>
+    analysis = <span class="kw">await</span> analyst.<span class="fn">run</span>({
+        <span class="str">"task"</span>: task,
+        <span class="str">"research"</span>: research_results  <span class="cm"># only relevant data</span>
+    })
+
+    <span class="cm"># Step 3: Write (depends on analysis)</span>
+    <span class="kw">return</span> <span class="kw">await</span> writer.<span class="fn">run</span>({
+        <span class="str">"task"</span>: task,
+        <span class="str">"analysis"</span>: analysis  <span class="cm"># distilled, not raw research</span>
+    })</code></pre>
+    </div>
+    <div class="tab-panel">
+      <h4 style="margin-top:0; color:var(--accent-3)">Ví dụ: Code Review Automation</h4>
+      <div class="grid-2">
+        <div>
+          <p><strong style="color:var(--accent)">Cách cũ</strong></p>
+          <ul>
+            <li>1 agent với prompt mô tả tất cả: security, performance, style, logic</li>
+            <li>Agent review lần lượt từng concern trong 1 context</li>
+            <li>Kết quả: review chung chung, miss security issues khi context lớn</li>
+            <li>Cost: 1 × large model call</li>
+            <li>Latency: 15–30s</li>
+          </ul>
+        </div>
+        <div>
+          <p><strong style="color:var(--accent-2)">Cách hiện tại</strong></p>
+          <ul>
+            <li>4 agents chạy parallel: security specialist, perf analyst, style checker, logic reviewer</li>
+            <li>Mỗi agent có focused prompt + relevant tools (SAST, profiler, AST)</li>
+            <li>Kết quả: sâu hơn trong từng domain, ít false negatives</li>
+            <li>Cost: 4 × small model calls (Haiku) ≈ tương đương</li>
+            <li>Latency: 5–8s (parallel)</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <h3>Bảng so sánh tổng hợp: Khi nào dùng pattern nào</h3>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Pattern</th>
+          <th>Use case cốt lõi</th>
+          <th>Cost</th>
+          <th>Latency</th>
+          <th>Complexity</th>
+          <th>Quality gain</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Single agent + tools</strong></td>
+          <td>Self-contained tasks, context đủ</td>
+          <td><span class="tag green">1×</span></td>
+          <td><span class="tag green">Thấp</span></td>
+          <td><span class="tag green">Thấp</span></td>
+          <td>Baseline</td>
+        </tr>
+        <tr>
+          <td><strong>Hierarchical / Supervisor</strong></td>
+          <td>Complex tasks cần specialization; task decomposition rõ</td>
+          <td><span class="tag blue">5–10×</span></td>
+          <td><span class="tag blue">Medium</span></td>
+          <td><span class="tag blue">Medium</span></td>
+          <td>Cao nếu workers thực sự specialized</td>
+        </tr>
+        <tr>
+          <td><strong>Debate</strong></td>
+          <td>High-stakes factual output; bias reduction</td>
+          <td><span class="tag">8–20×</span></td>
+          <td><span class="tag">Cao</span></td>
+          <td><span class="tag blue">Medium</span></td>
+          <td>Factuality +10–15% (Du et al.)</td>
+        </tr>
+        <tr>
+          <td><strong>Parallel Critic</strong></td>
+          <td>Quality threshold, multi-dimension evaluation</td>
+          <td><span class="tag blue">5–15×</span></td>
+          <td><span class="tag blue">Medium (parallel critics)</span></td>
+          <td><span class="tag blue">Medium</span></td>
+          <td>Cao khi criteria rõ ràng</td>
+        </tr>
+        <tr>
+          <td><strong>MoA</strong></td>
+          <td>Maximum quality, offline/batch, benchmark</td>
+          <td><span class="tag">15–50×</span></td>
+          <td><span class="tag">Rất cao</span></td>
+          <td><span class="tag">Cao</span></td>
+          <td>SoTA trên nhiều benchmarks</td>
+        </tr>
+        <tr>
+          <td><strong>Blackboard</strong></td>
+          <td>Emergent collaboration; loosely coupled agents; async</td>
+          <td><span class="tag blue">Variable</span></td>
+          <td><span class="tag blue">Variable</span></td>
+          <td><span class="tag">Cao (infra)</span></td>
+          <td>Linh hoạt nhất</td>
+        </tr>
+        <tr>
+          <td><strong>Market-based</strong></td>
+          <td>Distributed agents; dynamic load balancing</td>
+          <td><span class="tag blue">Variable</span></td>
+          <td><span class="tag blue">Variable</span></td>
+          <td><span class="tag">Rất cao</span></td>
+          <td>Tốt cho scale, không cho quality</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════
+       Summary
+  ════════════════════════════════════════════════ -->
+  <h2 id="tom-tat">Tóm tắt</h2>
+
+  <ol>
+    <li>
+      <strong>Multi-agent chỉ tốt hơn single agent khi:</strong> có parallelism thực sự, context limit bị overflow,
+      specialization rõ ràng, hoặc quality cần redundancy. Đây không phải default choice.
+    </li>
+    <li>
+      <strong>Hierarchical (Manager → Workers)</strong> là pattern production phổ biến nhất.
+      LangGraph supervisor + specialized workers là combination tốt nhất 2026 cho production.
+    </li>
+    <li>
+      <strong>Debate (Du et al.)</strong> cải thiện factuality nhưng cost N×R lần. Dùng cho high-stakes output, không dùng cho real-time features.
+    </li>
+    <li>
+      <strong>Parallel Critic</strong> tốt cho quality-gated generation: tách biệt generation và evaluation, critics chạy song song.
+    </li>
+    <li>
+      <strong>MoA</strong> cho quality cao nhất nhưng cost rất cao (15–50×). Hợp lý cho offline, batch, hoặc benchmark — không phải user-facing real-time.
+    </li>
+    <li>
+      <strong>Blackboard</strong> tốt cho loose coupling và emergent collaboration. Implement bằng shared state (LangGraph, Redis).
+    </li>
+    <li>
+      <strong>Agent communication</strong>: prefer typed, structured messages với Pydantic schemas. Include trace_id mọi lúc cho observability.
+    </li>
+    <li>
+      <strong>Termination conditions PHẢI có:</strong> max_iterations, max_cost, timeout, success_condition.
+      Thiếu một trong bốn = production incident sắp xảy ra.
+    </li>
+    <li>
+      <strong>Cost thực tế:</strong> multi-agent = N× calls × context accumulation. Optimize bằng cách dùng cheap models cho workers, compress context trước handoff.
+    </li>
+    <li>
+      <strong>Cách hiện tại:</strong> Specialized agents với focused system prompt + clear handoff protocols + typed messages, thay cho một monolithic agent cố handle tất cả.
+    </li>
+    <li>
+      <strong>Frameworks 2026:</strong> LangGraph (production), CrewAI (business workflows), AutoGen 0.4 (research/conversational), Magentic-One (computer use), Swarm (learning/prototyping).
+    </li>
+    <li>
+      <strong>Anti-patterns cần tránh:</strong> agent proliferation, unclear boundaries, no termination, full context per hop, dùng multi-agent cho sequential tasks, không có observability.
+    </li>
+  </ol>
+
+  <nav class="section-footer">
+    <a href="27-agent-eval.html" class="prev">
+      <div class="label">← trước</div>
+      <div class="title">27 — Agent Evaluation</div>
+    </a>
+    <a href="29-prompt-injection-deep.html" class="next">
+      <div class="label">tiếp theo →</div>
+      <div class="title">29 — Prompt Injection (chuyên sâu)</div>
+    </a>
+  </nav>
+
+</main>
+
+<script src="../assets/script.js"></script>
+</body>
+</html>

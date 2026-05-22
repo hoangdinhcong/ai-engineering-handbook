@@ -1,0 +1,1315 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>25 · Agent Memory Architectures — AI Engineering</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<nav class="top-nav">
+  <div class="brand"><span class="dot"></span> AI Engineering</div>
+  <div class="crumbs"><a href="../index.html">Mục lục</a> › Phần 9 · <span>25 — Agent Memory Architectures</span></div>
+  <div class="nav-actions">
+    <a href="24-agent-harness.html">← Trước</a>
+    <a href="26-durable-agents.html">Tiếp →</a>
+  </div>
+</nav>
+
+<main class="page">
+
+  <section class="hero">
+    <span class="eyebrow">Phần 9 · §25</span>
+    <h1>Agent Memory Architectures</h1>
+    <p class="lede">
+      Context window chỉ là RAM tạm thời — agent thực sự cần bộ nhớ dài hạn, phân tầng, có khả năng viết và truy xuất thông minh. Khám phá toàn bộ memory taxonomy, MemGPT/Letta pattern, và cách xây dựng memory layer production-ready.
+    </p>
+    <img class="hero-image" src="../images/25-agent-memory.png" alt="Agent memory architecture illustration" onerror="this.style.display='none'">
+  </section>
+
+  <aside class="toc">
+    <div class="toc-title">Trong trang này</div>
+    <ul>
+      <li><a href="#why-memory">25.1 Tại sao memory quan trọng hơn context window</a></li>
+      <li><a href="#taxonomy">25.2 Memory taxonomy — mượn từ khoa học nhận thức</a></li>
+      <li><a href="#working-memory">25.3 Working memory = quản lý context window</a></li>
+      <li><a href="#conv-strategies">25.4 Conversational memory strategies</a></li>
+      <li><a href="#long-term-stores">25.5 Long-term memory stores</a></li>
+      <li><a href="#memgpt">25.6 MemGPT pattern — OS analogy</a></li>
+      <li><a href="#tools-comparison">25.7 Letta / mem0 / Zep / cognee — so sánh</a></li>
+      <li><a href="#write-strategies">25.8 Memory write strategies</a></li>
+      <li><a href="#retrieval">25.9 Memory retrieval</a></li>
+      <li><a href="#hygiene">25.10 Memory hygiene</a></li>
+      <li><a href="#privacy">25.11 Privacy &amp; multitenancy</a></li>
+      <li><a href="#old-vs-new">25.12 Cách cũ vs Cách hiện tại</a></li>
+      <li><a href="#tom-tat">Tóm tắt</a></li>
+    </ul>
+  </aside>
+
+  <!-- ═══════════════════════════════════════════════
+       25.1 Why memory matters
+  ════════════════════════════════════════════════ -->
+  <h2 id="why-memory">25.1 Tại sao memory quan trọng hơn context window</h2>
+  <p>
+    Context window là không gian làm việc tức thời của LLM — tất cả những gì model "thấy" trong một lần inference.
+    Với các model hiện đại như Claude (200K tokens) hay Gemini (1M+ tokens), context window đã rất lớn.
+    Nhưng vẫn không đủ — và đây là lý do:
+  </p>
+
+  <div class="grid-2">
+    <div class="card">
+      <div class="title" style="font-weight:600;color:var(--danger);margin-bottom:8px">Vấn đề với "nhét mọi thứ vào context"</div>
+      <ul style="margin:0;padding-left:18px">
+        <li><strong>Cost:</strong> 200K tokens × $15/M = $3 mỗi lần gọi API — chưa kể output</li>
+        <li><strong>Latency:</strong> Long context inference chậm hơn đáng kể</li>
+        <li><strong>Lost-in-the-middle:</strong> LLM kém chú ý đến thông tin ở giữa context dài</li>
+        <li><strong>Noise:</strong> Thông tin irrelevant làm loãng signal quan trọng</li>
+        <li><strong>Cross-session:</strong> Context reset sau mỗi conversation — không có "ký ức" lâu dài</li>
+      </ul>
+    </div>
+    <div class="card">
+      <div class="title" style="font-weight:600;color:var(--accent-3);margin-bottom:8px">Memory layer giải quyết được gì</div>
+      <ul style="margin:0;padding-left:18px">
+        <li><strong>Persistence:</strong> Thông tin tồn tại qua nhiều sessions, ngày, tháng</li>
+        <li><strong>Selectivity:</strong> Chỉ inject thông tin relevant vào context tại thời điểm cần</li>
+        <li><strong>Scale:</strong> Lưu hàng triệu facts, chỉ retrieve top-K cần thiết</li>
+        <li><strong>Personalization:</strong> Nhớ preferences, history, relationships của từng user</li>
+        <li><strong>Cost control:</strong> Context nhỏ hơn = cheaper inference</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="callout note">
+    <div class="icon">≡</div>
+    <div>
+      <div class="title">Mental model cốt lõi</div>
+      <p>
+        Context window = RAM (nhanh, nhỏ, volatile). Memory stores = disk/database (chậm hơn, lớn hơn, persistent).
+        Agent thông minh biết cái gì nên giữ trong RAM, cái gì nên page out ra disk, và cách page-in khi cần.
+        Đây chính là nền tảng của MemGPT pattern ở §25.6.
+      </p>
+    </div>
+  </div>
+
+  <p>
+    Thực tế production cho thấy: agent không có memory layer đúng nghĩa sẽ "quên" người dùng sau mỗi session,
+    lặp lại câu hỏi đã hỏi, không học được từ sai lầm trước. Memory là thành phần phân biệt chatbot stateless
+    với personal AI assistant thực sự.
+  </p>
+
+  <!-- ═══════════════════════════════════════════════
+       25.2 Memory taxonomy
+  ════════════════════════════════════════════════ -->
+  <h2 id="taxonomy">25.2 Memory taxonomy — mượn từ khoa học nhận thức</h2>
+  <p>
+    Khoa học nhận thức (cognitive science) phân loại bộ nhớ con người thành nhiều hệ thống khác nhau.
+    AI Engineering mượn framework này để thiết kế memory architecture cho agent —
+    vì sự tương đồng không chỉ là ẩn dụ, mà còn phản ánh các trade-off kỹ thuật thực tế.
+  </p>
+
+  <!-- Memory Taxonomy SVG -->
+  <svg class="diagram" viewBox="0 0 780 440" role="img" aria-label="Memory taxonomy: 4 loại bộ nhớ agent">
+    <defs>
+      <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#6f7c92"/>
+      </marker>
+    </defs>
+
+    <!-- Central agent -->
+    <rect class="node-accent" x="290" y="175" width="200" height="80" rx="12"/>
+    <text x="390" y="203" text-anchor="middle" font-weight="700" font-size="15">Agent (LLM)</text>
+    <text x="390" y="223" text-anchor="middle" class="label-sm">Nhận, xử lý, lưu trữ</text>
+    <text x="390" y="239" text-anchor="middle" class="label-sm">thông tin qua 4 loại memory</text>
+
+    <!-- Working Memory (top-left) -->
+    <rect class="node-blue" x="30" y="20" width="220" height="120" rx="10"/>
+    <text x="140" y="48" text-anchor="middle" font-weight="700" font-size="14">Working Memory</text>
+    <text x="140" y="68" text-anchor="middle" class="label-sm">= Context window hiện tại</text>
+    <text x="140" y="86" text-anchor="middle" class="label-sm">Nhanh · Nhỏ · Volatile</text>
+    <text x="140" y="104" text-anchor="middle" class="label-sm">Conversation turns, tool results</text>
+    <text x="140" y="120" text-anchor="middle" class="label-sm">Scratchpad reasoning</text>
+    <line class="arrow" x1="250" y1="110" x2="289" y2="195" marker-end="url(#arrowhead)"/>
+
+    <!-- Episodic Memory (top-right) -->
+    <rect class="node-green" x="530" y="20" width="220" height="120" rx="10"/>
+    <text x="640" y="48" text-anchor="middle" font-weight="700" font-size="14">Episodic Memory</text>
+    <text x="640" y="68" text-anchor="middle" class="label-sm">= Lịch sử sự kiện cụ thể</text>
+    <text x="640" y="86" text-anchor="middle" class="label-sm">Compressed · Timestamped</text>
+    <text x="640" y="104" text-anchor="middle" class="label-sm">Session summaries, past tasks</text>
+    <text x="640" y="120" text-anchor="middle" class="label-sm">"Hôm qua user hỏi X"</text>
+    <line class="arrow" x1="530" y1="110" x2="491" y2="195" marker-end="url(#arrowhead)"/>
+
+    <!-- Semantic Memory (bottom-left) -->
+    <rect class="node-accent" x="30" y="300" width="220" height="120" rx="10"/>
+    <text x="140" y="328" text-anchor="middle" font-weight="700" font-size="14">Semantic Memory</text>
+    <text x="140" y="348" text-anchor="middle" class="label-sm">= Kiến thức thực thế, facts</text>
+    <text x="140" y="366" text-anchor="middle" class="label-sm">Vector/structured · Persistent</text>
+    <text x="140" y="384" text-anchor="middle" class="label-sm">User profile, domain knowledge</text>
+    <text x="140" y="400" text-anchor="middle" class="label-sm">World knowledge, relationships</text>
+    <line class="arrow" x1="250" y1="340" x2="289" y2="290" marker-end="url(#arrowhead)"/>
+
+    <!-- Procedural Memory (bottom-right) -->
+    <rect class="node-bg" x="530" y="300" width="220" height="120" rx="10"/>
+    <text x="640" y="328" text-anchor="middle" font-weight="700" font-size="14">Procedural Memory</text>
+    <text x="640" y="348" text-anchor="middle" class="label-sm">= Cách làm, kỹ năng</text>
+    <text x="640" y="366" text-anchor="middle" class="label-sm">System prompt · Few-shots</text>
+    <text x="640" y="384" text-anchor="middle" class="label-sm">Tool usage patterns</text>
+    <text x="640" y="400" text-anchor="middle" class="label-sm">Learned behaviors, habits</text>
+    <line class="arrow" x1="530" y1="340" x2="491" y2="290" marker-end="url(#arrowhead)"/>
+
+    <!-- Labels in corners -->
+    <text x="140" y="155" text-anchor="middle" font-size="11" fill="#7cc4ff">Dùng nhiều nhất · Reset mỗi session</text>
+    <text x="640" y="155" text-anchor="middle" font-size="11" fill="#b4e07a">Tóm tắt từ nhiều sessions</text>
+    <text x="140" y="432" text-anchor="middle" font-size="11" fill="#ffb86b">Truy xuất bằng semantic search</text>
+    <text x="640" y="432" text-anchor="middle" font-size="11" fill="#6f7c92">Encoded trong prompts + fine-tune</text>
+  </svg>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Memory type</th><th>Tương đương con người</th><th>Storage trong AI</th><th>Lifetime</th><th>Truy xuất</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Working</strong></td>
+          <td>Bộ nhớ làm việc ngắn hạn — đang giải toán trong đầu</td>
+          <td>Context window (tokens)</td>
+          <td>Duration of one LLM call</td>
+          <td>Instant — already in context</td>
+        </tr>
+        <tr>
+          <td><strong>Episodic</strong></td>
+          <td>Nhớ sự kiện cụ thể — "hôm qua tôi ăn phở"</td>
+          <td>KV store, document DB with timestamps</td>
+          <td>Configurable (days → forever)</td>
+          <td>Key lookup or recency query</td>
+        </tr>
+        <tr>
+          <td><strong>Semantic</strong></td>
+          <td>Kiến thức chung — "phở là món ăn Việt Nam"</td>
+          <td>Vector DB, SQL, graph DB</td>
+          <td>Permanent until pruned</td>
+          <td>Semantic search, exact query</td>
+        </tr>
+        <tr>
+          <td><strong>Procedural</strong></td>
+          <td>Kỹ năng vô thức — biết đi xe không cần nghĩ</td>
+          <td>System prompt, fine-tuned weights, few-shot examples</td>
+          <td>Long-term (model lifetime)</td>
+          <td>Always present (in-prompt) or activated by pattern</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout tip">
+    <div class="icon">★</div>
+    <div>
+      <div class="title">Cognitive science insight</div>
+      <p>
+        Con người không phân biệt rõ ràng khi dùng từng loại bộ nhớ — chúng hoạt động song song và bổ trợ nhau.
+        Agent tốt cũng vậy: không chỉ dùng vector search hay chỉ inject summary — phải phối hợp nhiều loại memory,
+        mỗi loại phù hợp cho từng loại thông tin.
+      </p>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════
+       25.3 Working Memory
+  ════════════════════════════════════════════════ -->
+  <h2 id="working-memory">25.3 Working memory = quản lý context window</h2>
+  <p>
+    Working memory của agent là context window — cố định trong một inference call. Khi conversation kéo dài,
+    context đầy và agent phải quyết định: giữ cái gì, bỏ cái gì, compress cái gì.
+  </p>
+
+  <h3>Truncation đơn giản — và vì sao không đủ</h3>
+  <p>
+    Cách naive nhất: khi context đầy, xóa các tin nhắn cũ nhất. Vấn đề:
+  </p>
+  <ul>
+    <li>Mất context quan trọng — user đặt yêu cầu từ lúc đầu, agent "quên" sau vài chục turns</li>
+    <li>Mất "thread" của conversation — agent không biết tại sao đang làm điều gì</li>
+    <li>Tool results từ sớm bị xóa — nhưng chúng vẫn đang ảnh hưởng đến task hiện tại</li>
+  </ul>
+
+  <h3>Summary-of-summaries (hierarchical compression)</h3>
+  <p>
+    Thay vì truncate, compress theo tầng:
+  </p>
+
+  <pre><code><span class="cm"># Tier 1: Summarize every N turns into a "chunk summary"</span>
+<span class="kw">def</span> <span class="fn">maybe_compress</span>(history: list, llm, chunk_size: int = <span class="num">10</span>) -> list:
+
+    <span class="kw">if</span> <span class="fn">token_count</span>(history) < MAX_TOKENS * <span class="num">0.7</span>:
+        <span class="kw">return</span> history
+
+    <span class="cm"># Keep last chunk_size turns verbatim</span>
+    recent = history[-chunk_size:]
+    to_compress = history[:-chunk_size]
+
+    <span class="cm"># Compress older turns into summary</span>
+    chunk_summary = llm.<span class="fn">invoke</span>(
+        f<span class="str">"Summarize the following conversation segment into 3-5 concise bullet points. "</span>
+        f<span class="str">"Preserve decisions made, facts established, and open questions:\n\n{to_compress}"</span>
+    )
+
+    summary_msg = {<span class="str">"role"</span>: <span class="str">"system"</span>, <span class="str">"content"</span>: f<span class="str">"[Earlier context summary]\n{chunk_summary}"</span>}
+    <span class="kw">return</span> [summary_msg] + recent
+
+<span class="cm"># Tier 2: If multiple summaries accumulate, summarize the summaries</span>
+<span class="kw">def</span> <span class="fn">consolidate_summaries</span>(summaries: list[str], llm) -> str:
+
+    combined = <span class="str">"\n\n"</span>.<span class="fn">join</span>(summaries)
+    <span class="kw">return</span> llm.<span class="fn">invoke</span>(
+        f<span class="str">"Consolidate these conversation summaries into a single coherent summary:\n\n{combined}"</span>
+    )</code></pre>
+
+  <h3>Hierarchical working memory — 3 tầng</h3>
+  <p>
+    Một pattern mạnh hơn chia context window thành 3 vùng có mức ưu tiên khác nhau:
+  </p>
+
+  <div class="card">
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;font-size:14px">
+      <div>
+        <div style="color:var(--accent);font-weight:600;margin-bottom:4px">Tier 1 — Pinned (không đổi)</div>
+        <div style="color:var(--text-soft)">System prompt, core instructions, user's fundamental goals. Luôn ở đầu context.</div>
+        <div style="margin-top:6px;font-family:var(--font-mono);font-size:12px;color:var(--text-mute)">~500–2000 tokens</div>
+      </div>
+      <div>
+        <div style="color:var(--accent-2);font-weight:600;margin-bottom:4px">Tier 2 — Rolling summary</div>
+        <div style="color:var(--text-soft)">Compressed digest của conversation history. Update khi Tier 3 overflow.</div>
+        <div style="margin-top:6px;font-family:var(--font-mono);font-size:12px;color:var(--text-mute)">~1000–4000 tokens</div>
+      </div>
+      <div>
+        <div style="color:var(--accent-3);font-weight:600;margin-bottom:4px">Tier 3 — Recent verbatim</div>
+        <div style="color:var(--text-soft)">Các turns gần nhất giữ nguyên. Khi đầy → compress vào Tier 2.</div>
+        <div style="margin-top:6px;font-family:var(--font-mono);font-size:12px;color:var(--text-mute)">Last 5–20 turns</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════
+       25.4 Conversational memory strategies
+  ════════════════════════════════════════════════ -->
+  <h2 id="conv-strategies">25.4 Conversational memory strategies</h2>
+  <p>
+    Có 4 strategies chính để quản lý lịch sử conversation, mỗi loại phù hợp với use case khác nhau:
+  </p>
+
+  <div class="tabs" data-tabs>
+    <div class="tab-buttons">
+      <button class="active">Full Transcript</button>
+      <button>Sliding Window</button>
+      <button>Summary Memory</button>
+      <button>Hybrid</button>
+    </div>
+    <div class="tab-panel active">
+      <h4>Full Transcript — Giữ toàn bộ lịch sử</h4>
+      <p>Mọi turn đều được giữ trong context, không compress, không cắt bỏ.</p>
+      <div class="grid-2" style="margin-top:12px">
+        <div>
+          <div style="color:var(--accent-3);font-weight:600;margin-bottom:6px">✓ Ưu điểm</div>
+          <ul style="margin:0;padding-left:16px;color:var(--text-soft)">
+            <li>Đơn giản nhất để implement</li>
+            <li>Model có đủ context để trả lời chính xác</li>
+            <li>Không mất thông tin</li>
+          </ul>
+        </div>
+        <div>
+          <div style="color:var(--danger);font-weight:600;margin-bottom:6px">✗ Nhược điểm</div>
+          <ul style="margin:0;padding-left:16px;color:var(--text-soft)">
+            <li>Cost tăng theo số turns (O(n²) total tokens)</li>
+            <li>Hit context limit sau ~50–200 turns tùy model</li>
+            <li>"Lost in the middle" với conversations rất dài</li>
+          </ul>
+        </div>
+      </div>
+      <div class="callout tip" style="margin-top:12px">
+        <div class="icon">★</div>
+        <div><div class="title">Khi nào dùng</div><p>Short conversations, demo/prototype, hoặc khi model có context window rất lớn (Gemini 1M+) và cost không phải vấn đề.</p></div>
+      </div>
+    </div>
+    <div class="tab-panel">
+      <h4>Sliding Window — Giữ K turns gần nhất</h4>
+      <p>Chỉ giữ N turns gần nhất (thường 10–20). Các turns cũ hơn bị xóa hoàn toàn.</p>
+      <pre><code><span class="cm"># Simple sliding window</span>
+MAX_TURNS = <span class="num">15</span>
+
+<span class="kw">def</span> <span class="fn">trim_history</span>(messages: list, system_prompt: str) -> list:
+
+    <span class="cm"># Always keep system prompt at index 0</span>
+    user_turns = [m <span class="kw">for</span> m <span class="kw">in</span> messages <span class="kw">if</span> m[<span class="str">"role"</span>] != <span class="str">"system"</span>]
+    <span class="kw">return</span> [{<span class="str">"role"</span>: <span class="str">"system"</span>, <span class="str">"content"</span>: system_prompt}] + user_turns[-MAX_TURNS * <span class="num">2</span>:]</code></pre>
+      <div class="grid-2" style="margin-top:8px">
+        <div>
+          <div style="color:var(--accent-3);font-weight:600;margin-bottom:4px">✓ Ưu điểm</div>
+          <ul style="margin:0;padding-left:16px;color:var(--text-soft);font-size:14px">
+            <li>Cost có thể dự đoán được</li>
+            <li>Latency ổn định</li>
+            <li>Dễ implement</li>
+          </ul>
+        </div>
+        <div>
+          <div style="color:var(--danger);font-weight:600;margin-bottom:4px">✗ Nhược điểm</div>
+          <ul style="margin:0;padding-left:16px;color:var(--text-soft);font-size:14px">
+            <li>Mất context quan trọng đột ngột</li>
+            <li>Agent "quên" đầu conversation</li>
+            <li>Không phù hợp cho long-running tasks</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="tab-panel">
+      <h4>Summary Memory — LLM tóm tắt định kỳ</h4>
+      <p>Khi history vượt threshold, dùng LLM call riêng để tóm tắt toàn bộ rồi thay thế.</p>
+      <pre><code>SUMMARY_TRIGGER_TOKENS = <span class="num">6000</span>
+
+<span class="kw">async def</span> <span class="fn">get_context</span>(session_id: str, llm) -> list:
+
+    history = <span class="kw">await</span> db.<span class="fn">get_history</span>(session_id)
+    summary = <span class="kw">await</span> db.<span class="fn">get_summary</span>(session_id)  <span class="cm"># may be None</span>
+
+    <span class="kw">if</span> <span class="fn">token_count</span>(history) > SUMMARY_TRIGGER_TOKENS:
+        <span class="cm"># Summarize all but last 4 turns</span>
+        new_summary = <span class="kw">await</span> llm.<span class="fn">summarize</span>(
+            history=history[:-<span class="num">4</span>],
+            existing_summary=summary,
+            instructions=<span class="str">"Merge with existing summary. Keep user preferences, key decisions, open tasks."</span>
+        )
+        <span class="kw">await</span> db.<span class="fn">save_summary</span>(session_id, new_summary)
+        <span class="kw">return</span> <span class="fn">build_context</span>(summary=new_summary, recent=history[-<span class="num">4</span>:])
+
+    <span class="kw">return</span> <span class="fn">build_context</span>(summary=summary, recent=history)</code></pre>
+      <div class="callout warn" style="margin-top:8px">
+        <div class="icon">⚠</div>
+        <div><div class="title">Summary có thể mất thông tin</div><p>LLM summarizer quyết định cái gì "quan trọng" — có thể bỏ qua detail mà sau này mới thấy cần. Luôn giữ raw turns của N turns gần nhất bên cạnh summary.</p></div>
+      </div>
+    </div>
+    <div class="tab-panel">
+      <h4>Summary + Raw Hybrid — Pattern production-recommended</h4>
+      <p>Kết hợp rolling summary của lịch sử cũ với verbatim của turns gần đây. Đây là pattern được khuyến nghị nhất trong production.</p>
+      <pre><code><span class="cm"># Context structure:</span>
+<span class="cm"># [system_prompt]</span>
+<span class="cm"># [memory_injection]    ← từ vector search (§25.9)</span>
+<span class="cm"># [rolling_summary]     ← LLM-compressed history</span>
+<span class="cm"># [recent_turns]        ← verbatim, last 8–12 turns</span>
+
+<span class="kw">def</span> <span class="fn">build_hybrid_context</span>(session, memory_store, llm) -> list:
+
+    relevant_memories = memory_store.<span class="fn">search</span>(
+        query=session.last_user_message,
+        k=<span class="num">5</span>
+    )
+    memory_block = <span class="fn">format_memories</span>(relevant_memories)
+
+    <span class="kw">return</span> [
+        {<span class="str">"role"</span>: <span class="str">"system"</span>, <span class="str">"content"</span>: session.system_prompt},
+        {<span class="str">"role"</span>: <span class="str">"system"</span>, <span class="str">"content"</span>: f<span class="str">"[Relevant memories]\n{memory_block}"</span>},
+        {<span class="str">"role"</span>: <span class="str">"system"</span>, <span class="str">"content"</span>: f<span class="str">"[Conversation summary]\n{session.summary}"</span>},
+        *session.recent_turns[-<span class="num">10</span>:]
+    ]</code></pre>
+      <div class="callout tip" style="margin-top:8px">
+        <div class="icon">★</div>
+        <div><div class="title">Đây là production standard</div><p>Hầu hết serious AI applications (Cursor, Claude.ai, ChatGPT) dùng variant của hybrid pattern này. Summary + recent verbatim + memory retrieval là tổ hợp tối ưu cho cost/quality tradeoff.</p></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════
+       25.5 Long-term memory stores
+  ════════════════════════════════════════════════ -->
+  <h2 id="long-term-stores">25.5 Long-term memory stores</h2>
+  <p>
+    Long-term memory không sống trong context — nó sống trong các external stores chuyên dụng.
+    Mỗi loại store có trade-off về retrieval semantics, speed, và use case:
+  </p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Store type</th><th>Technology ví dụ</th><th>Retrieval</th><th>Best for</th><th>Limitation</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Vector (semantic)</strong></td>
+          <td>Qdrant, Weaviate, Pinecone, pgvector</td>
+          <td>Cosine similarity → top-K relevant</td>
+          <td>Facts, docs, episodic events — tìm theo ý nghĩa</td>
+          <td>Không chính xác 100%; embedding model dependency</td>
+        </tr>
+        <tr>
+          <td><strong>KV (exact)</strong></td>
+          <td>Redis, DynamoDB, Firestore</td>
+          <td>Exact key lookup O(1)</td>
+          <td>User profiles, known entities, cache</td>
+          <td>Không tìm được bằng nội dung; cần biết key trước</td>
+        </tr>
+        <tr>
+          <td><strong>Graph (relational)</strong></td>
+          <td>Neo4j, Amazon Neptune, Memgraph</td>
+          <td>Graph traversal — relationships</td>
+          <td>Entities với relationships phức tạp; knowledge graphs</td>
+          <td>Setup phức tạp; query language riêng (Cypher)</td>
+        </tr>
+        <tr>
+          <td><strong>Structured (rows)</strong></td>
+          <td>PostgreSQL, MySQL, SQLite</td>
+          <td>SQL query — filter, aggregate, join</td>
+          <td>Structured data, transactions, aggregations</td>
+          <td>LLM cần generate SQL đúng; schema phải ổn định</td>
+        </tr>
+        <tr>
+          <td><strong>Document</strong></td>
+          <td>MongoDB, Firestore, CouchDB</td>
+          <td>Field query, full-text search</td>
+          <td>Flexible schema, nested documents, session records</td>
+          <td>Semantic search yếu hơn vector; indexing cần care</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout note">
+    <div class="icon">≡</div>
+    <div>
+      <div class="title">Hybrid store trong practice</div>
+      <p>
+        Production memory systems thường kết hợp nhiều stores: <strong>Vector DB</strong> cho semantic retrieval,
+        <strong>KV/SQL</strong> cho exact facts (user name, preferences), <strong>Document DB</strong> cho session records.
+        mem0, Zep, Letta đều implement exactly this hybrid approach internally.
+      </p>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════
+       25.6 MemGPT pattern
+  ════════════════════════════════════════════════ -->
+  <h2 id="memgpt">25.6 MemGPT pattern — OS analogy</h2>
+  <p>
+    <strong>MemGPT</strong> (Packer et al., UC Berkeley, 2023) đưa ra một metaphor mạnh mẽ:
+    LLM như một CPU có RAM hạn chế (context window), và cần quản lý virtual memory
+    để làm việc với thông tin vượt quá RAM capacity.
+  </p>
+  <p>
+    Giống như OS virtual memory manager page-in/page-out pages từ disk, MemGPT
+    cho phép LLM tự quyết định khi nào cần đưa thông tin từ external storage vào context,
+    và khi nào cần lưu thông tin ra ngoài để giải phóng "RAM".
+  </p>
+
+  <!-- MemGPT Hierarchy SVG -->
+  <svg class="diagram" viewBox="0 0 760 460" role="img" aria-label="MemGPT memory hierarchy: context as RAM, external as disk">
+    <defs>
+      <marker id="arrowhead2" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#6f7c92"/>
+      </marker>
+    </defs>
+
+    <!-- Title: Operating System analogy -->
+    <text x="380" y="22" text-anchor="middle" font-size="14" font-weight="700" fill="#ffb86b">MemGPT: OS-style Memory Hierarchy</text>
+
+    <!-- ===== Main Context (RAM) ===== -->
+    <rect class="node-accent" x="200" y="40" width="360" height="200" rx="14"/>
+    <text x="380" y="66" text-anchor="middle" font-weight="700" font-size="15">Main Context = "RAM"</text>
+    <text x="380" y="84" text-anchor="middle" class="label-sm">Context window — limited, fast, volatile</text>
+
+    <!-- System section -->
+    <rect class="node-blue" x="220" y="96" width="320" height="44" rx="6"/>
+    <text x="380" y="116" text-anchor="middle" font-weight="600" font-size="12">System Prompt + Persona</text>
+    <text x="380" y="132" text-anchor="middle" class="label-sm">Core instructions, personality, capabilities description</text>
+
+    <!-- Recall section -->
+    <rect class="node-green" x="220" y="148" width="145" height="44" rx="6"/>
+    <text x="292" y="168" text-anchor="middle" font-weight="600" font-size="12">Recall Buffer</text>
+    <text x="292" y="184" text-anchor="middle" class="label-sm">Recent turns (verbatim)</text>
+
+    <!-- Archival section -->
+    <rect class="node-bg" x="375" y="148" width="165" height="44" rx="6"/>
+    <text x="458" y="168" text-anchor="middle" font-weight="600" font-size="12">Working Notes</text>
+    <text x="458" y="184" text-anchor="middle" class="label-sm">Injected memories, scratchpad</text>
+
+    <!-- RAM label -->
+    <text x="565" y="145" font-size="18" fill="#ffb86b">💾 RAM</text>
+    <text x="563" y="163" font-size="10" fill="#6f7c92">~200K tokens</text>
+
+    <!-- ===== Swap arrows ===== -->
+    <line class="arrow" x1="380" y1="241" x2="380" y2="283" marker-end="url(#arrowhead2)"/>
+    <line class="arrow" x1="360" y1="283" x2="360" y2="241" marker-end="url(#arrowhead2)"/>
+    <text x="420" y="264" font-size="12" fill="#ffb86b">page-in ↕ page-out</text>
+    <text x="420" y="278" class="label-sm">Agent decides via tool calls</text>
+
+    <!-- ===== External Storage (Disk) ===== -->
+    <rect class="node-bg" x="60" y="285" width="640" height="160" rx="14"/>
+    <text x="380" y="310" text-anchor="middle" font-weight="700" font-size="14">External Storage = "Disk"</text>
+    <text x="380" y="327" text-anchor="middle" class="label-sm">Unlimited capacity · Persists across sessions · Requires explicit retrieval</text>
+
+    <!-- Archival storage -->
+    <rect class="node-blue" x="80" y="337" width="180" height="90" rx="8"/>
+    <text x="170" y="358" text-anchor="middle" font-weight="600" font-size="12">Archival Storage</text>
+    <text x="170" y="376" text-anchor="middle" class="label-sm">Long-term facts, documents</text>
+    <text x="170" y="392" text-anchor="middle" class="label-sm">Vector DB — semantic search</text>
+    <text x="170" y="408" text-anchor="middle" class="label-sm">Tool: archival_search(query)</text>
+
+    <!-- Recall storage -->
+    <rect class="node-green" x="285" y="337" width="180" height="90" rx="8"/>
+    <text x="375" y="358" text-anchor="middle" font-weight="600" font-size="12">Recall Storage</text>
+    <text x="375" y="376" text-anchor="middle" class="label-sm">Conversation history archive</text>
+    <text x="375" y="392" text-anchor="middle" class="label-sm">KV/Document store</text>
+    <text x="375" y="408" text-anchor="middle" class="label-sm">Tool: recall_search(query)</text>
+
+    <!-- External tools -->
+    <rect class="node-accent" x="490" y="337" width="180" height="90" rx="8"/>
+    <text x="580" y="358" text-anchor="middle" font-weight="600" font-size="12">External Tools</text>
+    <text x="580" y="376" text-anchor="middle" class="label-sm">APIs, databases, files</text>
+    <text x="580" y="392" text-anchor="middle" class="label-sm">Web search, calendars</text>
+    <text x="580" y="408" text-anchor="middle" class="label-sm">Tool: any_tool()</text>
+
+    <!-- Disk label -->
+    <text x="670" y="380" font-size="22" fill="#6f7c92">🖴</text>
+    <text x="668" y="398" font-size="10" fill="#6f7c92">Unlimited</text>
+  </svg>
+
+  <h3>MemGPT tool calls cho memory management</h3>
+  <p>
+    Điểm độc đáo của MemGPT: LLM tự quyết định memory operations thông qua special tool calls:
+  </p>
+
+  <pre><code><span class="cm"># MemGPT special memory tools (giữ trong system prompt)</span>
+MEMORY_TOOLS = [
+    {
+        <span class="str">"name"</span>: <span class="str">"core_memory_append"</span>,
+        <span class="str">"description"</span>: <span class="str">"Append new information to the in-context persona/human memory block. "</span>
+                       <span class="str">"Use when you learn important persistent facts about the user."</span>,
+        <span class="str">"params"</span>: {<span class="str">"name"</span>: <span class="str">"human"</span> | <span class="str">"persona"</span>, <span class="str">"content"</span>: <span class="str">"string"</span>}
+    },
+    {
+        <span class="str">"name"</span>: <span class="str">"archival_memory_insert"</span>,
+        <span class="str">"description"</span>: <span class="str">"Write information to long-term archival storage (vector DB). "</span>
+                       <span class="str">"Use when information is important but too detailed for core memory."</span>,
+        <span class="str">"params"</span>: {<span class="str">"content"</span>: <span class="str">"string to store"</span>}
+    },
+    {
+        <span class="str">"name"</span>: <span class="str">"archival_memory_search"</span>,
+        <span class="str">"description"</span>: <span class="str">"Search archival storage using semantic similarity."</span>,
+        <span class="str">"params"</span>: {<span class="str">"query"</span>: <span class="str">"search query"</span>, <span class="str">"page"</span>: <span class="num">0</span>}
+    },
+    {
+        <span class="str">"name"</span>: <span class="str">"conversation_search"</span>,
+        <span class="str">"description"</span>: <span class="str">"Search past conversation history. Use when user references something said before."</span>,
+        <span class="str">"params"</span>: {<span class="str">"query"</span>: <span class="str">"string"</span>, <span class="str">"page"</span>: <span class="num">0</span>}
+    }
+]
+
+<span class="cm"># Agent system prompt includes current memory state:</span>
+SYSTEM_TEMPLATE = <span class="str">"""
+&lt;persona&gt;
+{persona_block}  # e.g., "I am an AI assistant named Sam..."
+&lt;/persona&gt;
+
+&lt;human&gt;
+{human_block}    # e.g., "Name: Minh. Preference: Vietnamese. Timezone: +7..."
+&lt;/human&gt;
+
+&lt;recall_buffer&gt;
+{recent_turns}   # Last N turns verbatim
+&lt;/recall_buffer&gt;
+"""</span></code></pre>
+
+  <!-- ═══════════════════════════════════════════════
+       25.7 Tools comparison
+  ════════════════════════════════════════════════ -->
+  <h2 id="tools-comparison">25.7 Letta / mem0 / Zep / cognee — so sánh</h2>
+  <p>
+    MemGPT được rebrand thành <strong>Letta</strong> (2024) với production-ready platform.
+    Cùng lúc đó, nhiều open-source và commercial alternatives xuất hiện:
+  </p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Tool</th><th>Approach</th><th>Storage backends</th><th>Open Source</th><th>Best for</th><th>Hạn chế</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Letta</strong> (MemGPT)</td>
+          <td>OS-style memory management; agent-as-stateful-OS-process; self-managing memory tools</td>
+          <td>PostgreSQL + pgvector (archival), Chroma, SQLite</td>
+          <td>Yes (Apache 2.0)</td>
+          <td>Long-running personal agents; MemGPT-style self-management</td>
+          <td>Heavy setup; overkill cho simple chatbots; niche API design</td>
+        </tr>
+        <tr>
+          <td><strong>mem0</strong></td>
+          <td>Auto-extract + deduplicate memories từ conversations; layer on top of any LLM</td>
+          <td>Qdrant, Chroma, PGVector + Redis + Neo4j (graph)</td>
+          <td>Yes (Apache 2.0)</td>
+          <td>Quick integration vào existing apps; personalization use cases</td>
+          <td>Auto-extraction có thể noisy; less control over what's stored</td>
+        </tr>
+        <tr>
+          <td><strong>Zep</strong></td>
+          <td>Temporal knowledge graph; auto-extract entities, facts, summaries; time-aware retrieval</td>
+          <td>PostgreSQL + custom graph layer</td>
+          <td>Partially (Community + Cloud)</td>
+          <td>Conversational apps cần temporal awareness; entity tracking</td>
+          <td>Cloud version có cost; Community version limited features</td>
+        </tr>
+        <tr>
+          <td><strong>cognee</strong></td>
+          <td>Knowledge graph từ documents + conversations; ontology-aware; GraphRAG hybrid</td>
+          <td>Multiple (Neo4j, Qdrant, Weaviate, PG)</td>
+          <td>Yes (Apache 2.0)</td>
+          <td>Knowledge-heavy agents; complex relationship reasoning</td>
+          <td>Mới (2024); community nhỏ; complex setup</td>
+        </tr>
+        <tr>
+          <td><strong>Custom</strong></td>
+          <td>Build own memory layer: vector search + KV + summary logic</td>
+          <td>Bất kỳ</td>
+          <td>N/A</td>
+          <td>Full control; specific domain requirements; performance-critical</td>
+          <td>Cần build và maintain; time investment cao</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout tip">
+    <div class="icon">★</div>
+    <div>
+      <div class="title">Heuristic chọn tool</div>
+      <p>
+        <strong>Prototype/startup:</strong> mem0 — dễ integrate, tự động extract memories, hoạt động ngay.<br>
+        <strong>Production personal agent cần temporal/entity awareness:</strong> Zep.<br>
+        <strong>Long-running stateful agent (vWeeks/months):</strong> Letta.<br>
+        <strong>Knowledge-intensive với complex relationships:</strong> cognee.<br>
+        <strong>Full control + existing infra:</strong> Build custom với Qdrant + Redis + PostgreSQL.
+      </p>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════
+       25.8 Memory write strategies
+  ════════════════════════════════════════════════ -->
+  <h2 id="write-strategies">25.8 Memory write strategies</h2>
+  <p>
+    Biết "nên lưu cái gì" đã khó — "khi nào và cách nào lưu" còn quan trọng hơn.
+    Có 4 write strategies chính, mỗi loại phù hợp ngữ cảnh khác nhau:
+  </p>
+
+  <div class="tabs" data-tabs>
+    <div class="tab-buttons">
+      <button class="active">Explicit (Tool Call)</button>
+      <button>Implicit (Event-driven)</button>
+      <button>Batch Summarization</button>
+      <button>Sleeptime Compute</button>
+    </div>
+    <div class="tab-panel active">
+      <h4>Explicit write — LLM tự gọi memory tool</h4>
+      <p>LLM quyết định khi nào cần lưu memory bằng cách gọi <code>save_memory()</code> tool. Đây là approach của MemGPT/Letta.</p>
+      <pre><code><span class="cm"># LLM tự decide: "User vừa cho tôi biết họ là developer Python → save"</span>
+<span class="cm"># → LLM generates tool call:</span>
+{
+    <span class="str">"tool"</span>: <span class="str">"save_memory"</span>,
+    <span class="str">"input"</span>: {
+        <span class="str">"content"</span>: <span class="str">"User is a Python developer. Prefers concise code examples."</span>,
+        <span class="str">"category"</span>: <span class="str">"user_profile"</span>,
+        <span class="str">"importance"</span>: <span class="str">"high"</span>
+    }
+}
+<span class="cm"># Pro: Agent chọn đúng những gì cần lưu</span>
+<span class="cm"># Con: LLM có thể quên gọi tool, hoặc lưu thừa</span></code></pre>
+      <div class="callout warn" style="margin-top:8px">
+        <div class="icon">⚠</div>
+        <div><div class="title">Reliability issue</div><p>LLM không luôn luôn nhớ gọi memory tool. Cần hướng dẫn rõ trong system prompt và có fallback mechanism (implicit hoặc post-hoc).</p></div>
+      </div>
+    </div>
+    <div class="tab-panel">
+      <h4>Implicit write — Event-driven extraction</h4>
+      <p>Sau mỗi turn (hoặc mỗi N turns), một extractor LLM riêng phân tích conversation và tự động extract memories — không cần agent chủ động gọi tool.</p>
+      <pre><code><span class="cm"># Run async sau mỗi conversation turn</span>
+<span class="kw">async def</span> <span class="fn">extract_memories_bg</span>(turn: ConversationTurn, memory_store):
+
+    extraction_prompt = <span class="str">"""Analyze this conversation turn. Extract any:
+- User preferences or personality traits
+- Facts about the user (job, location, interests)
+- Explicit statements of intent or goals
+- Important context for future conversations
+
+Format as JSON list of {content, category, confidence} objects.
+Only extract high-confidence, genuinely useful information."""</span>
+
+    extracted = <span class="kw">await</span> fast_llm.<span class="fn">extract</span>(turn, prompt=extraction_prompt)
+
+    <span class="kw">for</span> memory <span class="kw">in</span> extracted:
+        <span class="kw">if</span> memory.confidence > <span class="num">0.8</span>:
+            <span class="kw">await</span> memory_store.<span class="fn">upsert</span>(memory)  <span class="cm"># dedup via embedding similarity</span>
+
+<span class="cm"># Background task — doesn't block user response</span>
+asyncio.<span class="fn">create_task</span>(<span class="fn">extract_memories_bg</span>(turn, memory_store))</code></pre>
+    </div>
+    <div class="tab-panel">
+      <h4>Batch Summarization — Periodic offline processing</h4>
+      <p>Offline job chạy định kỳ (mỗi giờ, mỗi ngày) để summarize và consolidate memories từ nhiều sessions.</p>
+      <pre><code><span class="cm"># Scheduled job: runs every night at 2AM</span>
+<span class="kw">async def</span> <span class="fn">nightly_memory_consolidation</span>(user_id: str):
+
+    <span class="cm"># Get today's sessions</span>
+    sessions = <span class="kw">await</span> db.<span class="fn">get_sessions</span>(user_id, since=<span class="str">"today"</span>)
+
+    <span class="cm"># Extract patterns across sessions</span>
+    cross_session_summary = <span class="kw">await</span> llm.<span class="fn">summarize</span>(
+        sessions=sessions,
+        instructions=<span class="str">"""Identify:
+1. Recurring topics or interests
+2. New facts learned about the user
+3. Ongoing tasks or projects
+4. Preferences expressed multiple times
+Produce a brief update to the user's persistent profile."""</span>
+    )
+
+    <span class="cm"># Merge with existing long-term profile</span>
+    <span class="kw">await</span> memory_store.<span class="fn">merge_profile</span>(user_id, cross_session_summary)
+    <span class="cm"># → Deduplication + conflict resolution happens here</span></code></pre>
+      <div class="callout tip" style="margin-top:8px">
+        <div class="icon">★</div>
+        <div><div class="title">Sleeptime compute term</div><p>"Sleeptime compute" (thuật ngữ từ Letta) chỉ compute chạy khi agent không active với user — giống như con người consolidate memories khi ngủ. Rất cost-effective vì không trên critical path.</p></div>
+      </div>
+    </div>
+    <div class="tab-panel">
+      <h4>Sleeptime Compute — Background consolidation</h4>
+      <p>Letta's innovation: agent chạy <em>background reflection sessions</em> khi idle — không cần user trigger. Agent tự "suy nghĩ" về những gì đã học và reorganize memories.</p>
+      <pre><code><span class="cm"># Letta-style: agent runs autonomously in background</span>
+<span class="cm"># Triggered after session ends, or on schedule</span>
+
+<span class="kw">class</span> SleeptimeAgent:
+
+    <span class="kw">async def</span> <span class="fn">run_reflection</span>(self, user_id: str):
+        <span class="str">"""Agent reflects on recent experiences without user present."""</span>
+
+        recent_memories = <span class="kw">await</span> self.memory.<span class="fn">get_recent</span>(user_id, limit=<span class="num">50</span>)
+        existing_profile = <span class="kw">await</span> self.memory.<span class="fn">get_profile</span>(user_id)
+
+        <span class="cm"># Agent runs multi-turn internal monologue</span>
+        reflection = <span class="kw">await</span> self.llm.<span class="fn">reflect</span>(
+            system=<span class="str">"You are reflecting on your recent interactions with the user. "</span>
+                   <span class="str">"Identify patterns, update beliefs, note contradictions. "</span>
+                   <span class="str">"Use your memory tools to update the user's profile."</span>,
+            context=recent_memories,
+            existing_profile=existing_profile,
+            tools=[<span class="str">"core_memory_update"</span>, <span class="str">"archival_memory_insert"</span>, <span class="str">"memory_delete"</span>]
+        )
+        <span class="cm"># Agent calls memory tools during reflection → memory updates happen</span></code></pre>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════
+       25.9 Memory retrieval
+  ════════════════════════════════════════════════ -->
+  <h2 id="retrieval">25.9 Memory retrieval</h2>
+  <p>
+    Lưu memories chỉ có giá trị khi retrieve đúng lúc. Có 3 retrieval modes, thường dùng phối hợp:
+  </p>
+
+  <!-- Memory write+retrieve loop SVG -->
+  <svg class="diagram" viewBox="0 0 760 340" role="img" aria-label="Memory write and retrieve loop">
+    <defs>
+      <marker id="arrowhead3" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#6f7c92"/>
+      </marker>
+    </defs>
+
+    <!-- User input -->
+    <rect class="node-bg" x="20" y="130" width="140" height="60" rx="8"/>
+    <text x="90" y="156" text-anchor="middle" font-weight="600" font-size="12">User Message</text>
+    <text x="90" y="174" text-anchor="middle" class="label-sm">"Remember when..."</text>
+    <line class="arrow" x1="161" y1="160" x2="199" y2="160" marker-end="url(#arrowhead3)"/>
+
+    <!-- Retrieval router -->
+    <rect class="node-accent" x="200" y="115" width="160" height="90" rx="10"/>
+    <text x="280" y="140" text-anchor="middle" font-weight="700" font-size="13">Retrieval Router</text>
+    <text x="280" y="158" text-anchor="middle" class="label-sm">Embed query →</text>
+    <text x="280" y="174" text-anchor="middle" class="label-sm">semantic search</text>
+    <text x="280" y="190" text-anchor="middle" class="label-sm">+ proactive inject</text>
+
+    <!-- Arrows to stores -->
+    <line class="arrow" x1="360" y1="140" x2="418" y2="80" marker-end="url(#arrowhead3)"/>
+    <line class="arrow" x1="360" y1="160" x2="418" y2="160" marker-end="url(#arrowhead3)"/>
+    <line class="arrow" x1="360" y1="180" x2="418" y2="240" marker-end="url(#arrowhead3)"/>
+
+    <!-- Vector store -->
+    <rect class="node-blue" x="420" y="40" width="155" height="70" rx="8"/>
+    <text x="497" y="66" text-anchor="middle" font-weight="600" font-size="12">Vector Store</text>
+    <text x="497" y="84" text-anchor="middle" class="label-sm">Semantic search, top-K</text>
+    <text x="497" y="100" text-anchor="middle" class="label-sm">cosine similarity</text>
+
+    <!-- KV store -->
+    <rect class="node-green" x="420" y="125" width="155" height="70" rx="8"/>
+    <text x="497" y="151" text-anchor="middle" font-weight="600" font-size="12">KV / SQL Store</text>
+    <text x="497" y="169" text-anchor="middle" class="label-sm">Exact lookup, profile</text>
+    <text x="497" y="185" text-anchor="middle" class="label-sm">structured facts</text>
+
+    <!-- Summary store -->
+    <rect class="node-bg" x="420" y="210" width="155" height="70" rx="8"/>
+    <text x="497" y="236" text-anchor="middle" font-weight="600" font-size="12">Summary Store</text>
+    <text x="497" y="254" text-anchor="middle" class="label-sm">Rolling summaries</text>
+    <text x="497" y="270" text-anchor="middle" class="label-sm">session digests</text>
+
+    <!-- Results merge -->
+    <line class="arrow" x1="576" y1="75" x2="614" y2="140" marker-end="url(#arrowhead3)"/>
+    <line class="arrow" x1="576" y1="160" x2="614" y2="160" marker-end="url(#arrowhead3)"/>
+    <line class="arrow" x1="576" y1="245" x2="614" y2="180" marker-end="url(#arrowhead3)"/>
+
+    <!-- Context injection -->
+    <rect class="node-accent" x="615" y="115" width="130" height="90" rx="10"/>
+    <text x="680" y="141" text-anchor="middle" font-weight="700" font-size="12">Context Inject</text>
+    <text x="680" y="159" text-anchor="middle" class="label-sm">Rerank + filter</text>
+    <text x="680" y="177" text-anchor="middle" class="label-sm">Format &amp; inject</text>
+    <text x="680" y="193" text-anchor="middle" class="label-sm">into prompt</text>
+
+    <!-- Write back path -->
+    <path class="arrow" d="M 280 205 Q 280 295 497 295 Q 600 295 680 207" fill="none" marker-end="url(#arrowhead3)"/>
+    <text x="440" y="312" text-anchor="middle" font-size="11" fill="#ffb86b">Write-back: new memories extracted from response</text>
+  </svg>
+
+  <h3>Query-time semantic retrieval</h3>
+  <p>
+    Retrieval phổ biến nhất: embed user message → tìm K memories gần nhất trong vector space:
+  </p>
+  <pre><code><span class="kw">async def</span> <span class="fn">retrieve_relevant_memories</span>(user_message: str, user_id: str, k: int = <span class="num">5</span>) -> list[str]:
+
+    query_embedding = <span class="kw">await</span> embed_model.<span class="fn">embed</span>(user_message)
+
+    memories = <span class="kw">await</span> vector_db.<span class="fn">search</span>(
+        collection=f<span class="str">"memories_{user_id}"</span>,
+        vector=query_embedding,
+        limit=k,
+        score_threshold=<span class="num">0.72</span>  <span class="cm"># ignore low-relevance matches</span>
+    )
+
+    <span class="cm"># Rerank with cross-encoder for higher precision</span>
+    reranked = <span class="kw">await</span> cross_encoder.<span class="fn">rerank</span>(
+        query=user_message,
+        documents=[m.content <span class="kw">for</span> m <span class="kw">in</span> memories]
+    )
+    <span class="kw">return</span> reranked[:k]</code></pre>
+
+  <h3>Proactive injection — inject trước khi user hỏi</h3>
+  <p>
+    Không chờ user hỏi — dự đoán memories nào relevant dựa trên context:
+  </p>
+  <pre><code><span class="cm"># Inject memories at session start based on user profile</span>
+<span class="kw">async def</span> <span class="fn">build_session_context</span>(user_id: str, task_description: str) -> dict:
+
+    <span class="cm"># Always inject: user's static profile (name, preferences, timezone)</span>
+    profile = <span class="kw">await</span> kv_store.<span class="fn">get</span>(f<span class="str">"user_profile:{user_id}"</span>)
+
+    <span class="cm"># Proactively retrieve: task-relevant memories</span>
+    task_memories = <span class="kw">await</span> vector_db.<span class="fn">search</span>(task_description, user_id=user_id, k=<span class="num">3</span>)
+
+    <span class="cm"># Recent episodes: last 2 sessions' summaries</span>
+    recent_summaries = <span class="kw">await</span> db.<span class="fn">get_session_summaries</span>(user_id, limit=<span class="num">2</span>)
+
+    <span class="kw">return</span> {<span class="str">"profile"</span>: profile, <span class="str">"task_memories"</span>: task_memories, <span class="str">"recent"</span>: recent_summaries}</code></pre>
+
+  <h3>Self-recall via reflection</h3>
+  <p>
+    Agent nhận ra mình cần thông tin nào đó và tự generate memory query — "self-recall":
+  </p>
+  <pre><code><span class="cm"># Agent thought: "User mentioned a project last week — I should recall details"</span>
+<span class="cm"># → Agent generates tool call:</span>
+{
+    <span class="str">"tool"</span>: <span class="str">"archival_memory_search"</span>,
+    <span class="str">"input"</span>: {<span class="str">"query"</span>: <span class="str">"project migration database"</span>, <span class="str">"page"</span>: <span class="num">0</span>}
+}
+<span class="cm"># → Memory retrieved and injected into context</span>
+<span class="cm"># → Agent can now reference past details accurately</span></code></pre>
+
+  <!-- ═══════════════════════════════════════════════
+       25.10 Memory hygiene
+  ════════════════════════════════════════════════ -->
+  <h2 id="hygiene">25.10 Memory hygiene</h2>
+  <p>
+    Memory không có maintenance sẽ trở nên stale, contradictory, noisy — và cuối cùng làm hại chất lượng agent
+    hơn là giúp ích. Memory hygiene là tập hợp các practices để giữ memory store clean và useful.
+  </p>
+
+  <h3>Deduplication</h3>
+  <p>
+    Cùng một fact có thể được lưu nhiều lần với phrasing khác nhau.
+    Dedup dựa trên embedding similarity khi insert:
+  </p>
+  <pre><code><span class="kw">async def</span> <span class="fn">upsert_memory</span>(content: str, user_id: str, threshold: float = <span class="num">0.92</span>):
+
+    embedding = <span class="kw">await</span> embed.<span class="fn">embed</span>(content)
+
+    <span class="cm"># Find very similar existing memories</span>
+    similar = <span class="kw">await</span> vector_db.<span class="fn">search</span>(
+        vector=embedding, user_id=user_id, limit=<span class="num">3</span>, score_threshold=threshold
+    )
+
+    <span class="kw">if</span> similar:
+        <span class="cm"># Merge: keep newer/more specific version, update embedding</span>
+        existing = similar[<span class="num">0</span>]
+        merged = <span class="kw">await</span> llm.<span class="fn">merge_facts</span>(existing.content, content)
+        <span class="kw">await</span> vector_db.<span class="fn">update</span>(existing.id, merged)
+    <span class="kw">else</span>:
+        <span class="kw">await</span> vector_db.<span class="fn">insert</span>(content, embedding, user_id=user_id)</code></pre>
+
+  <h3>Decay và age-out</h3>
+  <p>
+    Thông tin cũ nên giảm priority hoặc bị xóa. Đặc biệt với episodic memories:
+  </p>
+  <pre><code><span class="cm"># Add decay factor to retrieval scoring</span>
+<span class="kw">import</span> math
+
+<span class="kw">def</span> <span class="fn">decayed_score</span>(similarity: float, created_at: datetime, decay_days: int = <span class="num">90</span>) -> float:
+
+    age_days = (datetime.<span class="fn">now</span>() - created_at).days
+    decay = math.<span class="fn">exp</span>(-age_days / decay_days)  <span class="cm"># exponential decay</span>
+    <span class="kw">return</span> similarity * (<span class="num">0.6</span> + <span class="num">0.4</span> * decay)  <span class="cm"># blend: 60% similarity, 40% recency</span>
+
+<span class="cm"># Hard deletion: remove memories older than threshold</span>
+<span class="cm"># (for episodic only — semantic/profile memories kept longer)</span>
+<span class="kw">await</span> vector_db.<span class="fn">delete_where</span>(
+    user_id=user_id,
+    category=<span class="str">"episodic"</span>,
+    older_than_days=<span class="num">180</span>
+)</code></pre>
+
+  <h3>Contradiction detection</h3>
+  <p>
+    Khi lưu fact mới, check xem có mâu thuẫn với existing facts không:
+  </p>
+  <pre><code><span class="kw">async def</span> <span class="fn">check_contradiction</span>(new_fact: str, user_id: str) -> str | <span class="kw">None</span>:
+
+    <span class="cm"># Search for potentially contradicting memories</span>
+    candidates = <span class="kw">await</span> vector_db.<span class="fn">search</span>(new_fact, user_id=user_id, k=<span class="num">5</span>)
+
+    <span class="kw">if not</span> candidates:
+        <span class="kw">return None</span>
+
+    result = <span class="kw">await</span> llm.<span class="fn">check</span>(
+        prompt=f<span class="str">"Does '{new_fact}' contradict any of these facts?\n{candidates}\n"</span>
+               <span class="str">"Answer: YES [contradicted fact] or NO"</span>
+    )
+    <span class="kw">return</span> result <span class="kw">if</span> result.<span class="fn">startswith</span>(<span class="str">"YES"</span>) <span class="kw">else None</span>
+
+<span class="cm"># If contradiction found: either update existing or flag for human review</span></code></pre>
+
+  <div class="callout warn">
+    <div class="icon">⚠</div>
+    <div>
+      <div class="title">Hallucinated memories</div>
+      <p>
+        LLM extractors có thể extract facts không có thật từ conversation (hallucination trong extraction).
+        Luôn set <strong>confidence threshold</strong> khi extract, và consider <strong>human review</strong>
+        cho high-impact memories (e.g., medical preferences, financial data).
+        Đặc biệt với implicit extraction — accuracy thường 85–92%, không phải 100%.
+      </p>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════
+       25.11 Privacy & multitenancy
+  ════════════════════════════════════════════════ -->
+  <h2 id="privacy">25.11 Privacy &amp; multitenancy trong shared memory</h2>
+  <p>
+    Memory store chứa thông tin cá nhân nhạy cảm nhất của user — preferences, habits, personal details.
+    Khi nhiều users dùng chung infrastructure, isolation là critical.
+  </p>
+
+  <h3>Namespace isolation</h3>
+  <p>
+    <strong>Hard rule:</strong> Mỗi user (hay tenant) phải có namespace hoàn toàn isolated trong memory store.
+    Không được phép search hay retrieve memory của user khác dưới bất kỳ điều kiện nào:
+  </p>
+  <pre><code><span class="cm"># ALWAYS scope queries to user/tenant ID</span>
+<span class="cm"># WRONG — can leak memories across users:</span>
+memories = <span class="kw">await</span> vector_db.<span class="fn">search</span>(query=<span class="str">"banking"</span>, limit=<span class="num">5</span>)
+
+<span class="cm"># CORRECT — namespace-scoped:</span>
+memories = <span class="kw">await</span> vector_db.<span class="fn">search</span>(
+    query=<span class="str">"banking"</span>,
+    filter={<span class="str">"user_id"</span>: current_user.id},  <span class="cm"># hard filter, not just hint</span>
+    limit=<span class="num">5</span>
+)
+
+<span class="cm"># In tenant SaaS: double-scoped</span>
+memories = <span class="kw">await</span> vector_db.<span class="fn">search</span>(
+    query=query,
+    filter={
+        <span class="str">"tenant_id"</span>: request.tenant_id,  <span class="cm"># from auth context, never user-provided</span>
+        <span class="str">"user_id"</span>: request.user_id
+    }
+)</code></pre>
+
+  <h3>Data retention và right-to-be-forgotten</h3>
+  <pre><code><span class="cm"># GDPR/privacy: user can request full memory deletion</span>
+<span class="kw">async def</span> <span class="fn">delete_all_user_memories</span>(user_id: str):
+
+    <span class="kw">await</span> vector_db.<span class="fn">delete_collection</span>(f<span class="str">"memories_{user_id}"</span>)
+    <span class="kw">await</span> kv_store.<span class="fn">delete</span>(f<span class="str">"user_profile:{user_id}"</span>)
+    <span class="kw">await</span> db.<span class="fn">delete_sessions</span>(user_id=user_id)
+    <span class="kw">await</span> audit_log.<span class="fn">record</span>(<span class="str">"MEMORY_DELETED"</span>, user_id=user_id)
+    <span class="cm"># Verify deletion with spot-check before acknowledging</span></code></pre>
+
+  <h3>Shared vs personal memory trong multi-agent systems</h3>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Memory scope</th><th>Ví dụ</th><th>Access</th><th>Concern</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Personal</strong></td>
+          <td>User preferences, conversation history, personal facts</td>
+          <td>User-only</td>
+          <td>Strict isolation — never shared</td>
+        </tr>
+        <tr>
+          <td><strong>Team/org</strong></td>
+          <td>Shared knowledge base, team decisions, org policies</td>
+          <td>All members of org</td>
+          <td>Role-based access; audit writes</td>
+        </tr>
+        <tr>
+          <td><strong>Global</strong></td>
+          <td>Product documentation, public knowledge</td>
+          <td>All users</td>
+          <td>Read-only for most; controlled writes</td>
+        </tr>
+        <tr>
+          <td><strong>Agent-private</strong></td>
+          <td>Intermediate reasoning, temporary scratchpad</td>
+          <td>Agent session only</td>
+          <td>Auto-expire after session; never persist sensitive data</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════
+       25.12 Old vs New
+  ════════════════════════════════════════════════ -->
+  <h2 id="old-vs-new">25.12 Cách cũ vs Cách hiện tại</h2>
+  <p>
+    Sự tiến hóa trong cách xử lý memory của agent rất rõ ràng — từ "nhét mọi thứ vào prompt" đến "memory layer có kiến trúc":
+  </p>
+
+  <!-- Old vs New SVG -->
+  <svg class="diagram" viewBox="0 0 760 400" role="img" aria-label="Old way: giant prompt vs New way: memory layer">
+    <defs>
+      <marker id="arrowhead4" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#6f7c92"/>
+      </marker>
+    </defs>
+
+    <!-- Divider -->
+    <line x1="380" y1="10" x2="380" y2="390" stroke="#2a3140" stroke-width="2" stroke-dasharray="6,4"/>
+    <text x="190" y="28" text-anchor="middle" font-size="14" font-weight="700" fill="#ff8a8a">❌ Cách cũ (2022–2023)</text>
+    <text x="570" y="28" text-anchor="middle" font-size="14" font-weight="700" fill="#b4e07a">✓ Cách hiện tại (2024–2026)</text>
+
+    <!-- OLD WAY -->
+    <!-- Giant prompt box -->
+    <rect class="node-bg" x="20" y="45" width="330" height="310" rx="10" style="stroke:var(--danger);stroke-width:1.5"/>
+    <text x="185" y="68" text-anchor="middle" font-weight="700" font-size="13" fill="#ff8a8a">Giant Context Prompt</text>
+
+    <rect x="35" y="78" width="300" height="28" rx="4" style="fill:rgba(255,138,138,0.15);stroke:#ff8a8a;stroke-width:0.5"/>
+    <text x="185" y="97" text-anchor="middle" font-size="11">System prompt (instructions)</text>
+
+    <rect x="35" y="112" width="300" height="28" rx="4" style="fill:rgba(255,138,138,0.1);stroke:#ff8a8a;stroke-width:0.5"/>
+    <text x="185" y="131" text-anchor="middle" font-size="11">Full chat history — turn 1 to turn 200...</text>
+
+    <rect x="35" y="146" width="300" height="28" rx="4" style="fill:rgba(255,138,138,0.1);stroke:#ff8a8a;stroke-width:0.5"/>
+    <text x="185" y="165" text-anchor="middle" font-size="11">All tool results from every past call...</text>
+
+    <rect x="35" y="180" width="300" height="28" rx="4" style="fill:rgba(255,138,138,0.1);stroke:#ff8a8a;stroke-width:0.5"/>
+    <text x="185" y="199" text-anchor="middle" font-size="11">All documents loaded at start...</text>
+
+    <rect x="35" y="214" width="300" height="28" rx="4" style="fill:rgba(255,138,138,0.1);stroke:#ff8a8a;stroke-width:0.5"/>
+    <text x="185" y="233" text-anchor="middle" font-size="11">User profile manually pasted in...</text>
+
+    <rect x="35" y="248" width="300" height="28" rx="4" style="fill:rgba(255,138,138,0.08);stroke:#ff8a8a;stroke-width:0.5"/>
+    <text x="185" y="267" text-anchor="middle" font-size="11" fill="#6f7c92">... more history ...</text>
+
+    <rect x="35" y="282" width="300" height="28" rx="4" style="fill:rgba(255,138,138,0.06);stroke:#ff8a8a;stroke-width:0.3"/>
+    <text x="185" y="301" text-anchor="middle" font-size="11" fill="#6f7c92">... context fills up → crash ...</text>
+
+    <!-- Cost annotation -->
+    <text x="185" y="335" text-anchor="middle" font-size="12" fill="#ff8a8a">⚠ 150K tokens per call = $2.25/call</text>
+    <text x="185" y="353" text-anchor="middle" font-size="11" fill="#6f7c92">Lost-in-middle · Resets on overflow</text>
+    <text x="185" y="369" text-anchor="middle" font-size="11" fill="#6f7c92">No cross-session persistence</text>
+
+    <!-- NEW WAY -->
+    <!-- Agent box -->
+    <rect class="node-accent" x="400" y="45" width="160" height="60" rx="8"/>
+    <text x="480" y="71" text-anchor="middle" font-weight="700" font-size="13">Agent (LLM)</text>
+    <text x="480" y="89" text-anchor="middle" class="label-sm">~8K focused context</text>
+
+    <!-- Memory layer -->
+    <rect class="node-green" x="395" y="125" width="168" height="50" rx="8"/>
+    <text x="479" y="147" text-anchor="middle" font-weight="700" font-size="12">Memory Layer</text>
+    <text x="479" y="163" text-anchor="middle" class="label-sm">Retrieval + Injection</text>
+    <line class="arrow" x1="479" y1="105" x2="479" y2="124" marker-end="url(#arrowhead4)"/>
+    <line class="arrow" x1="479" y1="124" x2="479" y2="105" marker-end="url(#arrowhead4)"/>
+
+    <!-- External stores -->
+    <rect class="node-blue" x="395" y="195" width="75" height="60" rx="6"/>
+    <text x="432" y="221" text-anchor="middle" font-size="11" font-weight="600">Vector DB</text>
+    <text x="432" y="237" text-anchor="middle" class="label-sm">Semantic</text>
+    <text x="432" y="248" text-anchor="middle" class="label-sm">search</text>
+
+    <rect class="node-blue" x="488" y="195" width="75" height="60" rx="6"/>
+    <text x="525" y="221" text-anchor="middle" font-size="11" font-weight="600">KV / SQL</text>
+    <text x="525" y="237" text-anchor="middle" class="label-sm">Profile,</text>
+    <text x="525" y="248" text-anchor="middle" class="label-sm">exact facts</text>
+
+    <rect class="node-bg" x="395" y="272" width="168" height="50" rx="6"/>
+    <text x="479" y="295" text-anchor="middle" font-size="11" font-weight="600">Session Summaries</text>
+    <text x="479" y="311" text-anchor="middle" class="label-sm">Compressed history</text>
+
+    <line class="arrow" x1="432" y1="175" x2="432" y2="194" marker-end="url(#arrowhead4)"/>
+    <line class="arrow" x1="525" y1="175" x2="525" y2="194" marker-end="url(#arrowhead4)"/>
+    <line class="arrow" x1="479" y1="175" x2="479" y2="271" marker-end="url(#arrowhead4)"/>
+
+    <!-- Benefits -->
+    <text x="479" y="345" text-anchor="middle" font-size="12" fill="#b4e07a">✓ ~8K tokens per call = $0.12/call</text>
+    <text x="479" y="363" text-anchor="middle" font-size="11" fill="#6f7c92">Only relevant context injected</text>
+    <text x="479" y="379" text-anchor="middle" font-size="11" fill="#6f7c92">Persists across sessions · Scales ∞</text>
+  </svg>
+
+  <div class="table-wrap" style="margin-top:24px">
+    <table>
+      <thead>
+        <tr><th>Khía cạnh</th><th>Cách cũ — Giant Prompt</th><th>Cách hiện tại — Memory Layer</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Context size</strong></td>
+          <td>100K–200K tokens mỗi call</td>
+          <td>5K–15K tokens mỗi call (chỉ relevant)</td>
+        </tr>
+        <tr>
+          <td><strong>Cost</strong></td>
+          <td>$1–5 per session (tăng theo thời gian)</td>
+          <td>$0.05–0.30 per session (predictable)</td>
+        </tr>
+        <tr>
+          <td><strong>Cross-session memory</strong></td>
+          <td>Không có — reset mỗi session</td>
+          <td>Persistent — nhớ qua ngày, tuần, tháng</td>
+        </tr>
+        <tr>
+          <td><strong>Scalability</strong></td>
+          <td>Bị chặn bởi context limit (~500 turns)</td>
+          <td>Vô hạn — chỉ phụ thuộc storage capacity</td>
+        </tr>
+        <tr>
+          <td><strong>Information quality</strong></td>
+          <td>Noise cao — mọi thứ đều trong context</td>
+          <td>High signal — chỉ inject thông tin relevant nhất</td>
+        </tr>
+        <tr>
+          <td><strong>Personalization</strong></td>
+          <td>Manual — dev phải hardcode profile vào prompt</td>
+          <td>Dynamic — auto-extract, update, retrieve</td>
+        </tr>
+        <tr>
+          <td><strong>Maintenance</strong></td>
+          <td>Không cần — single blob</td>
+          <td>Cần hygiene: dedup, decay, conflict resolution</td>
+        </tr>
+        <tr>
+          <td><strong>Complexity</strong></td>
+          <td>Đơn giản — chỉ là string concatenation</td>
+          <td>Phức tạp hơn — cần vector DB, write strategies, retrieval pipeline</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout note">
+    <div class="icon">≡</div>
+    <div>
+      <div class="title">Khi nào cách cũ vẫn đủ tốt</div>
+      <p>
+        Với <strong>short conversations</strong> (&lt;20 turns), <strong>stateless tasks</strong> (mỗi request độc lập),
+        hoặc <strong>Gemini 1M context</strong> với cost không phải vấn đề, "giant context" vẫn là approach đơn giản nhất.
+        Đừng over-engineer memory layer cho những use case không thực sự cần.
+        <em>Build memory layer khi bạn có evidence rằng cross-session persistence hoặc cost là bottleneck thực sự.</em>
+      </p>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════
+       Summary
+  ════════════════════════════════════════════════ -->
+  <h2 id="tom-tat">Tóm tắt</h2>
+  <ol>
+    <li>
+      <strong>Memory quan trọng hơn context window</strong> vì persistence, cost, personalization, và scale.
+      Context window là RAM — memory stores là disk. Cần quản lý cả hai.
+    </li>
+    <li>
+      <strong>4 loại memory</strong> từ cognitive science: <em>Working</em> (context, volatile),
+      <em>Episodic</em> (events/summaries, temporal), <em>Semantic</em> (facts/knowledge, persistent),
+      <em>Procedural</em> (skills/behaviors, in system prompt).
+    </li>
+    <li>
+      <strong>Working memory management</strong>: Full transcript OK cho short chats;
+      Sliding window đơn giản nhưng mất context; Summary memory tốt hơn;
+      <strong>Hybrid (summary + recent verbatim + memory injection)</strong> là production standard.
+    </li>
+    <li>
+      <strong>Long-term stores</strong>: Vector DB cho semantic search, KV/SQL cho exact facts, Graph DB cho relationships.
+      Production systems thường hybrid tất cả.
+    </li>
+    <li>
+      <strong>MemGPT/Letta pattern</strong>: OS-style — context = RAM, external storage = disk.
+      Agent tự page-in/page-out thông qua memory tool calls. Powerful nhưng phức tạp.
+    </li>
+    <li>
+      <strong>mem0, Zep, Letta, cognee</strong> là 4 leading open-source tools cho managed memory.
+      mem0 dễ integrate nhất; Zep tốt cho temporal/entity; Letta cho long-running agents; cognee cho knowledge graphs.
+    </li>
+    <li>
+      <strong>Write strategies</strong>: Explicit (agent tự gọi tool), Implicit (auto-extraction after turn),
+      Batch (nightly job), Sleeptime compute (background reflection). Production thường dùng Implicit + Batch.
+    </li>
+    <li>
+      <strong>Retrieval</strong>: Query-time semantic (embed + search), Proactive injection (at session start),
+      Self-recall (agent generates query). Cross-encoder reranking tăng precision đáng kể.
+    </li>
+    <li>
+      <strong>Memory hygiene</strong>: Dedup khi insert (embedding similarity), Decay scoring cho old memories,
+      Contradiction detection khi upsert. Không có hygiene = memory store degradation theo thời gian.
+    </li>
+    <li>
+      <strong>Privacy & multitenancy</strong>: LUÔN scope queries theo user_id/tenant_id.
+      Implement right-to-be-forgotten. Phân tách rõ Personal/Team/Global memory scopes.
+    </li>
+    <li>
+      <strong>Cách cũ vs hiện tại</strong>: Giant prompt → Memory layer. 10–20x cost reduction,
+      unlimited scale, cross-session persistence. Nhưng cũng phức tạp hơn — chỉ build khi thực sự cần.
+    </li>
+  </ol>
+
+  <nav class="section-footer">
+    <a href="24-agent-harness.html" class="prev">
+      <div class="label">← trước</div>
+      <div class="title">24 — Agent Harness</div>
+    </a>
+    <a href="26-durable-agents.html" class="next">
+      <div class="label">tiếp theo →</div>
+      <div class="title">26 — Durable Agents</div>
+    </a>
+  </nav>
+
+</main>
+
+<script src="../assets/script.js"></script>
+</body>
+</html>

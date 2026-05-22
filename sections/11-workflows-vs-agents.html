@@ -1,0 +1,637 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>11 · Workflows vs Agents — AI Engineering</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<nav class="top-nav">
+  <div class="brand"><span class="dot"></span> AI Engineering</div>
+  <div class="crumbs"><a href="../index.html">Mục lục</a> › Phần 4 · <span>11 — Workflows vs Agents</span></div>
+  <div class="nav-actions">
+    <a href="10-agents.html">← Trước</a>
+    <a href="12-inference-serving.html">Tiếp →</a>
+  </div>
+</nav>
+
+<main class="page">
+
+  <section class="hero">
+    <span class="eyebrow">Phần 4 · §11</span>
+    <h1>Workflows vs Agents</h1>
+    <p class="lede">
+      Khi nào dùng deterministic workflow, khi nào để LLM tự quyết? 5 patterns từ Anthropic's "Building effective agents" và migration path từ workflow đến agent.
+    </p>
+    <img class="hero-image" src="../images/11-workflows-vs-agents.png" alt="Workflows vs Agents illustration" onerror="this.style.display='none'">
+  </section>
+
+  <aside class="toc">
+    <div class="toc-title">Trong trang này</div>
+    <ul>
+      <li><a href="#dinh-nghia">9.1 Định nghĩa</a></li>
+      <li><a href="#workflow-khi-nao">9.2 Khi nào dùng Workflow</a></li>
+      <li><a href="#agent-khi-nao">9.3 Khi nào dùng Agent</a></li>
+      <li><a href="#anthropic-patterns">9.4 Anthropic's 5 Patterns</a></li>
+      <li><a href="#hybrid">9.5 Hybrid approach</a></li>
+      <li><a href="#migration">9.6 Migration path</a></li>
+      <li><a href="#tom-tat">Tóm tắt</a></li>
+    </ul>
+  </aside>
+
+  <!-- ═══════════════════════════════════════════════
+       9.1 Định nghĩa
+  ════════════════════════════════════════════════ -->
+  <h2 id="dinh-nghia">9.1 Định nghĩa: Workflow vs Agent</h2>
+
+  <div class="grid-2">
+    <div class="card">
+      <h3 style="margin-top:0; color:var(--accent-3)">Workflow</h3>
+      <p>Chuỗi LLM calls được <strong>lập trình sẵn</strong> (hardcoded DAG). Code quyết định bước nào chạy tiếp theo, không phải LLM.</p>
+      <ul style="margin-bottom:0">
+        <li>Deterministic control flow</li>
+        <li>LLM chỉ làm task trong từng step</li>
+        <li>Predictable, testable, auditable</li>
+        <li>Số LLM calls cố định</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3 style="margin-top:0; color:var(--accent)">Agent</h3>
+      <p>LLM <strong>tự quyết định</strong> bước tiếp theo (autonomous loop). LLM điều khiển control flow.</p>
+      <ul style="margin-bottom:0">
+        <li>Non-deterministic control flow</li>
+        <li>LLM chọn tools và thứ tự dùng</li>
+        <li>Flexible, handles unknowns</li>
+        <li>Số LLM calls variable</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="callout note">
+    <div class="icon">≡</div>
+    <div>
+      <div class="title">Spectrum, không phải binary</div>
+      <p>
+        Workflow và Agent không phải 2 loại riêng biệt — đây là một spectrum từ
+        <em>"hoàn toàn hardcoded"</em> đến <em>"hoàn toàn autonomous"</em>.
+        Hầu hết production systems nằm đâu đó ở giữa.
+      </p>
+    </div>
+  </div>
+
+  <h3>So sánh trực tiếp</h3>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Tiêu chí</th><th>Workflow</th><th>Agent</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Predictability</strong></td>
+          <td><span class="tag green">Cao</span> — biết trước mọi step</td>
+          <td><span class="tag">Thấp</span> — depends on LLM decisions</td>
+        </tr>
+        <tr>
+          <td><strong>Latency</strong></td>
+          <td><span class="tag green">Thấp &amp; consistent</span></td>
+          <td><span class="tag">Variable, thường cao</span></td>
+        </tr>
+        <tr>
+          <td><strong>Cost</strong></td>
+          <td><span class="tag green">Thấp &amp; predictable</span></td>
+          <td><span class="tag">Cao &amp; variable</span></td>
+        </tr>
+        <tr>
+          <td><strong>Debuggability</strong></td>
+          <td><span class="tag green">Dễ</span> — trace từng step</td>
+          <td><span class="tag">Khó</span> — emergent behavior</td>
+        </tr>
+        <tr>
+          <td><strong>Flexibility</strong></td>
+          <td><span class="tag">Thấp</span> — cần code change cho new cases</td>
+          <td><span class="tag green">Cao</span> — tự adapt</td>
+        </tr>
+        <tr>
+          <td><strong>Phù hợp với audit/compliance</strong></td>
+          <td><span class="tag green">Tốt</span> — deterministic log</td>
+          <td><span class="tag">Khó</span> — khó reproduce exact path</td>
+        </tr>
+        <tr>
+          <td><strong>Task type</strong></td>
+          <td>Well-defined, structured, repeatable</td>
+          <td>Open-ended, variable steps, exploratory</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════
+       9.2 Khi nào dùng Workflow
+  ════════════════════════════════════════════════ -->
+  <h2 id="workflow-khi-nao">9.2 Khi nào dùng Workflow</h2>
+  <p>
+    Workflow là lựa chọn đúng khi task có thể được decompose thành các steps cố định,
+    và mỗi step có thể được viết thành code rõ ràng.
+  </p>
+
+  <h3>Dấu hiệu nên dùng Workflow</h3>
+  <ul>
+    <li><strong>Predictable steps:</strong> Biết trước exactly cần làm gì, theo thứ tự nào.</li>
+    <li><strong>High volume / Low latency:</strong> Xử lý hàng nghìn requests/giờ với SLA latency nghiêm ngặt.</li>
+    <li><strong>Audit requirement:</strong> Cần log chính xác từng step để compliance hoặc debugging.</li>
+    <li><strong>Controlled cost:</strong> Cần cost predictable per request — không thể để LLM "quyết định" dùng bao nhiêu tokens.</li>
+    <li><strong>Business rules rõ ràng:</strong> "Nếu score &gt; 0.8 thì approve, nếu không thì route to human" — không cần LLM quyết định.</li>
+  </ul>
+
+  <h3>Ví dụ use cases phù hợp với Workflow</h3>
+  <ul>
+    <li>Document processing pipeline: Load → Extract → Classify → Validate → Store</li>
+    <li>Invoice automation: OCR → Parse fields → Validate → Approve/reject</li>
+    <li>Email triage: Classify → Route → Draft reply (đã templated)</li>
+    <li>Content moderation: Run classifiers → Score → Apply policy rules</li>
+    <li>Data enrichment: Fetch records → Enrich each → Write back</li>
+  </ul>
+
+  <!-- ═══════════════════════════════════════════════
+       9.3 Khi nào dùng Agent
+  ════════════════════════════════════════════════ -->
+  <h2 id="agent-khi-nao">9.3 Khi nào dùng Agent</h2>
+  <p>
+    Agent đúng khi task mở, không biết trước cần bao nhiêu bước, và sự flexible của LLM thực sự tạo value.
+  </p>
+
+  <h3>Dấu hiệu nên dùng Agent</h3>
+  <ul>
+    <li><strong>Open-ended task:</strong> Không biết trước cần làm gì — task phụ thuộc vào discoveries trong quá trình.</li>
+    <li><strong>Variable steps:</strong> Câu hỏi đơn giản cần 2 bước; câu hỏi phức tạp cần 15 bước — cần flexibility.</li>
+    <li><strong>Exploration needed:</strong> Cần search, research, hoặc gather info trước khi biết phải làm gì.</li>
+    <li><strong>Complex reasoning:</strong> Cần multi-hop, self-correction, hoặc judgment calls mà code không handle được.</li>
+    <li><strong>Latency tolerance:</strong> User ok chờ 30–120 giây (hoặc async).</li>
+  </ul>
+
+  <h3>Ví dụ use cases phù hợp với Agent</h3>
+  <ul>
+    <li>Research assistant: "Tìm hiểu về đối thủ cạnh tranh mới nhất và viết báo cáo"</li>
+    <li>Coding agent: "Fix this bug" — cần read files, understand context, make changes, run tests</li>
+    <li>Complex support: Khách hàng có vấn đề phức tạp cần điều tra nhiều hệ thống</li>
+    <li>Data analysis: "Tại sao revenue Q3 giảm?" — cần query nhiều datasources, reason over results</li>
+    <li>Personal assistant: Multi-step tasks như lên lịch trip, coordinate multiple parties</li>
+  </ul>
+
+  <div class="callout tip">
+    <div class="icon">★</div>
+    <div>
+      <div class="title">Default: Workflow trước, Agent sau</div>
+      <p>
+        Anthropic khuyến nghị: <em>"Use the simplest solution that works."</em>
+        Bắt đầu với workflow. Chỉ chuyển sang agent khi workflow rõ ràng không đủ.
+        Agent phức tạp hơn workflow ở mọi dimension: cost, latency, debug, reliability.
+      </p>
+    </div>
+  </div>
+
+  <!-- Decision tree -->
+  <h3>Decision guide</h3>
+  <div class="card">
+    <p style="margin-top:0; font-family:var(--font-mono); font-size:13px; color:var(--text-soft)">
+      Câu hỏi task có thể decompose thành steps cố định không?
+    </p>
+    <ul style="font-family:var(--font-mono); font-size:13px; margin-bottom:0">
+      <li><span class="tag green">CÓ</span> → Mỗi step có thể viết thành code? → <span class="tag green">Dùng Workflow</span></li>
+      <li><span class="tag green">CÓ</span> → Step cần LLM judgment? → <span class="tag blue">Workflow + LLM trong từng step</span></li>
+      <li><span class="tag">KHÔNG</span> → Steps thay đổi tùy discoveries? → <span class="tag">Cân nhắc Agent</span></li>
+      <li><span class="tag">KHÔNG</span> → Latency &lt;2s critical? → <span class="tag">Reconsider, có thể redesign thành workflow</span></li>
+      <li><span class="tag">KHÔNG</span> → Latency flexible, task open-ended? → <span class="tag lilac">Dùng Agent</span></li>
+    </ul>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════
+       9.4 Anthropic Patterns
+  ════════════════════════════════════════════════ -->
+  <h2 id="anthropic-patterns">9.4 Anthropic's 5 Building Blocks</h2>
+  <p>
+    Từ bài viết <em>"Building effective agents"</em> của Anthropic, 5 patterns cốt lõi để compose
+    LLM applications — từ đơn giản đến phức tạp. Hiểu 5 patterns này = hiểu phần lớn production AI systems.
+  </p>
+
+  <!-- Pattern 1: Prompt Chaining -->
+  <h3>① Prompt Chaining</h3>
+  <p>
+    Chuỗi LLM calls tuần tự: output của call N là input của call N+1. Mỗi step thực hiện một tác vụ nhỏ,
+    tập trung hơn là cố nhồi tất cả vào một mega-prompt.
+  </p>
+
+  <svg class="diagram" viewBox="0 0 700 140" role="img" aria-label="Prompt chaining pattern">
+    <defs>
+      <marker id="arr-chain" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#6f7c92"/>
+      </marker>
+    </defs>
+    <!-- Input -->
+    <rect class="node-bg" x="10" y="46" width="100" height="48" rx="8"/>
+    <text x="60" y="68" text-anchor="middle" font-weight="600" font-size="12">Input</text>
+    <text x="60" y="85" text-anchor="middle" class="label-sm">raw doc</text>
+    <line class="arrow" x1="111" y1="70" x2="139" y2="70" marker-end="url(#arr-chain)"/>
+    <!-- Step 1 -->
+    <rect class="node-accent" x="140" y="46" width="120" height="48" rx="8"/>
+    <text x="200" y="66" text-anchor="middle" font-weight="600" font-size="12">LLM Call 1</text>
+    <text x="200" y="82" text-anchor="middle" class="label-sm">Extract facts</text>
+    <text x="200" y="96" text-anchor="middle" class="label-sm">→ structured data</text>
+    <line class="arrow" x1="261" y1="70" x2="289" y2="70" marker-end="url(#arr-chain)"/>
+    <!-- Gate -->
+    <rect class="node-bg" x="290" y="50" width="74" height="40" rx="8"/>
+    <text x="327" y="68" text-anchor="middle" font-size="11" fill="#ffb86b">Gate ✓</text>
+    <text x="327" y="83" text-anchor="middle" class="label-sm">validate</text>
+    <line class="arrow" x1="365" y1="70" x2="393" y2="70" marker-end="url(#arr-chain)"/>
+    <!-- Step 2 -->
+    <rect class="node-blue" x="394" y="46" width="120" height="48" rx="8"/>
+    <text x="454" y="66" text-anchor="middle" font-weight="600" font-size="12">LLM Call 2</text>
+    <text x="454" y="82" text-anchor="middle" class="label-sm">Translate facts</text>
+    <text x="454" y="96" text-anchor="middle" class="label-sm">→ localized text</text>
+    <line class="arrow" x1="515" y1="70" x2="543" y2="70" marker-end="url(#arr-chain)"/>
+    <!-- Step 3 -->
+    <rect class="node-green" x="544" y="46" width="120" height="48" rx="8"/>
+    <text x="604" y="66" text-anchor="middle" font-weight="600" font-size="12">LLM Call 3</text>
+    <text x="604" y="82" text-anchor="middle" class="label-sm">Format report</text>
+    <text x="604" y="96" text-anchor="middle" class="label-sm">→ final output</text>
+    <!-- Labels below -->
+    <text x="327" y="120" text-anchor="middle" font-size="11" fill="#6f7c92">Programmatic gate: output of step N validates before proceeding to N+1</text>
+  </svg>
+
+  <p><strong>Khi nào dùng:</strong> Task có thể chia thành N sub-tasks độc lập, tuần tự.
+  Mỗi step cần full attention của LLM. Gate giữa steps để catch errors sớm.</p>
+  <p><strong>Ví dụ:</strong> Draft marketing copy → Translate → Check brand compliance → Format for channel.</p>
+
+  <!-- Pattern 2: Routing -->
+  <h3>② Routing</h3>
+  <p>
+    Phân loại input và gửi đến pipeline phù hợp. LLM (hoặc classifier model) đóng vai "router",
+    quyết định handler nào xử lý request.
+  </p>
+
+  <svg class="diagram" viewBox="0 0 700 200" role="img" aria-label="Routing pattern">
+    <defs>
+      <marker id="arr-route" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#6f7c92"/>
+      </marker>
+    </defs>
+    <!-- Input -->
+    <rect class="node-bg" x="10" y="76" width="110" height="48" rx="8"/>
+    <text x="65" y="97" text-anchor="middle" font-weight="600" font-size="12">User Request</text>
+    <text x="65" y="113" text-anchor="middle" class="label-sm">unclassified</text>
+    <line class="arrow" x1="121" y1="100" x2="149" y2="100" marker-end="url(#arr-route)"/>
+    <!-- Router -->
+    <rect class="node-accent" x="150" y="76" width="130" height="48" rx="8"/>
+    <text x="215" y="97" text-anchor="middle" font-weight="600" font-size="12">Router / Classifier</text>
+    <text x="215" y="113" text-anchor="middle" class="label-sm">LLM classify intent</text>
+    <!-- Arrows to handlers -->
+    <line class="arrow" x1="281" y1="85" x2="360" y2="30" marker-end="url(#arr-route)"/>
+    <line class="arrow" x1="281" y1="100" x2="360" y2="100" marker-end="url(#arr-route)"/>
+    <line class="arrow" x1="281" y1="115" x2="360" y2="170" marker-end="url(#arr-route)"/>
+    <!-- Handler 1 -->
+    <rect class="node-blue" x="361" y="10" width="150" height="40" rx="8"/>
+    <text x="436" y="28" text-anchor="middle" font-weight="600" font-size="12">Handler A: Billing</text>
+    <text x="436" y="43" text-anchor="middle" class="label-sm">payment + invoice tools</text>
+    <!-- Handler 2 -->
+    <rect class="node-green" x="361" y="80" width="150" height="40" rx="8"/>
+    <text x="436" y="98" text-anchor="middle" font-weight="600" font-size="12">Handler B: Technical</text>
+    <text x="436" y="113" text-anchor="middle" class="label-sm">docs + code tools</text>
+    <!-- Handler 3 -->
+    <rect class="node-bg" x="361" y="150" width="150" height="40" rx="8"/>
+    <text x="436" y="168" text-anchor="middle" font-weight="600" font-size="12">Handler C: Human</text>
+    <text x="436" y="183" text-anchor="middle" class="label-sm">escalation queue</text>
+    <!-- Right labels -->
+    <text x="530" y="32" font-size="11" fill="#7cc4ff">intent: billing</text>
+    <text x="530" y="102" font-size="11" fill="#b4e07a">intent: tech support</text>
+    <text x="530" y="172" font-size="11" fill="#6f7c92">intent: complaint</text>
+  </svg>
+
+  <p><strong>Khi nào dùng:</strong> Nhiều loại input cần xử lý khác nhau. Router giúp mỗi downstream pipeline được tối ưu cho task cụ thể thay vì cố handle everything.</p>
+  <p><strong>Ví dụ:</strong> Customer support router (billing / technical / general / escalate), content pipeline (long-form / short-form / social), language detection (vi / en / other).</p>
+
+  <!-- Pattern 3: Parallelization -->
+  <h3>③ Parallelization</h3>
+  <p>
+    Chạy nhiều LLM calls <strong>song song</strong> rồi aggregate kết quả. Hai sub-patterns:
+    <em>Sectioning</em> (chia document lớn, process parallel) và <em>Voting</em> (run same task N lần, pick majority).
+  </p>
+
+  <svg class="diagram" viewBox="0 0 700 230" role="img" aria-label="Parallelization pattern: sectioning và voting">
+    <defs>
+      <marker id="arr-par" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#6f7c92"/>
+      </marker>
+    </defs>
+
+    <!-- SECTIONING side -->
+    <text x="20" y="20" font-weight="700" font-size="13" fill="#ffb86b">Sectioning</text>
+    <rect class="node-bg" x="20" y="28" width="100" height="38" rx="8"/>
+    <text x="70" y="45" text-anchor="middle" font-size="12">Large Input</text>
+    <text x="70" y="59" text-anchor="middle" class="label-sm">big document</text>
+
+    <line class="arrow" x1="121" y1="35" x2="155" y2="20" marker-end="url(#arr-par)"/>
+    <line class="arrow" x1="121" y1="47" x2="155" y2="47" marker-end="url(#arr-par)"/>
+    <line class="arrow" x1="121" y1="59" x2="155" y2="74" marker-end="url(#arr-par)"/>
+
+    <rect class="node-blue" x="156" y="8" width="100" height="28" rx="6"/>
+    <text x="206" y="26" text-anchor="middle" font-size="12">Section 1</text>
+    <rect class="node-blue" x="156" y="42" width="100" height="28" rx="6"/>
+    <text x="206" y="60" text-anchor="middle" font-size="12">Section 2</text>
+    <rect class="node-blue" x="156" y="76" width="100" height="28" rx="6"/>
+    <text x="206" y="94" text-anchor="middle" font-size="12">Section 3</text>
+
+    <line class="arrow" x1="257" y1="22" x2="295" y2="47" marker-end="url(#arr-par)"/>
+    <line class="arrow" x1="257" y1="56" x2="295" y2="56" marker-end="url(#arr-par)"/>
+    <line class="arrow" x1="257" y1="90" x2="295" y2="65" marker-end="url(#arr-par)"/>
+
+    <rect class="node-accent" x="296" y="32" width="100" height="46" rx="8"/>
+    <text x="346" y="52" text-anchor="middle" font-weight="600" font-size="12">Aggregate</text>
+    <text x="346" y="68" text-anchor="middle" class="label-sm">merge + dedupe</text>
+
+    <!-- VOTING side -->
+    <text x="440" y="20" font-weight="700" font-size="13" fill="#7cc4ff">Voting</text>
+    <rect class="node-bg" x="440" y="28" width="80" height="38" rx="8"/>
+    <text x="480" y="47" text-anchor="middle" font-size="12">Same Task</text>
+
+    <line class="arrow" x1="521" y1="35" x2="545" y2="15" marker-end="url(#arr-par)"/>
+    <line class="arrow" x1="521" y1="47" x2="545" y2="47" marker-end="url(#arr-par)"/>
+    <line class="arrow" x1="521" y1="59" x2="545" y2="79" marker-end="url(#arr-par)"/>
+
+    <rect class="node-green" x="546" y="2" width="80" height="28" rx="6"/>
+    <text x="586" y="20" text-anchor="middle" font-size="11">Run 1 → A</text>
+    <rect class="node-green" x="546" y="34" width="80" height="28" rx="6"/>
+    <text x="586" y="52" text-anchor="middle" font-size="11">Run 2 → A</text>
+    <rect class="node-green" x="546" y="66" width="80" height="28" rx="6"/>
+    <text x="586" y="84" text-anchor="middle" font-size="11">Run 3 → B</text>
+
+    <line class="arrow" x1="627" y1="16" x2="655" y2="47" marker-end="url(#arr-par)"/>
+    <line class="arrow" x1="627" y1="48" x2="655" y2="52" marker-end="url(#arr-par)"/>
+    <line class="arrow" x1="627" y1="80" x2="655" y2="57" marker-end="url(#arr-par)"/>
+
+    <rect class="node-accent" x="656" y="32" width="36" height="38" rx="6"/>
+    <text x="674" y="52" text-anchor="middle" font-size="11" fill="#ffb86b">Vote</text>
+    <text x="674" y="66" text-anchor="middle" class="label-sm">→ A</text>
+
+    <!-- Benefit -->
+    <text x="20" y="130" font-size="12" fill="#6f7c92">Sectioning benefit: 3x throughput on large docs. Voting benefit: higher accuracy via majority decision.</text>
+
+    <!-- Code example -->
+    <rect class="node-bg" x="20" y="145" width="660" height="74" rx="8"/>
+    <text x="40" y="165" font-family="monospace" font-size="11" fill="#ffd9a8">import asyncio</text>
+    <text x="40" y="181" font-family="monospace" font-size="11" fill="#e0e6f0">results = await asyncio.gather(*[process_section(s) for s in sections])</text>
+    <text x="40" y="197" font-family="monospace" font-size="11" fill="#6f7c92"># All sections process in parallel → dramatically lower wall-clock time</text>
+    <text x="40" y="213" font-family="monospace" font-size="11" fill="#e0e6f0">final = aggregate(results)</text>
+  </svg>
+
+  <p><strong>Sectioning:</strong> Chia document lớn thành sections, process song song, merge. Good for: summarization, extraction từ long docs.</p>
+  <p><strong>Voting:</strong> Run same prompt N lần với temperature &gt;0, pick majority answer. Good for: high-stakes classification, fact-checking.</p>
+
+  <!-- Pattern 4: Orchestrator-Workers -->
+  <h3>④ Orchestrator-Workers</h3>
+  <p>
+    Orchestrator LLM nhận task lớn, dynamically plan và dispatch sub-tasks cho worker LLMs/agents.
+    Orchestrator synthesize final answer. (Xem chi tiết diagram ở §8.7 — đây là multi-agent topology phổ biến nhất.)
+  </p>
+
+  <svg class="diagram" viewBox="0 0 700 200" role="img" aria-label="Orchestrator-workers pattern">
+    <defs>
+      <marker id="arr-orch" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#6f7c92"/>
+      </marker>
+    </defs>
+
+    <!-- Task input -->
+    <rect class="node-bg" x="270" y="10" width="160" height="40" rx="8"/>
+    <text x="350" y="27" text-anchor="middle" font-weight="600" font-size="13">Complex Task</text>
+    <text x="350" y="42" text-anchor="middle" class="label-sm">"Analyze Q3 report + write exec summary"</text>
+    <line class="arrow" x1="350" y1="51" x2="350" y2="74" marker-end="url(#arr-orch)"/>
+
+    <!-- Orchestrator -->
+    <rect class="node-accent" x="200" y="76" width="300" height="46" rx="10"/>
+    <text x="350" y="98" text-anchor="middle" font-weight="700" font-size="13">Orchestrator LLM</text>
+    <text x="350" y="114" text-anchor="middle" class="label-sm">plans dynamically; synthesizes results</text>
+
+    <!-- Workers -->
+    <line class="arrow" x1="245" y1="122" x2="130" y2="150" marker-end="url(#arr-orch)"/>
+    <line class="arrow" x1="310" y1="122" x2="280" y2="150" marker-end="url(#arr-orch)"/>
+    <line class="arrow" x1="390" y1="122" x2="420" y2="150" marker-end="url(#arr-orch)"/>
+    <line class="arrow" x1="455" y1="122" x2="570" y2="150" marker-end="url(#arr-orch)"/>
+
+    <rect class="node-blue" x="60" y="152" width="130" height="36" rx="8"/>
+    <text x="125" y="170" text-anchor="middle" font-size="12">Data analyst</text>
+    <text x="125" y="183" text-anchor="middle" class="label-sm">query_db tool</text>
+
+    <rect class="node-blue" x="210" y="152" width="130" height="36" rx="8"/>
+    <text x="275" y="170" text-anchor="middle" font-size="12">Researcher</text>
+    <text x="275" y="183" text-anchor="middle" class="label-sm">web_search tool</text>
+
+    <rect class="node-blue" x="360" y="152" width="130" height="36" rx="8"/>
+    <text x="425" y="170" text-anchor="middle" font-size="12">Writer</text>
+    <text x="425" y="183" text-anchor="middle" class="label-sm">draft sections</text>
+
+    <rect class="node-blue" x="510" y="152" width="130" height="36" rx="8"/>
+    <text x="575" y="170" text-anchor="middle" font-size="12">Fact checker</text>
+    <text x="575" y="183" text-anchor="middle" class="label-sm">validate claims</text>
+  </svg>
+
+  <p><strong>Khi nào dùng:</strong> Task lớn cần nhiều loại expertise. Workers có thể specialize (research vs. writing vs. analysis). Orchestrator không cần biết details — chỉ delegate.</p>
+  <p><strong>Ví dụ:</strong> Deep research agent, complex software development (plan → code → test → review), business intelligence report generation.</p>
+
+  <!-- Pattern 5: Evaluator-Optimizer -->
+  <h3>⑤ Evaluator-Optimizer</h3>
+  <p>
+    Generator tạo output; Evaluator critique; Generator refine; loop đến khi đạt quality threshold.
+    Variant của reflection (§8.6) nhưng ở cấp workflow — có thể là 2 separate LLM calls, không chỉ prompting tricks.
+  </p>
+
+  <svg class="diagram" viewBox="0 0 700 180" role="img" aria-label="Evaluator-Optimizer loop pattern">
+    <defs>
+      <marker id="arr-eval" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#6f7c92"/>
+      </marker>
+    </defs>
+
+    <!-- Input task -->
+    <rect class="node-bg" x="10" y="66" width="110" height="48" rx="8"/>
+    <text x="65" y="87" text-anchor="middle" font-weight="600" font-size="12">Task</text>
+    <text x="65" y="103" text-anchor="middle" class="label-sm">+ requirements</text>
+    <line class="arrow" x1="121" y1="90" x2="149" y2="90" marker-end="url(#arr-eval)"/>
+
+    <!-- Generator -->
+    <rect class="node-blue" x="150" y="66" width="140" height="48" rx="8"/>
+    <text x="220" y="87" text-anchor="middle" font-weight="600" font-size="12">Generator LLM</text>
+    <text x="220" y="103" text-anchor="middle" class="label-sm">produces draft output</text>
+    <line class="arrow" x1="291" y1="90" x2="329" y2="90" marker-end="url(#arr-eval)"/>
+
+    <!-- Evaluator -->
+    <rect class="node-accent" x="330" y="66" width="140" height="48" rx="8"/>
+    <text x="400" y="87" text-anchor="middle" font-weight="600" font-size="12">Evaluator LLM</text>
+    <text x="400" y="103" text-anchor="middle" class="label-sm">scores + identifies issues</text>
+
+    <!-- Pass / Fail arrows -->
+    <line class="arrow" x1="471" y1="82" x2="590" y2="82" marker-end="url(#arr-eval)"/>
+    <text x="530" y="75" text-anchor="middle" font-size="11" fill="#b4e07a">score ≥ threshold</text>
+    <rect class="node-green" x="591" y="62" width="100" height="38" rx="8"/>
+    <text x="641" y="80" text-anchor="middle" font-weight="600" font-size="12">Accept</text>
+    <text x="641" y="95" text-anchor="middle" class="label-sm">final output</text>
+
+    <!-- Feedback loop back to generator -->
+    <path class="arrow" d="M 400 114 Q 400 148 220 148 Q 160 148 160 115" fill="none" marker-end="url(#arr-eval)"/>
+    <text x="310" y="164" text-anchor="middle" font-size="11" fill="#ffb86b">score &lt; threshold → feedback loop</text>
+    <text x="310" y="146" text-anchor="middle" font-size="11" fill="#6f7c92">issues passed back to Generator as context</text>
+  </svg>
+
+  <p><strong>Khi nào dùng:</strong> Output quality cần exceed threshold (legal copy, marketing, code review). Evaluator có thể là LLM judge, automated tests, hoặc human-in-the-loop.</p>
+  <p><strong>Ví dụ:</strong> Code generation (generate → run tests → fix failures), translation (translate → back-translate → compare), SEO content (write → SEO score → rewrite).</p>
+
+  <div class="callout tip">
+    <div class="icon">★</div>
+    <div>
+      <div class="title">Tất cả 5 patterns có thể combine</div>
+      <p>
+        Real-world systems thường kết hợp: Routing → Orchestrator-Workers (với mỗi worker là Prompt Chaining) → Evaluator-Optimizer trên output cuối.
+        Hiểu 5 patterns này cho phép compose bất kỳ AI system phức tạp nào.
+      </p>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════
+       9.5 Hybrid Approach
+  ════════════════════════════════════════════════ -->
+  <h2 id="hybrid">9.5 Hybrid Approach — Workflow với Agent Steps bên trong</h2>
+  <p>
+    Không cần chọn hoàn toàn workflow hay agent. Pattern phổ biến nhất trong production:
+    <strong>deterministic workflow ở outer level, agent capabilities ở specific steps</strong> cần flexibility.
+  </p>
+
+  <h3>Ví dụ: Invoice Processing Hybrid</h3>
+  <pre><code><span class="cm"># Outer workflow: deterministic steps</span>
+<span class="kw">def</span> <span class="fn">process_invoice</span>(invoice_file):
+
+    <span class="cm"># Step 1: Deterministic — extract raw text</span>
+    raw_text = ocr.<span class="fn">extract</span>(invoice_file)
+
+    <span class="cm"># Step 2: LLM — structured extraction (1 call, deterministic output)</span>
+    extracted = llm.<span class="fn">extract_structured</span>(raw_text, schema=InvoiceSchema)
+
+    <span class="cm"># Step 3: Deterministic — validate against business rules</span>
+    <span class="kw">if not</span> validator.<span class="fn">validate</span>(extracted):
+        <span class="kw">return</span> <span class="fn">route_to_human</span>(extracted)
+
+    <span class="cm"># Step 4: AGENT step — complex reconciliation</span>
+    <span class="cm"># This step needs tools because outcome varies: might need to</span>
+    <span class="cm"># query vendor DB, check PO system, handle discrepancies</span>
+    reconciled = <span class="fn">reconciliation_agent</span>.<span class="fn">run</span>(
+        invoice=extracted,
+        tools=[query_vendor_db, query_po_system, flag_discrepancy]
+    )
+
+    <span class="cm"># Step 5: Deterministic — route based on reconciliation result</span>
+    <span class="kw">if</span> reconciled.auto_approvable:
+        <span class="kw">return</span> <span class="fn">auto_approve</span>(reconciled)
+    <span class="kw">else</span>:
+        <span class="kw">return</span> <span class="fn">route_for_manual_review</span>(reconciled)</code></pre>
+
+  <h3>Nguyên tắc Hybrid design</h3>
+  <ul>
+    <li><strong>Default deterministic:</strong> Mọi step là code trừ khi có lý do rõ ràng để dùng LLM.</li>
+    <li><strong>Isolate agent steps:</strong> Agent step có scope rõ ràng — nhận input X, trả về output Y trong contract được define.</li>
+    <li><strong>Gate sau agent step:</strong> Validate output của agent step trước khi tiếp tục workflow.</li>
+    <li><strong>Timeout mỗi agent step:</strong> Agent step có thể hang — luôn có timeout riêng.</li>
+  </ul>
+
+  <!-- ═══════════════════════════════════════════════
+       9.6 Migration Path
+  ════════════════════════════════════════════════ -->
+  <h2 id="migration">9.6 Migration Path: Workflow → Agent</h2>
+  <p>
+    Không nên "just build an agent" từ đầu. Path chuẩn là tăng dần autonomy khi trust được xây dựng.
+  </p>
+
+  <h3>Các giai đoạn migration</h3>
+
+  <div class="card">
+    <h4 style="margin-top:0; color:var(--accent)">Stage 1: LLM-augmented Workflow</h4>
+    <p style="margin-bottom:0">
+      Thêm LLM calls vào workflow có sẵn cho các steps cần language understanding.
+      Control flow vẫn hardcoded. <span class="tag green">Low risk</span>
+    </p>
+  </div>
+
+  <div class="card">
+    <h4 style="margin-top:0; color:var(--accent-2)">Stage 2: LLM với limited tool use</h4>
+    <p style="margin-bottom:0">
+      Cho LLM gọi tools trong phạm vi hạn chế (read-only, 2–3 tools, bounded iterations).
+      Workflow vẫn dictate high-level flow. <span class="tag blue">Medium risk</span>
+    </p>
+  </div>
+
+  <div class="card">
+    <h4 style="margin-top:0; color:var(--accent-3)">Stage 3: Agent trong bounded context</h4>
+    <p style="margin-bottom:0">
+      Agent có autonomy trong một specific domain với guardrails rõ ràng.
+      Human-in-the-loop cho critical actions. <span class="tag">Higher risk</span>
+    </p>
+  </div>
+
+  <div class="card">
+    <h4 style="margin-top:0; color:var(--accent-4)">Stage 4: Full autonomous agent</h4>
+    <p style="margin-bottom:0">
+      Agent handle toàn bộ task end-to-end, chỉ escalate exceptions.
+      Chỉ đạt stage này sau khi có extensive evaluation data. <span class="tag lilac">High risk — only with data</span>
+    </p>
+  </div>
+
+  <h3>Checklist trước khi tăng autonomy</h3>
+  <ul>
+    <li><input type="checkbox" disabled> Eval set &gt; 100 real-world cases, passing rate &gt; 95%</li>
+    <li><input type="checkbox" disabled> Failure modes được catalog và có mitigation</li>
+    <li><input type="checkbox" disabled> Observability đầy đủ — có thể trace mọi decision</li>
+    <li><input type="checkbox" disabled> Rollback plan rõ ràng — có thể revert về stage trước trong 1 giờ</li>
+    <li><input type="checkbox" disabled> Cost và latency impact đã được measure và accepted</li>
+    <li><input type="checkbox" disabled> Legal/compliance review đã sign off</li>
+  </ul>
+
+  <div class="callout warn">
+    <div class="icon">⚠</div>
+    <div>
+      <div class="title">Autonomy is earned, not given</div>
+      <p>
+        Tăng autonomy từng bước nhỏ. Mỗi lần tăng: monitor kỹ trong 2 tuần, rollback ngay nếu có anomaly.
+        Agent fail ở production cost rất cao — cả về money lẫn user trust.
+      </p>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════
+       Summary
+  ════════════════════════════════════════════════ -->
+  <h2 id="tom-tat">Tóm tắt</h2>
+  <ol>
+    <li><strong>Workflow = deterministic graph</strong> (code controls flow); <strong>Agent = autonomous loop</strong> (LLM controls flow).</li>
+    <li><strong>Workflow tốt hơn</strong> khi: task predictable, high-volume, low-latency, audit-needed, cost-sensitive.</li>
+    <li><strong>Agent tốt hơn</strong> khi: task open-ended, variable steps, cần exploration và adaptation.</li>
+    <li><strong>5 Anthropic patterns:</strong> Prompt Chaining (sequential), Routing (classify+dispatch), Parallelization (sectioning/voting), Orchestrator-Workers (hierarchical), Evaluator-Optimizer (generate+critique+refine).</li>
+    <li><strong>Hybrid</strong> là common case: deterministic outer workflow + agent steps ở chỗ cần flexibility.</li>
+    <li><strong>Migration path</strong>: Stage 1 (LLM in workflow) → Stage 2 (limited tools) → Stage 3 (bounded agent) → Stage 4 (full autonomous). Tăng từng bước sau khi có data.</li>
+    <li><strong>Default: workflow.</strong> Chứng minh workflow không đủ trước khi chuyển sang agent.</li>
+  </ol>
+
+  <nav class="section-footer">
+    <a href="10-agents.html" class="prev">
+      <div class="label">← trước</div>
+      <div class="title">10 — Agents &amp; Tool Use</div>
+    </a>
+    <a href="12-inference-serving.html" class="next">
+      <div class="label">tiếp theo →</div>
+      <div class="title">12 — Inference &amp; Serving</div>
+    </a>
+  </nav>
+
+</main>
+
+<script src="../assets/script.js"></script>
+</body>
+</html>

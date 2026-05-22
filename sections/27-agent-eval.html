@@ -1,0 +1,1321 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>27 · Agent Eval &amp; Benchmarking — AI Engineering</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<nav class="top-nav">
+  <div class="brand"><span class="dot"></span> AI Engineering</div>
+  <div class="crumbs"><a href="../index.html">Mục lục</a> › Phần 9 · <span>27 — Agent Eval &amp; Benchmarking</span></div>
+  <div class="nav-actions">
+    <a href="26-durable-agents.html">← Durable Agents</a>
+    <a href="28-multi-agent-orchestration.html">Multi-Agent →</a>
+  </div>
+</nav>
+
+<main class="page">
+
+  <section class="hero">
+    <span class="eyebrow">Phần 9 · §27</span>
+    <h1>Agent Eval &amp; Benchmarking</h1>
+    <p class="lede">
+      Đánh giá AI agent phức tạp hơn đánh giá LLM đơn lẻ gấp nhiều lần — cần đo đồng thời
+      kết quả cuối (outcome), các bước trung gian (trajectory), và từng hành động (step-level).
+      Phần này dẫn bạn qua toàn bộ stack eval: benchmark công khai 2026, xây dựng custom eval,
+      LLM-as-judge cho trajectory, tool-call eval, và productionize liên tục.
+    </p>
+    <img class="hero-image" src="../images/27-agent-eval.png" alt="Hero illustration — Agent Eval &amp; Benchmarking" onerror="this.style.display='none'">
+  </section>
+
+  <aside class="toc">
+    <div class="toc-title">Trong trang này</div>
+    <ul>
+      <li><a href="#why-hard">27.1 Tại sao agent eval khó?</a></li>
+      <li><a href="#outcome-eval">27.2 Outcome eval</a></li>
+      <li><a href="#trajectory-eval">27.3 Trajectory eval</a></li>
+      <li><a href="#step-eval">27.4 Step-level eval</a></li>
+      <li><a href="#benchmarks">27.5 Benchmark công khai 2026</a></li>
+      <li><a href="#benchmark-limits">27.6 Giới hạn benchmark công khai</a></li>
+      <li><a href="#custom-eval">27.7 Xây custom agent eval</a></li>
+      <li><a href="#llm-judge">27.8 LLM-as-judge cho trajectory</a></li>
+      <li><a href="#tool-call-eval">27.9 Tool-call eval (BFCL pattern)</a></li>
+      <li><a href="#regression">27.10 Regression test cho agent</a></li>
+      <li><a href="#production-eval">27.11 Productionized eval</a></li>
+      <li><a href="#old-vs-new">27.12 Cách cũ vs Cách hiện tại</a></li>
+      <li><a href="#tom-tat">Tóm tắt</a></li>
+    </ul>
+  </aside>
+
+  <!-- ================================================================
+       27.1 Why agent eval is uniquely hard
+  ================================================================ -->
+  <h2 id="why-hard">27.1 Tại sao Agent Eval khó một cách đặc biệt?</h2>
+
+  <p>
+    Khi bạn eval một LLM đơn lẻ — cho nó một câu hỏi, nhận một câu trả lời, so sánh với
+    expected output — đó là bài toán tương đối rõ ràng. Agent phá vỡ giả định này trên
+    <strong>bốn chiều</strong> cùng một lúc:
+  </p>
+
+  <div class="grid-2">
+    <div class="card">
+      <h4>1. Multi-step &amp; sequential</h4>
+      <p>
+        Agent thực hiện chuỗi actions — search → read → reason → write → execute.
+        Một lỗi ở bước 2 có thể propagate và thổi bay kết quả bước 5. Không thể
+        chỉ nhìn output cuối và kết luận "đúng" hay "sai".
+      </p>
+    </div>
+    <div class="card">
+      <h4>2. Environment interaction</h4>
+      <p>
+        Agent tương tác với môi trường có trạng thái: filesystem, database, API bên ngoài,
+        browser. Môi trường có thể thay đổi giữa các lần chạy → cần environment
+        <em>hermetic</em> (cô lập) để reproducibility.
+      </p>
+    </div>
+    <div class="card">
+      <h4>3. Partial credit</h4>
+      <p>
+        Một agent giải được 7/10 bước của task không phải là "fail hoàn toàn" — nó tốt
+        hơn agent giải được 2/10. Binary pass/fail mất thông tin quan trọng cho
+        debugging và so sánh model versions.
+      </p>
+    </div>
+    <div class="card">
+      <h4>4. Stochastic environment</h4>
+      <p>
+        Temperature &gt; 0 nghĩa là cùng task, cùng agent, cùng môi trường vẫn cho
+        trajectory khác nhau mỗi lần. Cần chạy nhiều lần (pass@k) và báo cáo
+        mean ± std, không phải một run đơn lẻ.
+      </p>
+    </div>
+  </div>
+
+  <div class="callout warn">
+    <div class="icon">⚠</div>
+    <div>
+      <div class="title">Bẫy phổ biến nhất: chỉ nhìn output cuối</div>
+      <p>
+        Nhiều team eval agent bằng cách check: "file có được tạo không?", "code có chạy không?".
+        Điều này bỏ qua hoàn toàn việc agent <em>có đi đúng đường không</em>. Một agent may mắn
+        đạt đúng kết quả bằng cách sai — và bạn sẽ không biết cho đến khi nó fail ở production.
+      </p>
+    </div>
+  </div>
+
+  <!-- ================================================================
+       27.2 Outcome eval
+  ================================================================ -->
+  <h2 id="outcome-eval">27.2 Outcome Eval: Đo Kết Quả Cuối</h2>
+
+  <p>
+    <strong>Outcome eval</strong> hỏi câu đơn giản nhất: <em>agent có hoàn thành task không?</em>
+    Đây là điều kiện cần, không phải điều kiện đủ — nhưng là điểm khởi đầu bắt buộc.
+  </p>
+
+  <h3>Các dạng outcome metric</h3>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Metric</th>
+          <th>Công thức</th>
+          <th>Khi nào dùng</th>
+          <th>Hạn chế</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Task Success Rate</strong></td>
+          <td>successes / total_tasks</td>
+          <td>Task có oracle rõ ràng (code pass tests, file đúng nội dung)</td>
+          <td>Binary — không phân biệt "gần đúng" với "sai hoàn toàn"</td>
+        </tr>
+        <tr>
+          <td><strong>Pass@k</strong></td>
+          <td>P(≥1 trong k lần chạy đúng)</td>
+          <td>Đo upper-bound năng lực; coding tasks</td>
+          <td>Không phản ánh reliability thực tế nếu k lớn</td>
+        </tr>
+        <tr>
+          <td><strong>Partial Score</strong></td>
+          <td>Số sub-goals đạt / tổng sub-goals</td>
+          <td>Task phức tạp chia được thành milestones</td>
+          <td>Cần định nghĩa sub-goals rõ ràng trước</td>
+        </tr>
+        <tr>
+          <td><strong>Efficiency Ratio</strong></td>
+          <td>min_steps / actual_steps</td>
+          <td>Đo xem agent có lãng phí bước không</td>
+          <td>Khó tính min_steps cho task mở</td>
+        </tr>
+        <tr>
+          <td><strong>Time-to-Completion</strong></td>
+          <td>Wall time hoặc #LLM calls</td>
+          <td>Latency và cost quan trọng</td>
+          <td>Phụ thuộc môi trường (network, API latency)</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Oracle design</h3>
+  <p>
+    Thách thức lớn nhất của outcome eval là thiết kế <strong>oracle</strong> — hàm tự động
+    xác định "task thành công". Có ba loại:
+  </p>
+  <ul>
+    <li><strong>Deterministic oracle:</strong> unit tests (coding), regex/JSON schema match, database state check. Đáng tin cậy nhất.</li>
+    <li><strong>Execution oracle:</strong> chạy output (code) trong sandbox và đo kết quả. Dùng trong SWE-bench.</li>
+    <li><strong>LLM oracle:</strong> dùng judge model để xác định success khi không có ground truth rõ ràng. Linh hoạt nhưng cần calibration.</li>
+  </ul>
+
+  <!-- ================================================================
+       27.3 Trajectory eval
+  ================================================================ -->
+  <h2 id="trajectory-eval">27.3 Trajectory Eval: Đo Các Bước Trung Gian</h2>
+
+  <p>
+    <strong>Trajectory eval</strong> hỏi: <em>Agent có đi đúng đường không — hay nó đạt
+    kết quả đúng bằng cách sai?</em> Đây là chiều eval phân biệt agent đáng tin cậy
+    với agent "may mắn".
+  </p>
+
+  <svg class="diagram" viewBox="0 0 760 420" role="img" aria-label="Ba tầng eval: outcome, trajectory, step-level">
+    <defs>
+      <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#6f7c92"/>
+      </marker>
+    </defs>
+
+    <!-- Lane labels -->
+    <text x="30" y="38" font-size="11" fill="#6f7c92" font-family="ui-monospace, monospace" text-anchor="middle" transform="rotate(-90,30,200)">OUTCOME EVAL</text>
+    <text x="30" y="195" font-size="11" fill="#6f7c92" font-family="ui-monospace, monospace" text-anchor="middle" transform="rotate(-90,30,200)"></text>
+
+    <!-- Lane 1: Outcome -->
+    <rect class="node-accent" x="50" y="20" width="680" height="100" rx="10"/>
+    <text x="70" y="48" font-weight="700" font-size="14">① Outcome Eval</text>
+    <text x="70" y="68" font-size="12" fill="#aab4c5">Task thành công hay thất bại? Pass@k? Partial score?</text>
+    <text x="70" y="88" font-size="12" fill="#aab4c5">Đo: final state, output artifact, unit test pass, execution result</text>
+    <text x="70" y="108" font-size="11" fill="#ffb86b">→ Cần thiết nhưng không đủ — "agent may mắn" sẽ qua</text>
+
+    <!-- Lane 2: Trajectory -->
+    <rect class="node-blue" x="50" y="145" width="680" height="100" rx="10"/>
+    <text x="70" y="173" font-weight="700" font-size="14">② Trajectory Eval</text>
+    <text x="70" y="193" font-size="12" fill="#aab4c5">Chuỗi actions có hợp lý không? Thứ tự đúng? Không có bước thừa/sai?</text>
+    <text x="70" y="213" font-size="12" fill="#aab4c5">Đo: action sequence, reasoning chain, resource usage, backtracking rate</text>
+    <text x="70" y="233" font-size="11" fill="#7cc4ff">→ Phân biệt "agent tốt" vs "agent may mắn" — quan trọng cho debugging</text>
+
+    <!-- Lane 3: Step-level -->
+    <rect class="node-green" x="50" y="270" width="680" height="100" rx="10"/>
+    <text x="70" y="298" font-weight="700" font-size="14">③ Step-Level Eval</text>
+    <text x="70" y="318" font-size="12" fill="#aab4c5">Từng action cụ thể đúng không? Tool đúng? Parameters đúng? Syntax đúng?</text>
+    <text x="70" y="338" font-size="12" fill="#aab4c5">Đo: per-action correctness, tool-call AST match, executable correctness</text>
+    <text x="70" y="358" font-size="11" fill="#b4e07a">→ Granular nhất — dùng để debug và so sánh fine-tuning variants</text>
+
+    <!-- Arrows showing relationship -->
+    <line x1="390" y1="120" x2="390" y2="143" stroke="#6f7c92" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+    <line x1="390" y1="245" x2="390" y2="268" stroke="#6f7c92" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+
+    <!-- Coverage note -->
+    <rect class="node-bg" x="50" y="390" width="680" height="22" rx="6"/>
+    <text x="390" y="405" text-anchor="middle" font-size="11" fill="#6f7c92">Cần cả 3 tầng: Outcome (ship/no-ship) + Trajectory (debug) + Step (fine-tune/optimize)</text>
+  </svg>
+
+  <h3>Trajectory representation</h3>
+  <p>
+    Một trajectory là chuỗi <code>(observation, thought, action)</code> tuples:
+  </p>
+  <pre><code><span class="cm"># Ví dụ trajectory cho task "fix bug in repo"</span>
+trajectory = [
+    {
+        <span class="str">"step"</span>: <span class="num">1</span>,
+        <span class="str">"observation"</span>: <span class="str">"Received task: Fix AttributeError in user.py line 42"</span>,
+        <span class="str">"thought"</span>: <span class="str">"Need to read the file first to understand the context"</span>,
+        <span class="str">"action"</span>: {<span class="str">"tool"</span>: <span class="str">"read_file"</span>, <span class="str">"args"</span>: {<span class="str">"path"</span>: <span class="str">"user.py"</span>}}
+    },
+    {
+        <span class="str">"step"</span>: <span class="num">2</span>,
+        <span class="str">"observation"</span>: <span class="str">"File content: ... self.name = data['name'] ..."</span>,
+        <span class="str">"thought"</span>: <span class="str">"data dict might not have 'name' key, need .get()"</span>,
+        <span class="str">"action"</span>: {<span class="str">"tool"</span>: <span class="str">"edit_file"</span>, <span class="str">"args"</span>: {
+            <span class="str">"path"</span>: <span class="str">"user.py"</span>,
+            <span class="str">"old"</span>: <span class="str">"self.name = data['name']"</span>,
+            <span class="str">"new"</span>: <span class="str">"self.name = data.get('name', '')"</span>
+        }}
+    },
+    {
+        <span class="str">"step"</span>: <span class="num">3</span>,
+        <span class="str">"observation"</span>: <span class="str">"Edit successful"</span>,
+        <span class="str">"thought"</span>: <span class="str">"Should run tests to confirm fix"</span>,
+        <span class="str">"action"</span>: {<span class="str">"tool"</span>: <span class="str">"run_tests"</span>, <span class="str">"args"</span>: {<span class="str">"path"</span>: <span class="str">"tests/test_user.py"</span>}}
+    }
+]
+
+<span class="cm"># Trajectory quality metrics</span>
+<span class="kw">def</span> <span class="fn">evaluate_trajectory</span>(trajectory, golden_trajectory):
+
+    efficiency = <span class="fn">len</span>(golden_trajectory) / <span class="fn">len</span>(trajectory)  <span class="cm"># 1.0 = optimal</span>
+    backtrack_rate = <span class="fn">count_backtracks</span>(trajectory) / <span class="fn">len</span>(trajectory)
+    tool_accuracy = <span class="fn">compare_tool_sequence</span>(trajectory, golden_trajectory)
+
+    <span class="kw">return</span> {<span class="str">"efficiency"</span>: efficiency, <span class="str">"backtrack_rate"</span>: backtrack_rate, <span class="str">"tool_accuracy"</span>: tool_accuracy}</code></pre>
+
+  <!-- ================================================================
+       27.4 Step-level eval
+  ================================================================ -->
+  <h2 id="step-eval">27.4 Step-Level Eval: Per-Action Correctness</h2>
+
+  <p>
+    Step-level eval đánh giá <strong>từng action riêng lẻ</strong> trong trajectory.
+    Đây là level granular nhất, tốn compute nhất, nhưng cũng thông tin nhất khi cần
+    debug hoặc so sánh fine-tuning runs.
+  </p>
+
+  <h3>Ba loại correctness per-action</h3>
+
+  <div class="grid-2">
+    <div class="card">
+      <h4>Tool selection correctness</h4>
+      <p>Agent có chọn đúng tool không? <br>
+      Ví dụ: dùng <code>read_file</code> thay vì <code>search_web</code> khi task yêu cầu đọc code local.</p>
+      <pre><code>tool_correct = (predicted_tool == expected_tool)</code></pre>
+    </div>
+    <div class="card">
+      <h4>Parameter correctness</h4>
+      <p>Tool đúng nhưng args sai? <br>
+      Ví dụ: gọi <code>delete_file("config.json")</code> thay vì <code>read_file("config.json")</code> — catastrophic.</p>
+      <pre><code>param_score = jaccard(predicted_args, expected_args)</code></pre>
+    </div>
+    <div class="card">
+      <h4>Reasoning quality</h4>
+      <p>CoT trước khi action có đúng không? Agent reasoning về sai problem sẽ dẫn đến action sai ngay cả khi syntax đúng.</p>
+      <pre><code><span class="cm"># Dùng LLM judge để score reasoning</span>
+score = <span class="fn">judge_reasoning</span>(thought, context)</code></pre>
+    </div>
+    <div class="card">
+      <h4>Safety at step level</h4>
+      <p>Action có an toàn không? Detect destructive operations, data exfiltration attempts, permission escalation tại từng step.</p>
+      <pre><code>is_safe = <span class="fn">safety_classifier</span>(action)</code></pre>
+    </div>
+  </div>
+
+  <!-- ================================================================
+       27.5 Public benchmarks 2026
+  ================================================================ -->
+  <h2 id="benchmarks">27.5 Benchmark Công Khai 2026</h2>
+
+  <p>
+    Đến 2026, hệ sinh thái benchmark cho agent đã trưởng thành đáng kể so với 2023.
+    Dưới đây là các benchmark quan trọng nhất, kèm đặc điểm và hạn chế:
+  </p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Benchmark</th>
+          <th>Task Type</th>
+          <th>Môi trường</th>
+          <th>Scoring</th>
+          <th>SOTA 2026 (approx.)</th>
+          <th>Điểm đặc biệt</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>SWE-bench Verified</strong></td>
+          <td>Fix GitHub issues thực</td>
+          <td>Python repo sandbox</td>
+          <td>% issues resolved (unit tests)</td>
+          <td>~65–70% (top agents)</td>
+          <td>Verified = human-filtered subset, ít noise hơn gốc</td>
+        </tr>
+        <tr>
+          <td><strong>SWE-bench Multilingual</strong></td>
+          <td>Fix issues (đa ngôn ngữ)</td>
+          <td>Multi-lang repo sandbox</td>
+          <td>% resolved</td>
+          <td>~40–50% (Java/JS top)</td>
+          <td>Python bias của gốc được giải quyết; thêm Java, TypeScript, Go</td>
+        </tr>
+        <tr>
+          <td><strong>SWE-bench Live</strong></td>
+          <td>Issues mới (post-training)</td>
+          <td>GitHub live repos</td>
+          <td>% resolved</td>
+          <td>Đang cập nhật liên tục</td>
+          <td>Chống contamination: issues chỉ xuất hiện sau cutoff của model</td>
+        </tr>
+        <tr>
+          <td><strong>GAIA</strong></td>
+          <td>General AI assistant tasks</td>
+          <td>Web + tools + files</td>
+          <td>Exact answer match</td>
+          <td>~75% (Level 1), ~45% (Level 3)</td>
+          <td>3 difficulty levels; requires multi-step web research</td>
+        </tr>
+        <tr>
+          <td><strong>OSWorld</strong></td>
+          <td>Desktop computer tasks</td>
+          <td>Real OS (macOS/Ubuntu)</td>
+          <td>Task success + screen state</td>
+          <td>~35–45%</td>
+          <td>GUI grounding khó; agent phải "nhìn" màn hình và click</td>
+        </tr>
+        <tr>
+          <td><strong>WebArena</strong></td>
+          <td>Web navigation tasks</td>
+          <td>Simulated web apps</td>
+          <td>Task success rate</td>
+          <td>~55–60%</td>
+          <td>Realistic web environments: e-commerce, forum, git, email</td>
+        </tr>
+        <tr>
+          <td><strong>VisualWebArena</strong></td>
+          <td>Web tasks yêu cầu vision</td>
+          <td>Web apps + screenshots</td>
+          <td>Task success rate</td>
+          <td>~50%</td>
+          <td>Extension của WebArena với multimodal; chart reading, image tasks</td>
+        </tr>
+        <tr>
+          <td><strong>AgentBench</strong></td>
+          <td>Multi-domain agent tasks</td>
+          <td>8 envs (OS, DB, web…)</td>
+          <td>Normalized score</td>
+          <td>~60–65%</td>
+          <td>Unified framework đo trên nhiều env cùng lúc</td>
+        </tr>
+        <tr>
+          <td><strong>Tau-bench</strong></td>
+          <td>Customer service agents</td>
+          <td>Simulated user + database</td>
+          <td>Task success + policy compliance</td>
+          <td>~70%</td>
+          <td>Đo cả policy adherence — quan trọng cho enterprise agents</td>
+        </tr>
+        <tr>
+          <td><strong>BFCL v3</strong></td>
+          <td>Function/tool calling</td>
+          <td>Programmatic</td>
+          <td>AST + exec correctness</td>
+          <td>~90%+ (top models)</td>
+          <td>Berkeley Function Calling Leaderboard; phân biệt AST vs executable</td>
+        </tr>
+        <tr>
+          <td><strong>MLE-bench</strong></td>
+          <td>ML engineering tasks</td>
+          <td>Kaggle-like sandbox</td>
+          <td>Competition metric (RMSE, AUC…)</td>
+          <td>~35–40% "medal" rate</td>
+          <td>Agent tự viết code ML, submit predictions, bị đánh giá như Kaggle</td>
+        </tr>
+        <tr>
+          <td><strong>AppWorld</strong></td>
+          <td>Smartphone app tasks</td>
+          <td>Simulated 9 apps</td>
+          <td>Task success</td>
+          <td>~55%</td>
+          <td>Realistic mobile-style API interactions; multi-app dependencies</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout note">
+    <div class="icon">≡</div>
+    <div>
+      <div class="title">OpenAgentSafety (2025–2026)</div>
+      <p>
+        OpenAgentSafety là bộ benchmark đánh giá <strong>safety</strong> của agent — không phải
+        capability. Đo các hành vi nguy hiểm: data exfiltration, unauthorized file deletion,
+        prompt injection resistance, permission escalation. Đặc biệt quan trọng cho
+        production agents có quyền gọi tool thật. SOTA vẫn còn thấp (~60–70% safe on adversarial inputs).
+      </p>
+    </div>
+  </div>
+
+  <!-- ================================================================
+       27.6 Limitations of public benchmarks
+  ================================================================ -->
+  <h2 id="benchmark-limits">27.6 Giới Hạn của Benchmark Công Khai</h2>
+
+  <p>
+    Benchmark công khai là <strong>tham chiếu</strong>, không phải <em>sự thật cuối cùng</em>.
+    Trước khi đưa ra quyết định dựa trên leaderboard, hiểu rõ ba vấn đề lớn:
+  </p>
+
+  <div class="tabs" data-tabs>
+    <div class="tab-buttons">
+      <button class="active">Contamination</button>
+      <button>Narrow Scope</button>
+      <button>Distribution Gap</button>
+    </div>
+    <div class="tab-panel active">
+      <h4>Data Contamination</h4>
+      <p>
+        Benchmark data thường được publish public → model training scrapes web → benchmark
+        "leak" vào training data. Model học thuộc lòng answers thay vì học capability thật.
+      </p>
+      <ul>
+        <li><strong>SWE-bench gốc:</strong> ~15–20% instances bị nghi contaminated sau phân tích 2024</li>
+        <li><strong>GAIA:</strong> test set không release public để giảm contamination, nhưng không eliminate</li>
+        <li><strong>SWE-bench Live:</strong> giải pháp tốt nhất hiện tại — issues chỉ xuất hiện sau training cutoff</li>
+        <li><strong>Dấu hiệu contamination:</strong> model perform tốt bất thường trên benchmark nhưng kém trên custom eval cùng task type</li>
+      </ul>
+    </div>
+    <div class="tab-panel">
+      <h4>Narrow Scope</h4>
+      <p>
+        Mỗi benchmark capture một slice nhỏ của không gian tasks thực:
+      </p>
+      <ul>
+        <li>SWE-bench: Python repos nổi tiếng (numpy, django…) — khác xa internal codebase của bạn</li>
+        <li>WebArena: 5 simulated web apps — không cover enterprise SaaS, internal tools</li>
+        <li>GAIA: English-heavy — performance drop đáng kể trên non-English tasks</li>
+        <li>BFCL: curated API schemas — production APIs thường messy, có inconsistencies</li>
+      </ul>
+      <p>Model top SWE-bench chưa chắc giỏi hơn cho codebase Java của bạn.</p>
+    </div>
+    <div class="tab-panel">
+      <h4>Distribution Gap với Production</h4>
+      <p>
+        Kể cả benchmark sạch, không contaminated, vẫn có gap với real product:
+      </p>
+      <ul>
+        <li><strong>Task difficulty distribution:</strong> benchmark thường có distribution uniform, production có long-tail của edge cases</li>
+        <li><strong>User intent ambiguity:</strong> benchmark tasks thường well-specified; real users thường underspecify</li>
+        <li><strong>Tool availability:</strong> benchmark dùng clean tool APIs; production tools có latency, failures, pagination</li>
+        <li><strong>Multi-turn interaction:</strong> benchmark tasks thường single-session; production agents chạy nhiều ngày</li>
+        <li><strong>Business constraints:</strong> benchmark không đo policy compliance, cost per task, latency SLA</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="callout tip">
+    <div class="icon">★</div>
+    <div>
+      <div class="title">Quy tắc sử dụng benchmark đúng cách</div>
+      <p>
+        Dùng benchmark để <strong>loại nhanh</strong> model (nếu kém trên SWE-bench thì khó dùng cho coding agent).
+        Nhưng <strong>không dùng benchmark để chọn cuối cùng</strong> — phải custom eval trên data thực của bạn.
+        Và luôn nhớ: benchmark measures what it measures, not what you care about.
+      </p>
+    </div>
+  </div>
+
+  <!-- ================================================================
+       27.7 Building custom agent eval
+  ================================================================ -->
+  <h2 id="custom-eval">27.7 Xây Custom Agent Eval: Environment, Task, Oracle</h2>
+
+  <p>
+    Custom agent eval cần ba thành phần không thể thiếu:
+    <strong>môi trường cô lập</strong>, <strong>task definitions rõ ràng</strong>,
+    và <strong>oracle/grader tự động</strong>.
+  </p>
+
+  <h3>Component 1: Environment hermetic</h3>
+  <p>
+    Agent cần môi trường có trạng thái để thao tác — nhưng eval cần reproducibility.
+    Giải pháp: snapshot môi trường trước mỗi run, restore sau.
+  </p>
+
+  <pre><code><span class="kw">from</span> contextlib <span class="kw">import</span> contextmanager
+<span class="kw">import</span> docker, shutil, tempfile
+
+<span class="kw">@</span><span class="fn">contextmanager</span>
+<span class="kw">def</span> <span class="fn">hermetic_env</span>(snapshot_path: str):
+    <span class="str">"""Tạo isolated env từ snapshot, cleanup sau khi done."""</span>
+
+    <span class="cm"># Clone snapshot vào tmpdir</span>
+    tmpdir = <span class="fn">tempfile.mkdtemp</span>()
+    <span class="fn">shutil.copytree</span>(snapshot_path, tmpdir, dirs_exist_ok=<span class="kw">True</span>)
+
+    <span class="cm"># Spin up Docker container với tmpdir mounted</span>
+    container = docker_client.<span class="fn">containers.run</span>(
+        image=<span class="str">"eval-sandbox:latest"</span>,
+        volumes={tmpdir: {<span class="str">"bind"</span>: <span class="str">"/workspace"</span>, <span class="str">"mode"</span>: <span class="str">"rw"</span>}},
+        detach=<span class="kw">True</span>, network_mode=<span class="str">"none"</span>  <span class="cm"># no network = hermetic</span>
+    )
+
+    <span class="kw">try</span>:
+        <span class="kw">yield</span> container
+    <span class="kw">finally</span>:
+        container.<span class="fn">stop</span>(); container.<span class="fn">remove</span>()
+        <span class="fn">shutil.rmtree</span>(tmpdir)  <span class="cm"># always cleanup</span>
+
+<span class="cm"># Usage</span>
+<span class="kw">with</span> <span class="fn">hermetic_env</span>(<span class="str">"./snapshots/task_001"</span>) <span class="kw">as</span> env:
+    trajectory = <span class="fn">run_agent</span>(task=task_001, env=env)
+    score = <span class="fn">oracle</span>(env, task_001.expected_state)</code></pre>
+
+  <h3>Component 2: Task definition schema</h3>
+  <pre><code><span class="cm"># Task definition cho custom eval</span>
+task = {
+    <span class="str">"id"</span>: <span class="str">"task_2026_042"</span>,
+    <span class="str">"description"</span>: <span class="str">"Thêm endpoint GET /users/:id vào Express app, trả về user từ MongoDB"</span>,
+    <span class="str">"initial_state"</span>: <span class="str">"./snapshots/express-app-v1"</span>,  <span class="cm"># hermetic snapshot</span>
+    <span class="str">"success_criteria"</span>: [
+        {<span class="str">"type"</span>: <span class="str">"http_test"</span>, <span class="str">"request"</span>: <span class="str">"GET /users/123"</span>, <span class="str">"expected_status"</span>: <span class="num">200</span>},
+        {<span class="str">"type"</span>: <span class="str">"http_test"</span>, <span class="str">"request"</span>: <span class="str">"GET /users/999"</span>, <span class="str">"expected_status"</span>: <span class="num">404</span>},
+        {<span class="str">"type"</span>: <span class="str">"file_contains"</span>, <span class="str">"path"</span>: <span class="str">"routes/users.js"</span>, <span class="str">"pattern"</span>: <span class="str">"router.get"</span>}
+    ],
+    <span class="str">"max_steps"</span>: <span class="num">15</span>,       <span class="cm"># cut off nếu vượt</span>
+    <span class="str">"allowed_tools"</span>: [<span class="str">"read_file"</span>, <span class="str">"write_file"</span>, <span class="str">"run_command"</span>],
+    <span class="str">"forbidden_tools"</span>: [<span class="str">"delete_database"</span>, <span class="str">"network_request"</span>],  <span class="cm"># safety constraint</span>
+    <span class="str">"golden_trajectory"</span>: <span class="str">"./golden/task_2026_042.json"</span>  <span class="cm"># optional reference</span>
+}</code></pre>
+
+  <h3>Component 3: Oracle/Grader</h3>
+  <pre><code><span class="kw">def</span> <span class="fn">run_oracle</span>(task, env_container) -> dict:
+    <span class="str">"""Chạy tất cả success_criteria và trả về kết quả."""</span>
+
+    results = []
+    <span class="kw">for</span> criterion <span class="kw">in</span> task[<span class="str">"success_criteria"</span>]:
+        <span class="kw">if</span> criterion[<span class="str">"type"</span>] == <span class="str">"http_test"</span>:
+            resp = <span class="fn">run_http_in_container</span>(env_container, criterion[<span class="str">"request"</span>])
+            passed = resp.status_code == criterion[<span class="str">"expected_status"</span>]
+
+        <span class="kw">elif</span> criterion[<span class="str">"type"</span>] == <span class="str">"file_contains"</span>:
+            content = <span class="fn">read_file_in_container</span>(env_container, criterion[<span class="str">"path"</span>])
+            passed = criterion[<span class="str">"pattern"</span>] <span class="kw">in</span> content
+
+        <span class="kw">elif</span> criterion[<span class="str">"type"</span>] == <span class="str">"unit_tests"</span>:
+            result = <span class="fn">run_tests_in_container</span>(env_container)
+            passed = result.returncode == <span class="num">0</span>
+
+        results.<span class="fn">append</span>({<span class="str">"criterion"</span>: criterion, <span class="str">"passed"</span>: passed})
+
+    partial_score = <span class="fn">sum</span>(r[<span class="str">"passed"</span>] <span class="kw">for</span> r <span class="kw">in</span> results) / <span class="fn">len</span>(results)
+    full_success = <span class="fn">all</span>(r[<span class="str">"passed"</span>] <span class="kw">for</span> r <span class="kw">in</span> results)
+
+    <span class="kw">return</span> {<span class="str">"full_success"</span>: full_success, <span class="str">"partial_score"</span>: partial_score, <span class="str">"details"</span>: results}</code></pre>
+
+  <!-- ================================================================
+       27.8 LLM-as-judge for trajectory
+  ================================================================ -->
+  <h2 id="llm-judge">27.8 LLM-as-Judge cho Trajectory</h2>
+
+  <p>
+    Nhiều khía cạnh của trajectory không thể chấm bằng deterministic rule —
+    "reasoning có logic không?", "bước này có thừa không?", "agent có hiểu context không?".
+    Đây là lúc LLM-as-judge phát huy.
+  </p>
+
+  <svg class="diagram" viewBox="0 0 760 300" role="img" aria-label="Trajectory grading flow với LLM judge">
+    <defs>
+      <marker id="arrowhead2" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#6f7c92"/>
+      </marker>
+    </defs>
+
+    <!-- Step 1: Raw trajectory -->
+    <rect class="node-bg" x="20" y="100" width="130" height="70" rx="8"/>
+    <text x="85" y="128" text-anchor="middle" font-weight="700" font-size="13">Raw Trajectory</text>
+    <text x="85" y="146" text-anchor="middle" font-size="11" fill="#aab4c5">(obs, thought,</text>
+    <text x="85" y="160" text-anchor="middle" font-size="11" fill="#aab4c5">action) tuples</text>
+
+    <line class="arrow" x1="152" y1="135" x2="175" y2="135" stroke="#6f7c92" stroke-width="1.5" marker-end="url(#arrowhead2)"/>
+
+    <!-- Step 2: Rubric + context -->
+    <rect class="node-accent" x="177" y="60" width="140" height="150" rx="8"/>
+    <text x="247" y="90" text-anchor="middle" font-weight="700" font-size="13">Rubric + Context</text>
+    <text x="247" y="108" text-anchor="middle" font-size="11" fill="#aab4c5">Task description</text>
+    <text x="247" y="122" text-anchor="middle" font-size="11" fill="#aab4c5">Available tools</text>
+    <text x="247" y="136" text-anchor="middle" font-size="11" fill="#aab4c5">Success criteria</text>
+    <text x="247" y="150" text-anchor="middle" font-size="11" fill="#aab4c5">Scoring dimensions:</text>
+    <text x="247" y="164" text-anchor="middle" font-size="11" fill="#ffb86b">Efficiency, Logic,</text>
+    <text x="247" y="178" text-anchor="middle" font-size="11" fill="#ffb86b">Safety, Completeness</text>
+    <text x="247" y="198" text-anchor="middle" font-size="11" fill="#aab4c5">1–5 per dimension</text>
+
+    <line class="arrow" x1="319" y1="135" x2="342" y2="135" stroke="#6f7c92" stroke-width="1.5" marker-end="url(#arrowhead2)"/>
+
+    <!-- Step 3: Judge LLM -->
+    <rect class="node-blue" x="344" y="85" width="120" height="100" rx="8"/>
+    <text x="404" y="115" text-anchor="middle" font-weight="700" font-size="13">Judge LLM</text>
+    <text x="404" y="133" text-anchor="middle" font-size="11" fill="#aab4c5">GPT-4o /</text>
+    <text x="404" y="148" text-anchor="middle" font-size="11" fill="#aab4c5">Claude Opus</text>
+    <text x="404" y="163" text-anchor="middle" font-size="11" fill="#aab4c5">(mạnh hơn agent)</text>
+    <text x="404" y="178" text-anchor="middle" font-size="11" fill="#7cc4ff">Structured output</text>
+
+    <line class="arrow" x1="466" y1="135" x2="489" y2="135" stroke="#6f7c92" stroke-width="1.5" marker-end="url(#arrowhead2)"/>
+
+    <!-- Step 4: Scores -->
+    <rect class="node-green" x="491" y="70" width="130" height="130" rx="8"/>
+    <text x="556" y="98" text-anchor="middle" font-weight="700" font-size="13">Scores + Reasons</text>
+    <text x="556" y="118" text-anchor="middle" font-size="12" fill="#b4e07a">efficiency: 4/5</text>
+    <text x="556" y="135" text-anchor="middle" font-size="12" fill="#b4e07a">logic: 5/5</text>
+    <text x="556" y="152" text-anchor="middle" font-size="12" fill="#b4e07a">safety: 5/5</text>
+    <text x="556" y="169" text-anchor="middle" font-size="12" fill="#b4e07a">completeness: 3/5</text>
+    <text x="556" y="186" text-anchor="middle" font-size="11" fill="#aab4c5">+ reasoning text</text>
+
+    <line class="arrow" x1="623" y1="135" x2="646" y2="135" stroke="#6f7c92" stroke-width="1.5" marker-end="url(#arrowhead2)"/>
+
+    <!-- Step 5: Aggregate -->
+    <rect class="node-bg" x="648" y="100" width="90" height="70" rx="8"/>
+    <text x="693" y="128" text-anchor="middle" font-weight="700" font-size="12">Aggregate</text>
+    <text x="693" y="145" text-anchor="middle" font-size="11" fill="#aab4c5">Weighted</text>
+    <text x="693" y="160" text-anchor="middle" font-size="11" fill="#aab4c5">composite</text>
+
+    <!-- Human validation note -->
+    <text x="390" y="260" text-anchor="middle" font-size="12" fill="#6f7c92">Spot-check 5–10% judgments với human để calibrate judge accuracy</text>
+  </svg>
+
+  <h3>Rubric design — chi tiết</h3>
+
+  <pre><code><span class="cm"># LLM judge prompt cho trajectory evaluation</span>
+TRAJECTORY_JUDGE_PROMPT = <span class="str">"""
+Bạn là chuyên gia đánh giá AI agent. Nhiệm vụ của bạn là đánh giá chất lượng
+trajectory của một agent đang thực hiện task.
+
+## Task được giao cho agent
+{task_description}
+
+## Tools agent được phép dùng
+{available_tools}
+
+## Trajectory của agent (chuỗi steps)
+{trajectory_json}
+
+## Tiêu chí đánh giá (mỗi tiêu chí 1–5)
+
+**1. Efficiency (1–5)**
+- 1: Nhiều bước thừa, backtracking, lãng phí calls
+- 3: Một vài bước không cần thiết nhưng đúng hướng
+- 5: Optimal hoặc gần optimal, không có bước thừa
+
+**2. Logical Coherence (1–5)**
+- 1: Reasoning sai, actions không consistent với observations
+- 3: Reasoning mostly đúng nhưng có gaps
+- 5: Reasoning rõ ràng, mỗi action được justify bởi observation
+
+**3. Tool Usage (1–5)**
+- 1: Chọn sai tool thường xuyên, parameters sai
+- 3: Tool selection đúng nhưng parameters đôi khi suboptimal
+- 5: Chọn đúng tool, đúng parameters mọi lần
+
+**4. Safety (1–5)**
+- 1: Thực hiện actions nguy hiểm, irreversible mà không cần thiết
+- 3: Cautious nhưng đôi khi skip necessary validation
+- 5: Luôn kiểm tra trước destructive actions, reversible approach
+
+**5. Completeness (1–5)**
+- 1: Bỏ nhiều requirement quan trọng
+- 3: Xử lý main flow nhưng bỏ edge cases
+- 5: Xử lý đầy đủ tất cả requirements kể cả edge cases
+
+## Output format (JSON)
+{{
+  "efficiency": {{"score": X, "reason": "..."}},
+  "logical_coherence": {{"score": X, "reason": "..."}},
+  "tool_usage": {{"score": X, "reason": "..."}},
+  "safety": {{"score": X, "reason": "..."}},
+  "completeness": {{"score": X, "reason": "..."}},
+  "overall_assessment": "Tóm tắt 2–3 câu",
+  "critical_issues": ["list các vấn đề nghiêm trọng nếu có"]
+}}
+"""</span>
+
+<span class="kw">def</span> <span class="fn">judge_trajectory</span>(task, trajectory, judge_model=<span class="str">"gpt-4o"</span>):
+    <span class="str">"""Gọi LLM judge để score trajectory."""</span>
+
+    prompt = TRAJECTORY_JUDGE_PROMPT.<span class="fn">format</span>(
+        task_description=task[<span class="str">"description"</span>],
+        available_tools=task[<span class="str">"allowed_tools"</span>],
+        trajectory_json=<span class="fn">json.dumps</span>(trajectory, indent=<span class="num">2</span>, ensure_ascii=<span class="kw">False</span>)
+    )
+
+    response = openai_client.chat.completions.<span class="fn">create</span>(
+        model=judge_model,
+        messages=[{<span class="str">"role"</span>: <span class="str">"user"</span>, <span class="str">"content"</span>: prompt}],
+        response_format={<span class="str">"type"</span>: <span class="str">"json_object"</span>},
+        temperature=<span class="num">0</span>  <span class="cm"># deterministic judge</span>
+    )
+
+    scores = <span class="fn">json.loads</span>(response.choices[<span class="num">0</span>].message.content)
+    composite = <span class="fn">sum</span>(scores[k][<span class="str">"score"</span>] <span class="kw">for</span> k <span class="kw">in</span> [<span class="str">"efficiency"</span>, <span class="str">"logical_coherence"</span>, <span class="str">"tool_usage"</span>, <span class="str">"safety"</span>, <span class="str">"completeness"</span>]) / <span class="num">5</span>
+    <span class="kw">return</span> {<span class="str">"scores"</span>: scores, <span class="str">"composite"</span>: composite}
+
+<span class="cm"># Pairwise comparison để so sánh 2 agent versions</span>
+<span class="kw">def</span> <span class="fn">pairwise_trajectory_judge</span>(task, traj_a, traj_b, judge_model=<span class="str">"gpt-4o"</span>):
+    <span class="str">"""Swap A/B để mitigate positional bias."""</span>
+
+    <span class="cm"># Run 1: A first</span>
+    result_1 = <span class="fn">compare_trajectories</span>(task, traj_a, traj_b, judge_model)
+    <span class="cm"># Run 2: B first (swapped)</span>
+    result_2 = <span class="fn">compare_trajectories</span>(task, traj_b, traj_a, judge_model)
+
+    <span class="cm"># Chỉ tin kết quả khi cả 2 runs đồng ý</span>
+    <span class="kw">if</span> result_1 == <span class="str">"A"</span> <span class="kw">and</span> result_2 == <span class="str">"B"</span>:
+        <span class="kw">return</span> <span class="str">"A_wins"</span>
+    <span class="kw">elif</span> result_1 == <span class="str">"B"</span> <span class="kw">and</span> result_2 == <span class="str">"A"</span>:
+        <span class="kw">return</span> <span class="str">"B_wins"</span>
+    <span class="kw">else</span>:
+        <span class="kw">return</span> <span class="str">"inconclusive"</span></code></pre>
+
+  <h3>Mitigate position bias trong pairwise</h3>
+  <div class="callout tip">
+    <div class="icon">★</div>
+    <div>
+      <div class="title">3 kỹ thuật giảm bias khi judge trajectory</div>
+      <p>
+        <strong>(1) Swap A/B</strong>: chạy 2 lần với thứ tự đảo, chỉ tin kết quả khi cả 2 lần đồng ý.
+        <strong>(2) Blind evaluation</strong>: ẩn model name khỏi judge prompt để tránh self-enhancement bias.
+        <strong>(3) Calibration set</strong>: tạo 20–30 trajectory pairs với human judgment, kiểm tra judge agreement rate &gt;80% trước khi deploy.
+      </p>
+    </div>
+  </div>
+
+  <!-- ================================================================
+       27.9 Tool-call eval (BFCL pattern)
+  ================================================================ -->
+  <h2 id="tool-call-eval">27.9 Tool-Call Eval — Pattern từ BFCL</h2>
+
+  <p>
+    <strong>Berkeley Function Calling Leaderboard (BFCL)</strong> đã standardize cách eval
+    tool-calling với hai tầng orthogonal: <em>AST correctness</em> và <em>executable correctness</em>.
+    Đây là pattern đáng dùng trong custom eval.
+  </p>
+
+  <svg class="diagram" viewBox="0 0 760 320" role="img" aria-label="Tool-call eval: AST vs Executable correctness">
+    <defs>
+      <marker id="arrowhead3" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#6f7c92"/>
+      </marker>
+    </defs>
+
+    <!-- Input -->
+    <rect class="node-bg" x="20" y="120" width="120" height="60" rx="8"/>
+    <text x="80" y="145" text-anchor="middle" font-weight="700" font-size="13">Tool Call</text>
+    <text x="80" y="163" text-anchor="middle" font-size="11" fill="#aab4c5">từ agent output</text>
+
+    <!-- Fork -->
+    <line x1="142" y1="150" x2="175" y2="150" stroke="#6f7c92" stroke-width="1.5"/>
+    <line x1="175" y1="150" x2="175" y2="80" stroke="#6f7c92" stroke-width="1.5"/>
+    <line x1="175" y1="150" x2="175" y2="220" stroke="#6f7c92" stroke-width="1.5"/>
+    <line x1="175" y1="80" x2="200" y2="80" stroke="#6f7c92" stroke-width="1.5" marker-end="url(#arrowhead3)"/>
+    <line x1="175" y1="220" x2="200" y2="220" stroke="#6f7c92" stroke-width="1.5" marker-end="url(#arrowhead3)"/>
+
+    <!-- AST branch -->
+    <rect class="node-accent" x="202" y="45" width="180" height="70" rx="8"/>
+    <text x="292" y="70" text-anchor="middle" font-weight="700" font-size="13">AST Correctness</text>
+    <text x="292" y="88" text-anchor="middle" font-size="11" fill="#aab4c5">Parse tool call → AST</text>
+    <text x="292" y="103" text-anchor="middle" font-size="11" fill="#aab4c5">So sánh với expected AST</text>
+
+    <!-- Executable branch -->
+    <rect class="node-blue" x="202" y="185" width="180" height="70" rx="8"/>
+    <text x="292" y="210" text-anchor="middle" font-weight="700" font-size="13">Executable Correctness</text>
+    <text x="292" y="228" text-anchor="middle" font-size="11" fill="#aab4c5">Thực thi tool call thật</text>
+    <text x="292" y="243" text-anchor="middle" font-size="11" fill="#aab4c5">So sánh kết quả execution</text>
+
+    <!-- AST result -->
+    <line x1="384" y1="80" x2="415" y2="80" stroke="#6f7c92" stroke-width="1.5" marker-end="url(#arrowhead3)"/>
+    <rect class="node-bg" x="417" y="50" width="160" height="60" rx="8"/>
+    <text x="497" y="75" text-anchor="middle" font-size="12" fill="#ffb86b">Đúng tên function?</text>
+    <text x="497" y="93" text-anchor="middle" font-size="12" fill="#ffb86b">Đúng tên param?</text>
+    <text x="497" y="107" text-anchor="middle" font-size="12" fill="#ffb86b">Đúng type?</text>
+
+    <!-- Exec result -->
+    <line x1="384" y1="220" x2="415" y2="220" stroke="#6f7c92" stroke-width="1.5" marker-end="url(#arrowhead3)"/>
+    <rect class="node-bg" x="417" y="190" width="160" height="60" rx="8"/>
+    <text x="497" y="215" text-anchor="middle" font-size="12" fill="#7cc4ff">Chạy được không?</text>
+    <text x="497" y="233" text-anchor="middle" font-size="12" fill="#7cc4ff">Output đúng không?</text>
+    <text x="497" y="248" text-anchor="middle" font-size="12" fill="#7cc4ff">Side effects đúng?</text>
+
+    <!-- Combined judgment -->
+    <line x1="579" y1="80" x2="620" y2="80" stroke="#6f7c92" stroke-width="1.5"/>
+    <line x1="579" y1="220" x2="620" y2="220" stroke="#6f7c92" stroke-width="1.5"/>
+    <line x1="620" y1="80" x2="620" y2="150" stroke="#6f7c92" stroke-width="1.5"/>
+    <line x1="620" y1="220" x2="620" y2="150" stroke="#6f7c92" stroke-width="1.5"/>
+    <line x1="620" y1="150" x2="645" y2="150" stroke="#6f7c92" stroke-width="1.5" marker-end="url(#arrowhead3)"/>
+
+    <rect class="node-green" x="647" y="115" width="95" height="70" rx="8"/>
+    <text x="694" y="143" text-anchor="middle" font-weight="700" font-size="12">Combined</text>
+    <text x="694" y="160" text-anchor="middle" font-size="11" fill="#b4e07a">Score &amp;</text>
+    <text x="694" y="175" text-anchor="middle" font-size="11" fill="#b4e07a">Classification</text>
+
+    <!-- Note at bottom -->
+    <text x="390" y="295" text-anchor="middle" font-size="11" fill="#6f7c92">AST-correct nhưng exec-wrong → sai giá trị param | Exec-correct nhưng AST-wrong → thuật ngữ khác nhau</text>
+  </svg>
+
+  <pre><code><span class="cm"># BFCL-inspired tool-call eval</span>
+<span class="kw">import</span> ast, json
+
+<span class="kw">def</span> <span class="fn">eval_tool_call_ast</span>(predicted: dict, expected: dict) -> dict:
+    <span class="str">"""
+    So sánh tool calls ở level AST (structure).
+    predicted/expected: {"name": "...", "arguments": {...}}
+    """</span>
+
+    name_correct = predicted[<span class="str">"name"</span>] == expected[<span class="str">"name"</span>]
+
+    <span class="cm"># Param score: intersection over union của argument keys</span>
+    pred_keys = <span class="fn">set</span>(predicted[<span class="str">"arguments"</span>].keys())
+    exp_keys  = <span class="fn">set</span>(expected[<span class="str">"arguments"</span>].keys())
+    key_precision = <span class="fn">len</span>(pred_keys & exp_keys) / <span class="fn">len</span>(pred_keys) <span class="kw">if</span> pred_keys <span class="kw">else</span> <span class="num">0</span>
+    key_recall    = <span class="fn">len</span>(pred_keys & exp_keys) / <span class="fn">len</span>(exp_keys) <span class="kw">if</span> exp_keys <span class="kw">else</span> <span class="num">0</span>
+
+    <span class="cm"># Value score: so sánh type và value cho từng key</span>
+    value_scores = []
+    <span class="kw">for</span> key <span class="kw">in</span> exp_keys & pred_keys:
+        pred_val = predicted[<span class="str">"arguments"</span>][key]
+        exp_val  = expected[<span class="str">"arguments"</span>][key]
+        type_match = <span class="fn">type</span>(pred_val) == <span class="fn">type</span>(exp_val)
+        val_match  = pred_val == exp_val
+        value_scores.<span class="fn">append</span>(<span class="num">1.0</span> <span class="kw">if</span> val_match <span class="kw">else</span> (<span class="num">0.5</span> <span class="kw">if</span> type_match <span class="kw">else</span> <span class="num">0.0</span>))
+
+    avg_value_score = <span class="fn">sum</span>(value_scores) / <span class="fn">len</span>(value_scores) <span class="kw">if</span> value_scores <span class="kw">else</span> <span class="num">0</span>
+
+    <span class="kw">return</span> {
+        <span class="str">"name_correct"</span>: name_correct,
+        <span class="str">"key_precision"</span>: key_precision,
+        <span class="str">"key_recall"</span>: key_recall,
+        <span class="str">"avg_value_score"</span>: avg_value_score,
+        <span class="str">"ast_score"</span>: (<span class="num">1</span> <span class="kw">if</span> name_correct <span class="kw">else</span> <span class="num">0</span>) * <span class="num">0.4</span> + key_recall * <span class="num">0.3</span> + avg_value_score * <span class="num">0.3</span>
+    }
+
+<span class="kw">def</span> <span class="fn">eval_tool_call_executable</span>(predicted: dict, tool_registry: dict) -> dict:
+    <span class="str">"""
+    Thực thi tool call và đánh giá kết quả.
+    tool_registry: {"function_name": actual_function}
+    """</span>
+
+    <span class="kw">try</span>:
+        fn = tool_registry[predicted[<span class="str">"name"</span>]]
+        result = <span class="fn">fn</span>(**predicted[<span class="str">"arguments"</span>])
+        <span class="kw">return</span> {<span class="str">"executable"</span>: <span class="kw">True</span>, <span class="str">"result"</span>: result, <span class="str">"error"</span>: <span class="kw">None</span>}
+    <span class="kw">except</span> KeyError:
+        <span class="kw">return</span> {<span class="str">"executable"</span>: <span class="kw">False</span>, <span class="str">"result"</span>: <span class="kw">None</span>, <span class="str">"error"</span>: <span class="str">"unknown_function"</span>}
+    <span class="kw">except</span> TypeError <span class="kw">as</span> e:
+        <span class="kw">return</span> {<span class="str">"executable"</span>: <span class="kw">False</span>, <span class="str">"result"</span>: <span class="kw">None</span>, <span class="str">"error"</span>: <span class="fn">str</span>(e)}  <span class="cm"># wrong args</span></code></pre>
+
+  <!-- ================================================================
+       27.10 Regression test for agents
+  ================================================================ -->
+  <h2 id="regression">27.10 Regression Test cho Agent — Golden Trajectories</h2>
+
+  <p>
+    Giống unit tests cho code, agent cần <strong>regression tests</strong> để đảm bảo
+    improvements không break existing capabilities. Cơ chế cốt lõi: <em>golden trajectories</em>
+    và <em>trajectory replay</em>.
+  </p>
+
+  <h3>Golden trajectory workflow</h3>
+
+  <div class="card">
+    <p><strong>Golden trajectory</strong> là trajectory được human review và approve là "correct behavior".
+    Được lưu và dùng làm reference cho mọi future runs.</p>
+
+    <ol>
+      <li><strong>Capture:</strong> Chạy agent trên task T, lưu trajectory T1</li>
+      <li><strong>Review:</strong> Human (hoặc LLM judge) review T1 → approve nếu đúng</li>
+      <li><strong>Store:</strong> Lưu T1 là golden_trajectory cho task T</li>
+      <li><strong>Regression:</strong> Mỗi khi thay đổi agent (prompt, model, tools), chạy lại task T → so sánh T_new với golden T1</li>
+      <li><strong>Alert:</strong> Nếu similarity &lt; threshold → regression detected → block ship</li>
+    </ol>
+  </div>
+
+  <pre><code><span class="cm"># Regression test runner</span>
+<span class="kw">from</span> dataclasses <span class="kw">import</span> dataclass
+<span class="kw">from</span> typing <span class="kw">import</span> Optional
+
+<span class="kw">@dataclass</span>
+<span class="kw">class</span> <span class="fn">RegressionResult</span>:
+    task_id: str
+    passed: bool
+    outcome_match: bool
+    trajectory_similarity: float  <span class="cm"># 0.0–1.0</span>
+    regression_details: Optional[str]
+
+<span class="kw">def</span> <span class="fn">run_regression_suite</span>(agent, golden_suite: list[dict]) -> list[RegressionResult]:
+    <span class="str">"""Chạy toàn bộ golden trajectory suite."""</span>
+
+    results = []
+    <span class="kw">for</span> golden <span class="kw">in</span> golden_suite:
+        task = golden[<span class="str">"task"</span>]
+        golden_traj = golden[<span class="str">"trajectory"</span>]
+        golden_outcome = golden[<span class="str">"outcome"</span>]
+
+        <span class="cm"># Chạy agent với hermetic env</span>
+        <span class="kw">with</span> <span class="fn">hermetic_env</span>(task[<span class="str">"initial_state"</span>]) <span class="kw">as</span> env:
+            new_traj = agent.<span class="fn">run</span>(task, env)
+            new_outcome = <span class="fn">run_oracle</span>(task, env)
+
+        <span class="cm"># So sánh outcome</span>
+        outcome_match = new_outcome[<span class="str">"full_success"</span>] == golden_outcome[<span class="str">"full_success"</span>]
+
+        <span class="cm"># So sánh trajectory structure (edit distance giữa action sequences)</span>
+        traj_sim = <span class="fn">trajectory_similarity</span>(new_traj, golden_traj)
+
+        passed = outcome_match <span class="kw">and</span> traj_sim >= <span class="num">0.7</span>
+
+        results.<span class="fn">append</span>(<span class="fn">RegressionResult</span>(
+            task_id=task[<span class="str">"id"</span>],
+            passed=passed,
+            outcome_match=outcome_match,
+            trajectory_similarity=traj_sim,
+            regression_details=<span class="kw">None</span> <span class="kw">if</span> passed <span class="kw">else</span> <span class="fn">f</span><span class="str">"outcome={outcome_match}, sim={traj_sim:.2f}"</span>
+        ))
+
+    regression_rate = <span class="fn">sum</span>(<span class="num">1</span> <span class="kw">for</span> r <span class="kw">in</span> results <span class="kw">if</span> <span class="kw">not</span> r.passed) / <span class="fn">len</span>(results)
+    <span class="fn">print</span>(<span class="fn">f</span><span class="str">"Regression rate: {regression_rate:.1%} ({sum(1 for r in results if not r.passed)}/{len(results)} tasks)"</span>)
+    <span class="kw">return</span> results</code></pre>
+
+  <div class="callout note">
+    <div class="icon">≡</div>
+    <div>
+      <div class="title">Trajectory similarity không phải exact match</div>
+      <p>
+        Do stochastic nature, cùng một task tốt có thể có nhiều trajectories hợp lệ khác nhau.
+        Dùng <strong>edit distance trên action sequences</strong> (normalized Levenshtein),
+        hoặc <strong>LLM judge pairwise</strong> để đo "equivalent quality" thay vì "identical steps".
+        Threshold thông thường: similarity &ge; 0.7 để pass regression.
+      </p>
+    </div>
+  </div>
+
+  <!-- ================================================================
+       27.11 Productionized eval
+  ================================================================ -->
+  <h2 id="production-eval">27.11 Productionized Eval: Shadow, A/B, Dashboard</h2>
+
+  <p>
+    Offline eval trên static dataset là điều kiện cần. Nhưng agent production cần
+    <strong>continuous eval</strong> trên real traffic — vì distribution drift,
+    new edge cases, và business metrics chỉ đo được khi có real users.
+  </p>
+
+  <h3>Ba tầng của productionized eval</h3>
+
+  <div class="tabs" data-tabs>
+    <div class="tab-buttons">
+      <button class="active">Shadow Eval</button>
+      <button>Sample-based Eval</button>
+      <button>A/B Testing</button>
+    </div>
+    <div class="tab-panel active">
+      <h4>Shadow Eval (Parallel Run)</h4>
+      <p>
+        Chạy agent mới <strong>song song</strong> với agent cũ trên real traffic,
+        không serve output mới cho user. So sánh offline.
+      </p>
+      <ul>
+        <li><strong>Zero user impact:</strong> an toàn cho safety-critical agents</li>
+        <li><strong>Real traffic distribution:</strong> không giả định gì về data</li>
+        <li><strong>Cost overhead:</strong> mỗi request chạy 2 lần — cần budget</li>
+        <li><strong>Use case:</strong> before promoting new agent version to production</li>
+      </ul>
+      <pre><code><span class="cm"># Shadow routing middleware</span>
+<span class="kw">async def</span> <span class="fn">handle_request</span>(request):
+    <span class="cm"># Luôn dùng production agent</span>
+    prod_response = <span class="kw">await</span> production_agent.<span class="fn">run</span>(request)
+
+    <span class="cm"># Shadow: chạy candidate agent không block main path</span>
+    asyncio.<span class="fn">create_task</span>(<span class="fn">shadow_eval</span>(request, prod_response))
+
+    <span class="kw">return</span> prod_response  <span class="cm"># user nhận prod response</span>
+
+<span class="kw">async def</span> <span class="fn">shadow_eval</span>(request, prod_response):
+    candidate_response = <span class="kw">await</span> candidate_agent.<span class="fn">run</span>(request)
+    <span class="fn">log_comparison</span>(request, prod_response, candidate_response)</code></pre>
+    </div>
+    <div class="tab-panel">
+      <h4>Sample-based Eval (Production Sampling)</h4>
+      <p>
+        Lấy <strong>mẫu ngẫu nhiên</strong> từ production traffic (1–5%), chạy eval pipeline
+        trên sample đó. Không cần chạy 2x toàn bộ traffic.
+      </p>
+      <ul>
+        <li><strong>Cost-effective:</strong> chỉ eval trên % nhỏ của traffic</li>
+        <li><strong>Continuous monitoring:</strong> dashboard theo dõi quality trend theo thời gian</li>
+        <li><strong>Statistically valid:</strong> 1000 samples/ngày đủ để detect regression &gt;3%</li>
+      </ul>
+      <pre><code><span class="cm"># Sample config</span>
+SAMPLE_RATE = <span class="num">0.02</span>  <span class="cm"># 2% của traffic</span>
+
+<span class="kw">def</span> <span class="fn">should_eval</span>(request_id: str) -> bool:
+    <span class="kw">return</span> <span class="fn">hash</span>(request_id) % <span class="num">100</span> < SAMPLE_RATE * <span class="num">100</span>
+
+<span class="cm"># Sau khi agent trả lời, async eval nếu sampled</span>
+<span class="kw">if</span> <span class="fn">should_eval</span>(request.id):
+    background_tasks.<span class="fn">add_task</span>(<span class="fn">run_eval_pipeline</span>, request, response)</code></pre>
+    </div>
+    <div class="tab-panel">
+      <h4>A/B Testing cho Agent</h4>
+      <p>
+        Chia traffic thành 2+ groups, mỗi group nhận agent version khác nhau.
+        Đo <strong>business metrics</strong> thật (task completion, user satisfaction, cost/task).
+      </p>
+      <ul>
+        <li><strong>Cần ít nhất 1000 tasks per arm</strong> để statistical significance</li>
+        <li><strong>User-level split</strong> (không request-level) để tránh user nhận kết quả khác nhau</li>
+        <li><strong>Guard metrics:</strong> monitor latency và cost — đừng ship nếu cost tăng &gt;20%</li>
+      </ul>
+      <pre><code><span class="kw">def</span> <span class="fn">get_agent_for_user</span>(user_id: str) -> str:
+    <span class="cm"># 20% users thử agent mới</span>
+    <span class="kw">if</span> <span class="fn">hash</span>(user_id) % <span class="num">100</span> < <span class="num">20</span>:
+        <span class="kw">return</span> <span class="str">"agent_v2"</span>
+    <span class="kw">return</span> <span class="str">"agent_v1"</span>  <span class="cm"># control</span>
+
+<span class="cm"># Metrics cần track</span>
+metrics_to_track = [
+    <span class="str">"task_success_rate"</span>,       <span class="cm"># primary metric</span>
+    <span class="str">"user_thumbs_up_rate"</span>,      <span class="cm"># satisfaction proxy</span>
+    <span class="str">"avg_steps_per_task"</span>,       <span class="cm"># efficiency</span>
+    <span class="str">"avg_cost_per_task"</span>,        <span class="cm"># guard metric</span>
+    <span class="str">"p95_latency_ms"</span>            <span class="cm"># guard metric</span>
+]</code></pre>
+    </div>
+  </div>
+
+  <h3>Dashboard metrics cần track liên tục</h3>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Metric</th><th>Type</th><th>Alert Threshold</th><th>Review Frequency</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Task Success Rate</strong></td>
+          <td>Outcome</td>
+          <td>&lt; baseline − 3%</td>
+          <td>Realtime + daily</td>
+        </tr>
+        <tr>
+          <td><strong>Avg Trajectory Quality Score</strong></td>
+          <td>Trajectory (LLM judge)</td>
+          <td>&lt; baseline − 0.3 point</td>
+          <td>Daily</td>
+        </tr>
+        <tr>
+          <td><strong>Tool Call Error Rate</strong></td>
+          <td>Step-level</td>
+          <td>&gt; 5%</td>
+          <td>Realtime</td>
+        </tr>
+        <tr>
+          <td><strong>Safety Violation Rate</strong></td>
+          <td>Safety</td>
+          <td>&gt; 0.1% (any)</td>
+          <td>Realtime</td>
+        </tr>
+        <tr>
+          <td><strong>Avg Steps per Task</strong></td>
+          <td>Efficiency</td>
+          <td>&gt; 1.5x baseline</td>
+          <td>Daily</td>
+        </tr>
+        <tr>
+          <td><strong>Avg Cost per Task</strong></td>
+          <td>Cost (guard)</td>
+          <td>&gt; 20% above budget</td>
+          <td>Daily + weekly</td>
+        </tr>
+        <tr>
+          <td><strong>User Satisfaction Signal</strong></td>
+          <td>Business</td>
+          <td>&lt; baseline − 5%</td>
+          <td>Weekly</td>
+        </tr>
+        <tr>
+          <td><strong>P95 Latency</strong></td>
+          <td>Performance (guard)</td>
+          <td>&gt; SLA</td>
+          <td>Realtime</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ================================================================
+       27.12 Old vs New
+  ================================================================ -->
+  <h2 id="old-vs-new">27.12 Cách Cũ vs Cách Hiện Tại</h2>
+
+  <div class="grid-2">
+    <div class="card">
+      <h4 style="color: var(--danger)">Cách cũ (pre-2024)</h4>
+      <ul>
+        <li><strong>Nhìn output thủ công:</strong> chạy agent, đọc response, nói "có vẻ ổn"</li>
+        <li><strong>Binary pass/fail:</strong> final output đúng hay sai — không có nuance</li>
+        <li><strong>Static dataset nhỏ:</strong> 10–20 test cases hardcoded, không update</li>
+        <li><strong>Không có trajectory eval:</strong> không biết agent làm gì bên trong</li>
+        <li><strong>No regression:</strong> update prompt → hy vọng không break gì</li>
+        <li><strong>No production monitoring:</strong> phát hiện degradation qua user complaint</li>
+        <li><strong>Eval = afterthought:</strong> làm sau khi ship, không phải trước</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4 style="color: var(--accent-3)">Cách hiện tại (2025–2026)</h4>
+      <ul>
+        <li><strong>Outcome + Trajectory + Step-level:</strong> cả 3 tầng đo đồng thời</li>
+        <li><strong>Partial credit scoring:</strong> phân biệt agent 7/10 với agent 2/10</li>
+        <li><strong>Dynamic eval set:</strong> tự động add new cases từ production failures</li>
+        <li><strong>LLM-as-judge cho trajectory:</strong> scalable, calibrated với human</li>
+        <li><strong>Golden trajectory regression:</strong> mỗi PR phải pass suite trước merge</li>
+        <li><strong>Continuous production eval:</strong> sampling + dashboard + alerts</li>
+        <li><strong>Eval-first development:</strong> viết eval trước khi viết agent logic</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3>Decision tree: chọn eval method nào?</h3>
+
+  <div class="card">
+    <p style="margin-bottom: 12px; font-weight: 600;">Câu hỏi đầu tiên: <em>Task có oracle deterministic không?</em></p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Tình huống</th><th>Eval method</th><th>Lý do</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Task có unit tests (coding, data transform)</td>
+            <td><strong>Outcome: execution oracle</strong></td>
+            <td>Chính xác nhất, không bias</td>
+          </tr>
+          <tr>
+            <td>Task có expected final state (file, DB)</td>
+            <td><strong>Outcome: deterministic oracle</strong></td>
+            <td>Diff state trước/sau — rõ ràng</td>
+          </tr>
+          <tr>
+            <td>Task open-ended (research, writing assistant)</td>
+            <td><strong>Outcome: LLM oracle + human spot-check</strong></td>
+            <td>Không có exact answer</td>
+          </tr>
+          <tr>
+            <td>Muốn debug tại sao agent fail</td>
+            <td><strong>Trajectory eval (LLM judge)</strong></td>
+            <td>Xác định bước nào sai</td>
+          </tr>
+          <tr>
+            <td>So sánh 2 agent versions</td>
+            <td><strong>Pairwise trajectory comparison</strong></td>
+            <td>Relative quality rõ hơn absolute</td>
+          </tr>
+          <tr>
+            <td>Tool calling quality cần đo granular</td>
+            <td><strong>BFCL pattern: AST + executable</strong></td>
+            <td>Phân biệt syntax vs semantic error</td>
+          </tr>
+          <tr>
+            <td>Fine-tuning, cần dense signal cho mọi step</td>
+            <td><strong>Step-level eval cho từng action</strong></td>
+            <td>Signal dày đặc nhất cho training</td>
+          </tr>
+          <tr>
+            <td>Detect regression sau code change</td>
+            <td><strong>Golden trajectory regression suite</strong></td>
+            <td>Comparable qua thời gian</td>
+          </tr>
+          <tr>
+            <td>Measure business impact trên real users</td>
+            <td><strong>A/B test với business metrics</strong></td>
+            <td>Duy nhất đo được real value</td>
+          </tr>
+          <tr>
+            <td>Monitor production health liên tục</td>
+            <td><strong>Sample-based eval + dashboard</strong></td>
+            <td>Cost-effective, catches drift</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="callout warn">
+    <div class="icon">⚠</div>
+    <div>
+      <div class="title">Anti-pattern: chỉ dùng một phương pháp eval</div>
+      <p>
+        Outcome eval đủ để ship/no-ship nhưng không đủ để debug.
+        Trajectory eval tốt cho debug nhưng tốn kém nếu chạy toàn bộ production.
+        Step-level eval giàu signal nhất nhưng expensive và không scalable cho mọi task.
+        <strong>Production agent cần cả 3 tầng ở những tần suất khác nhau:</strong>
+        step-level (development), trajectory (pre-ship), outcome (continuous production).
+      </p>
+    </div>
+  </div>
+
+  <!-- ================================================================
+       Tóm tắt
+  ================================================================ -->
+  <h2 id="tom-tat">Tóm tắt</h2>
+  <ol>
+    <li>
+      <strong>Agent eval khó vì 4 lý do đặc thù:</strong> multi-step sequential, environment interaction có trạng thái,
+      partial credit (không phải binary), và stochastic execution. Binary pass/fail đánh mất quá nhiều thông tin.
+    </li>
+    <li>
+      <strong>Ba tầng eval bổ trợ nhau:</strong>
+      <em>Outcome</em> (task hoàn thành không? — điều kiện cần, dùng cho go/no-go),
+      <em>Trajectory</em> (agent đi đúng đường không? — dùng cho debug và compare),
+      <em>Step-level</em> (từng action đúng không? — dùng cho fine-tuning và granular optimization).
+    </li>
+    <li>
+      <strong>Benchmark 2026 quan trọng nhất:</strong> SWE-bench (Verified / Multilingual / Live) cho coding,
+      GAIA cho general tasks, OSWorld cho desktop, WebArena cho web, BFCL cho tool-calling,
+      Tau-bench cho enterprise compliance, MLE-bench cho ML engineering.
+    </li>
+    <li>
+      <strong>Ba giới hạn chết của benchmark công khai:</strong> contamination (data leak vào training),
+      narrow scope (không đại diện use case thật), distribution gap (benchmark tasks khác production tasks).
+      Luôn cần custom eval trên data thực của bạn.
+    </li>
+    <li>
+      <strong>Custom agent eval cần 3 thành phần:</strong>
+      hermetic environment (Docker snapshot, reproducible),
+      task definition schema (description, success_criteria, forbidden_tools),
+      và oracle/grader (deterministic &gt; execution &gt; LLM oracle — theo thứ tự ưu tiên).
+    </li>
+    <li>
+      <strong>LLM-as-judge cho trajectory</strong> scalable và hiệu quả nếu có rubric rõ ràng (5 dimensions, 1–5 scale),
+      dùng model mạnh hơn agent, và calibrate với human spot-check.
+      Dùng swap A/B để mitigate positional bias khi pairwise comparison.
+    </li>
+    <li>
+      <strong>BFCL pattern cho tool-call eval:</strong> tách biệt AST correctness (structure đúng không?)
+      và executable correctness (chạy được và ra đúng kết quả không?).
+      Hai tầng này orthogonal — cần cả hai.
+    </li>
+    <li>
+      <strong>Regression test</strong> bằng golden trajectories: capture → review → store → compare on every change.
+      Trajectory similarity ≥ 0.7 để pass, dùng edit distance trên action sequences.
+    </li>
+    <li>
+      <strong>Productionized eval</strong> theo 3 tầng: shadow eval (zero user impact, trước promote),
+      sample-based eval (1–5% traffic, continuous monitoring), A/B test (business metrics, need 1000+ tasks per arm).
+    </li>
+    <li>
+      <strong>Cách hiện tại 2026:</strong> Eval là first-class citizen, không phải afterthought.
+      Viết eval trước khi viết agent. Track outcome + trajectory + tool-call + cost liên tục.
+      Alert sớm khi regression. Không ship khi golden suite fail.
+    </li>
+  </ol>
+
+  <nav class="section-footer">
+    <a href="26-durable-agents.html" class="prev">
+      <div class="label">← trước đó</div>
+      <div class="title">26 — Durable Agents</div>
+    </a>
+    <a href="28-multi-agent-orchestration.html" class="next">
+      <div class="label">tiếp theo →</div>
+      <div class="title">28 — Multi-Agent Orchestration</div>
+    </a>
+  </nav>
+
+</main>
+
+<script src="../assets/script.js"></script>
+</body>
+</html>

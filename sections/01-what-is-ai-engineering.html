@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>01 · AI Engineering là gì? — AI Engineering</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<nav class="top-nav">
+  <div class="brand"><span class="dot"></span> AI Engineering</div>
+  <div class="crumbs"><a href="../index.html">Mục lục</a> › Phần 1 · <span>01 — AI Engineering là gì?</span></div>
+  <div class="nav-actions">
+    <a href="../index.html">Index</a>
+    <a href="02-foundation-models.html">Tiếp →</a>
+  </div>
+</nav>
+
+<main class="page">
+
+  <section class="hero">
+    <span class="eyebrow">Phần 1 · §01</span>
+    <h1>AI Engineering là gì?</h1>
+    <p class="lede">
+      Hiểu vai trò AI Engineer, phân biệt với ML/Data Science/MLOps, và 3 layer của stack hiện đại.
+    </p>
+    <img class="hero-image" src="../images/01-what-is-ai-engineering.png" alt="Hero illustration" onerror="this.style.display='none'">
+  </section>
+
+  <aside class="toc">
+    <div class="toc-title">Trong trang này</div>
+    <ul>
+      <li><a href="#dinh-nghia">1.1 Định nghĩa</a></li>
+      <li><a href="#vai-tro">1.2 Phân biệt vai trò</a></li>
+      <li><a href="#tro-day">1.3 Tại sao ngành này tồn tại</a></li>
+      <li><a href="#stack">1.4 Ba layer của stack</a></li>
+      <li><a href="#tom-tat">Tóm tắt</a></li>
+    </ul>
+  </aside>
+
+  <h2 id="dinh-nghia">1.1 Định nghĩa</h2>
+  <p>
+    <strong>AI Engineering</strong> là ngành xây dựng các ứng dụng/sản phẩm sử dụng AI models
+    (đặc biệt là <em>foundation models</em>) để giải quyết bài toán thực tế.
+    Trọng tâm <strong>không</strong> phải là tạo ra model mới, mà là làm cho model có sẵn
+    hoạt động hiệu quả trong production.
+  </p>
+
+  <div class="callout note">
+    <div class="icon">≡</div>
+    <div>
+      <div class="title">Công thức ngắn</div>
+      <p>AI Engineering = Foundation Models + Software Engineering + Domain Knowledge</p>
+    </div>
+  </div>
+
+  <h2 id="vai-tro">1.2 Phân biệt với các vai trò liên quan</h2>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Vai trò</th><th>Trọng tâm</th><th>Output điển hình</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>ML Researcher</td><td>Tạo ra model/thuật toán mới</td><td>Paper, model weights</td></tr>
+        <tr><td>ML Engineer</td><td>Train/deploy custom ML models</td><td>Training pipeline, serving infra</td></tr>
+        <tr><td>Data Scientist</td><td>Phân tích dữ liệu, xây dựng insight</td><td>Notebook, dashboard, model nhỏ</td></tr>
+        <tr><td>MLOps Engineer</td><td>Infra cho ML lifecycle</td><td>CI/CD, monitoring, model registry</td></tr>
+        <tr><td><strong>AI Engineer</strong></td><td>Ứng dụng foundation models vào sản phẩm</td><td>LLM app, agent, RAG system</td></tr>
+        <tr><td>Software Engineer</td><td>Code, ship features</td><td>Web/mobile/backend services</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Điểm khác biệt cốt lõi của AI Engineer</h3>
+  <ul>
+    <li>Không train model từ đầu — dùng model có sẵn (API hoặc open-source)</li>
+    <li>Phải xử lý <strong>non-determinism</strong> (cùng input có thể ra output khác)</li>
+    <li>Đánh giá chất lượng bằng <strong>evals</strong>, không chỉ unit tests</li>
+    <li>Phải nghĩ về <em>prompt, context, tool, memory</em> thay vì chỉ data/feature</li>
+  </ul>
+
+  <h2 id="tro-day">1.3 Tại sao ngành này tồn tại — và tại sao là bây giờ</h2>
+
+  <div class="tabs" data-tabs>
+    <div class="tab-buttons">
+      <button class="active">Trước 2020</button>
+      <button>2020–2023</button>
+      <button>2024–2026</button>
+    </div>
+    <div class="tab-panel active">
+      <p>
+        Muốn dùng AI thì phải train model riêng → cần ML team, GPU farm, dataset có nhãn lớn.
+        Mỗi task = một model riêng: sentiment, NER, summarization, translation đều là dự án độc lập.
+      </p>
+      <p class="label-sm" style="color:var(--text-mute)">→ Rào cản vào ngành AI rất cao</p>
+    </div>
+    <div class="tab-panel">
+      <p>
+        GPT-3 và ChatGPT khai sinh kỷ nguyên foundation models — một mô hình làm được rất
+        nhiều task chỉ qua <em>prompt</em>. Rào cản giảm mạnh: software engineer có thể build
+        AI product mà không cần PhD ML.
+      </p>
+      <p class="label-sm" style="color:var(--text-mute)">→ Sinh ra vai trò "AI Engineer"</p>
+    </div>
+    <div class="tab-panel">
+      <p>
+        Model ngày càng mạnh (reasoning, multimodal, long context, agentic).
+        Stack quanh model trưởng thành: vector DB, observability, eval framework, prompt management.
+        AI Engineering trở thành một discipline độc lập, có lộ trình rõ ràng.
+      </p>
+      <p class="label-sm" style="color:var(--text-mute)">→ Có ecosystem & best practices</p>
+    </div>
+  </div>
+
+  <h2 id="stack">1.4 Ba layer của AI Engineer stack</h2>
+
+  <svg class="diagram" viewBox="0 0 760 360" role="img" aria-label="3 layer của AI Engineering stack">
+    <defs>
+      <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#6f7c92"/>
+      </marker>
+    </defs>
+
+    <!-- Layer 1: Application -->
+    <rect class="node-accent" x="40" y="20"  width="680" height="90" rx="12"/>
+    <text x="60" y="48" font-weight="700" font-size="15">① Application Layer</text>
+    <text x="60" y="72">UX (chat, copilot, agent UI)  ·  Business logic  ·  Workflow  ·  Integrations</text>
+    <text x="60" y="92" class="label-sm">Nơi AI Engineer dành 60% thời gian</text>
+
+    <!-- Layer 2: AI Infra -->
+    <rect class="node-blue" x="40" y="135" width="680" height="100" rx="12"/>
+    <text x="60" y="163" font-weight="700" font-size="15">② AI Infrastructure Layer</text>
+    <text x="60" y="187">Prompt mgmt · RAG (vector DB, retrieval) · Tools · Memory · Orchestration</text>
+    <text x="60" y="207">Evals · Observability · Guardrails · Caching · Routing</text>
+    <text x="60" y="225" class="label-sm">Glue logic: nơi tạo nên sự khác biệt giữa demo và sản phẩm</text>
+
+    <!-- Layer 3: Model -->
+    <rect class="node-green" x="40" y="260" width="680" height="80" rx="12"/>
+    <text x="60" y="288" font-weight="700" font-size="15">③ Model Layer</text>
+    <text x="60" y="312">Foundation models (API / self-host) · Fine-tuned variants · Embeddings · ASR/TTS · Reranker</text>
+    <text x="60" y="330" class="label-sm">Hiểu đủ để chọn đúng model — không cần train từ đầu</text>
+  </svg>
+
+  <p>
+    AI Engineer thường làm việc nhiều ở <strong>layer 1 và 2</strong>, hiểu đủ về
+    <strong>layer 3</strong> để chọn đúng model và biết giới hạn của nó.
+  </p>
+
+  <div class="callout tip">
+    <div class="icon">★</div>
+    <div>
+      <div class="title">Mental model</div>
+      <p>
+        Khi gặp một bài toán AI, hỏi: cái gì thuộc model (giải quyết bằng prompt/fine-tune),
+        cái gì thuộc infra (cache, retrieve, route), cái gì thuộc app (UX, business rule)?
+        Phân tách rõ giúp tránh "nhồi mọi thứ vào prompt".
+      </p>
+    </div>
+  </div>
+
+  <h2 id="tom-tat">Tóm tắt</h2>
+  <ol>
+    <li><strong>AI Engineering = dùng</strong> foundation models để build sản phẩm, không phải <em>tạo ra</em> model mới.</li>
+    <li>Khác ML Engineering ở chỗ: trọng tâm prompt/context/tool/memory thay vì data/feature/training.</li>
+    <li>Stack 3 layer: <strong>Application — AI Infrastructure — Model</strong>. AI Engineer chủ yếu ở layer 1 và 2.</li>
+    <li>Phải xử lý non-determinism → evaluation và observability quan trọng từ ngày đầu.</li>
+  </ol>
+
+  <nav class="section-footer">
+    <a href="../index.html" class="prev">
+      <div class="label">← quay lại</div>
+      <div class="title">Mục lục</div>
+    </a>
+    <a href="02-foundation-models.html" class="next">
+      <div class="label">tiếp theo →</div>
+      <div class="title">02 — Foundation Models cơ bản</div>
+    </a>
+  </nav>
+
+</main>
+
+<script src="../assets/script.js"></script>
+</body>
+</html>

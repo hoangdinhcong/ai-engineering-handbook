@@ -1,0 +1,640 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>22 · Tương lai &amp; các chủ đề nâng cao — AI Engineering</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<nav class="top-nav">
+  <div class="brand"><span class="dot"></span> AI Engineering</div>
+  <div class="crumbs"><a href="../index.html">Mục lục</a> › Phần 8 · <span>22 — Tương lai &amp; các chủ đề nâng cao</span></div>
+  <div class="nav-actions">
+    <a href="21-team-process.html">← Trước</a>
+    <a href="../index.html">Mục lục</a>
+  </div>
+</nav>
+
+<main class="page">
+
+  <section class="hero">
+    <span class="eyebrow">Phần 8 · §22</span>
+    <h1>Tương lai &amp; các chủ đề nâng cao</h1>
+    <p class="lede">
+      Reasoning models, long context, on-device AI, autonomous agents, open problems — cái gì
+      đang thay đổi nhanh nhất, cái gì cần học tiếp, và mindset để navigate một field tiến hóa
+      từng tuần.
+    </p>
+    <img class="hero-image" src="../images/22-future-advanced.png" alt="Hero illustration" onerror="this.style.display='none'">
+  </section>
+
+  <aside class="toc">
+    <div class="toc-title">Trong trang này</div>
+    <ul>
+      <li><a href="#reasoning-models">22.1 Reasoning models</a></li>
+      <li><a href="#long-context">22.2 Long context (1M+)</a></li>
+      <li><a href="#on-device">22.3 On-device &amp; edge AI</a></li>
+      <li><a href="#autonomous-agents">22.4 Autonomous agents &amp; safety</a></li>
+      <li><a href="#eval-open-problems">22.5 Open problems trong evaluation</a></li>
+      <li><a href="#reasoning-tools">22.6 Reasoning + tools convergence</a></li>
+      <li><a href="#science-models">22.7 Foundation models for science</a></li>
+      <li><a href="#multi-agent">22.8 Multi-agent ecosystems</a></li>
+      <li><a href="#cost-hardware">22.9 Cost trends, hardware roadmap</a></li>
+      <li><a href="#what-to-learn">22.10 What to learn next</a></li>
+      <li><a href="#final-mindset">22.11 Final mindset</a></li>
+      <li><a href="#tom-tat">Tóm tắt</a></li>
+    </ul>
+  </aside>
+
+  <h2 id="reasoning-models">22.1 Reasoning Models</h2>
+  <p>
+    Một trong những bước nhảy vọt quan trọng nhất trong năm 2024–2025 là sự xuất hiện của
+    <strong>reasoning models</strong> — models được train để "suy nghĩ trước khi trả lời" thông qua
+    <em>chain-of-thought nội bộ</em>, thường ẩn với người dùng nhưng tác động lớn đến quality.
+  </p>
+
+  <h3>Các models tiêu biểu</h3>
+  <ul>
+    <li><strong>OpenAI o-series</strong> (o1, o3, o4-mini): Dùng extended internal reasoning, mạnh về toán học, coding, logic phức tạp</li>
+    <li><strong>Anthropic Claude extended thinking</strong>: Cho phép visible thinking budget, reasoning có thể inspect</li>
+    <li><strong>DeepSeek-R1</strong>: Open-source reasoning model từ DeepSeek, hiệu quả cost cao</li>
+    <li><strong>Google Gemini reasoning</strong>: Thinking mode trong Gemini 2.x series</li>
+  </ul>
+
+  <h3>Inference-time compute scaling</h3>
+  <p>
+    Paradigm shift quan trọng: thay vì chỉ scale <em>training</em> compute (bigger model, more data),
+    reasoning models scale <em>inference</em> compute — dùng nhiều compute hơn lúc generate để
+    "suy nghĩ kỹ hơn". Điều này có nghĩa:
+  </p>
+  <ul>
+    <li>Cùng model có thể cho quality khác nhau tùy lượng thinking budget</li>
+    <li>Tradeoff: thinking time/cost vs accuracy</li>
+    <li>Một số tasks (coding, math) benefit rất nhiều; creative tasks benefit ít hơn</li>
+  </ul>
+
+  <svg class="diagram" viewBox="0 0 760 220" role="img" aria-label="Reasoning vs non-reasoning model time distribution">
+    <defs>
+      <marker id="arrowhead8" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#6f7c92"/>
+      </marker>
+    </defs>
+
+    <text x="380" y="22" text-anchor="middle" font-weight="700" font-size="14">Phân bổ compute: Standard vs Reasoning Model</text>
+
+    <!-- Standard model -->
+    <text x="60" y="50" font-weight="600" font-size="12" fill="#aab4c5">Standard Model</text>
+    <rect class="node-blue" x="50" y="60" width="560" height="40" rx="6"/>
+    <text x="330" y="85" text-anchor="middle" font-size="12" font-weight="600">Response Generation (100%)</text>
+
+    <text x="640" y="83" font-size="11" fill="#7cc4ff">Latency: ~1–3s</text>
+
+    <!-- Reasoning model -->
+    <text x="60" y="130" font-weight="600" font-size="12" fill="#aab4c5">Reasoning Model</text>
+    <rect class="node-accent" x="50" y="140" width="360" height="40" rx="6"/>
+    <text x="230" y="165" text-anchor="middle" font-size="12" font-weight="600">Internal Thinking (60–80%)</text>
+
+    <rect class="node-green" x="418" y="140" width="192" height="40" rx="6"/>
+    <text x="514" y="165" text-anchor="middle" font-size="12" font-weight="600">Response (20–40%)</text>
+
+    <text x="640" y="160" font-size="11" fill="#b4e07a">Latency: ~5–60s</text>
+    <text x="640" y="175" font-size="11" fill="#b4e07a">Quality: +++</text>
+
+    <text x="380" y="210" text-anchor="middle" class="label-sm">Thinking budget có thể control: extended_thinking: {budget_tokens: 5000}</text>
+  </svg>
+
+  <h3>Khi nào dùng reasoning models</h3>
+  <div class="callout tip">
+    <div class="icon">★</div>
+    <div>
+      <div class="title">Rule of thumb</div>
+      <p>
+        Dùng reasoning model khi task cần <em>multi-step logical reasoning</em>: toán học, code review,
+        complex analysis, planning. Không cần cho: simple Q&amp;A, summarization, creative writing — latency
+        và cost cao hơn mà không tương xứng benefit.
+      </p>
+    </div>
+  </div>
+
+  <h2 id="long-context">22.2 Long Context (1M+) Techniques</h2>
+  <p>
+    Context window đã tăng từ 2k tokens (GPT-2) lên 1M+ tokens (Gemini 1.5 Pro, Gemini 2.0).
+    Điều này mở ra khả năng nhưng cũng đặt ra thách thức mới.
+  </p>
+
+  <svg class="diagram" viewBox="0 0 760 160" role="img" aria-label="Context window evolution timeline">
+    <defs>
+      <marker id="arrowhead9" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#6f7c92"/>
+      </marker>
+    </defs>
+
+    <!-- Timeline line -->
+    <line stroke="var(--line)" stroke-width="2" x1="40" y1="90" x2="720" y2="90"/>
+    <line class="arrow" marker-end="url(#arrowhead9)" x1="718" y1="90" x2="730" y2="90"/>
+
+    <!-- Data points -->
+    <circle cx="80" cy="90" r="5" fill="#ffb86b"/>
+    <text x="80" y="75" text-anchor="middle" font-size="11" fill="#aab4c5">2020</text>
+    <text x="80" y="115" text-anchor="middle" font-size="10" fill="#ffb86b">2k</text>
+    <text x="80" y="128" text-anchor="middle" class="label-sm">GPT-3</text>
+
+    <circle cx="180" cy="90" r="5" fill="#ffb86b"/>
+    <text x="180" y="75" text-anchor="middle" font-size="11" fill="#aab4c5">2022</text>
+    <text x="180" y="115" text-anchor="middle" font-size="10" fill="#ffb86b">4k</text>
+    <text x="180" y="128" text-anchor="middle" class="label-sm">GPT-3.5</text>
+
+    <circle cx="290" cy="90" r="6" fill="#7cc4ff"/>
+    <text x="290" y="75" text-anchor="middle" font-size="11" fill="#aab4c5">2023</text>
+    <text x="290" y="115" text-anchor="middle" font-size="10" fill="#7cc4ff">100k</text>
+    <text x="290" y="128" text-anchor="middle" class="label-sm">Claude 2</text>
+
+    <circle cx="420" cy="90" r="7" fill="#b4e07a"/>
+    <text x="420" y="75" text-anchor="middle" font-size="11" fill="#aab4c5">2024</text>
+    <text x="420" y="115" text-anchor="middle" font-size="10" fill="#b4e07a">200k</text>
+    <text x="420" y="128" text-anchor="middle" class="label-sm">Claude 3</text>
+
+    <circle cx="560" cy="90" r="9" fill="#b4e07a"/>
+    <text x="560" y="75" text-anchor="middle" font-size="11" fill="#aab4c5">2024</text>
+    <text x="560" y="115" text-anchor="middle" font-size="10" fill="#b4e07a">1M</text>
+    <text x="560" y="128" text-anchor="middle" class="label-sm">Gemini 1.5</text>
+
+    <circle cx="680" cy="90" r="11" fill="#d3a4ff"/>
+    <text x="680" y="75" text-anchor="middle" font-size="11" fill="#aab4c5">2025+</text>
+    <text x="680" y="115" text-anchor="middle" font-size="10" fill="#d3a4ff">2M+</text>
+    <text x="680" y="128" text-anchor="middle" class="label-sm">Gemini 2.x</text>
+  </svg>
+
+  <h3>Efficient attention techniques</h3>
+  <ul>
+    <li>
+      <strong>FlashAttention</strong>: Tối ưu memory bandwidth khi tính attention — không thay đổi kết quả,
+      chỉ nhanh hơn. Đã là standard trong phần lớn modern models.
+    </li>
+    <li>
+      <strong>Ring Attention</strong>: Phân tán context window qua nhiều devices — cho phép xử lý
+      context cực dài bằng cách chia nhỏ qua GPU cluster.
+    </li>
+    <li>
+      <strong>Sliding window attention</strong>: Mỗi token chỉ attend đến N token gần nhất,
+      không phải toàn bộ context. Trade-off: không recall thông tin cách xa.
+    </li>
+  </ul>
+
+  <h3>Long context vs RAG: khi nào dùng cái nào</h3>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th></th><th>Long Context (context stuffing)</th><th>RAG (retrieval)</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Phù hợp khi</td>
+          <td>Cần reason across toàn bộ document, quan hệ xa-gần đều quan trọng</td>
+          <td>Knowledge base lớn hơn context window, chỉ cần phần relevant</td>
+        </tr>
+        <tr>
+          <td>Cost</td>
+          <td>Cao nếu document lớn và nhiều queries</td>
+          <td>Có overhead embedding + retrieval nhưng input tokens ít hơn</td>
+        </tr>
+        <tr>
+          <td>Latency</td>
+          <td>Cao với long input (TTFT tăng tuyến tính)</td>
+          <td>Retrieval overhead nhỏ, input nhỏ hơn → faster</td>
+        </tr>
+        <tr>
+          <td>Accuracy risk</td>
+          <td>"Lost-in-the-middle": model có thể bỏ sót info ở giữa context dài</td>
+          <td>Retrieval failure: không fetch đúng chunk</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Lost-in-the-middle problem</h3>
+  <p>
+    Research chỉ ra rằng LLMs thường xử lý tốt thông tin ở <strong>đầu và cuối</strong> context,
+    nhưng có xu hướng "quên" thông tin ở giữa khi context dài. Mitigation:
+    đặt thông tin quan trọng nhất ở đầu hoặc cuối prompt, không ở giữa.
+  </p>
+
+  <h2 id="on-device">22.3 On-Device &amp; Edge AI</h2>
+  <p>
+    Một trend song song với cloud AI là chạy models trực tiếp trên thiết bị — smartphone,
+    laptop, embedded systems. Điều này mang lại: privacy (data không rời thiết bị),
+    offline capability, và zero latency.
+  </p>
+
+  <h3>Ecosystem và tools</h3>
+  <ul>
+    <li>
+      <strong>Apple Intelligence</strong>: On-device models tích hợp vào iOS/macOS —
+      dùng cho summarization, reply suggestions, mà không cần cloud.
+    </li>
+    <li>
+      <strong>Phi series (Microsoft)</strong>: Small language models (1B–7B) được optimize
+      để chạy tốt trên hardware thông thường, đặc biệt là edge devices.
+    </li>
+    <li>
+      <strong>Gemini Nano</strong>: Phiên bản nhỏ nhất của Gemini, chạy on-device trên
+      Android. Tích hợp vào Pixel và nhiều Android devices.
+    </li>
+    <li>
+      <strong>MLX</strong>: Apple's ML framework cho Apple Silicon — chạy models như
+      Llama, Mistral trực tiếp trên M-series chip với hiệu năng tốt bất ngờ.
+    </li>
+    <li>
+      <strong>Core ML</strong>: Apple's framework để deploy ML models trên iOS/macOS,
+      tận dụng Neural Engine trong chip A-series và M-series.
+    </li>
+  </ul>
+
+  <h3>NPU — Neural Processing Unit</h3>
+  <p>
+    Modern chips (Apple M-series, Qualcomm Snapdragon, Intel Core Ultra) đều có NPU chuyên dụng
+    cho AI inference. NPU thường 3–10x hiệu quả hơn CPU cho matrix operations. Điều này có nghĩa
+    on-device AI sẽ ngày càng practical hơn.
+  </p>
+
+  <div class="callout note">
+    <div class="icon">≡</div>
+    <div>
+      <div class="title">On-device vs Cloud: không phải either/or</div>
+      <p>
+        Pattern phổ biến là <em>hybrid</em>: on-device model cho tasks nhỏ, nhanh, private;
+        cloud model cho tasks phức tạp, low-frequency. Apple Intelligence thực hiện pattern này:
+        simple tasks local, complex tasks → Private Cloud Compute.
+      </p>
+    </div>
+  </div>
+
+  <h2 id="autonomous-agents">22.4 Autonomous Agents &amp; Safety</h2>
+  <p>
+    Agents có khả năng thực hiện long-horizon tasks — không chỉ trả lời câu hỏi mà còn
+    <em>thực hiện chuỗi actions</em> trên môi trường thực (browse web, execute code, call APIs,
+    send emails). Đây là frontier đang phát triển nhanh nhất — và nguy hiểm nhất nếu không build đúng.
+  </p>
+
+  <h3>Long-horizon task challenges</h3>
+  <ul>
+    <li><strong>Error accumulation</strong>: Một bước sai → các bước sau lệch hướng — cascade failure</li>
+    <li><strong>Context management</strong>: Sau 50 bước, context đầy, model "quên" mục tiêu ban đầu</li>
+    <li><strong>Irreversible actions</strong>: Delete file, send email — không thể undo</li>
+    <li><strong>Unexpected states</strong>: Environment không behave như expected (website thay đổi layout, API error)</li>
+  </ul>
+
+  <h3>Sandboxing và containment</h3>
+  <p>
+    Mọi agent thực hiện actions nên chạy trong <strong>sandbox</strong>:
+  </p>
+  <ul>
+    <li>Container với network restrictions — chỉ allow connections tới approved endpoints</li>
+    <li>Filesystem isolation — agent chỉ access được một working directory</li>
+    <li>Read-only mode by default, write requires explicit confirmation</li>
+    <li>Time limits — kill agent nếu chạy quá X phút mà không complete</li>
+    <li>Resource limits — CPU, memory, API call rate limits</li>
+  </ul>
+
+  <h3>Human-in-the-loop oversight</h3>
+  <p>
+    Với tasks có rủi ro cao, luôn có checkpoint cần human approval:
+  </p>
+  <ul>
+    <li><strong>Pre-flight review</strong>: Trình bày plan trước khi thực hiện, human approve</li>
+    <li><strong>Milestone checkpoints</strong>: Dừng ở các bước quan trọng để confirm</li>
+    <li><strong>Undo capability</strong>: Thiết kế để actions có thể rollback</li>
+    <li><strong>Audit trail</strong>: Log mọi action agent thực hiện, có thể review sau</li>
+  </ul>
+
+  <h3>Capability vs alignment tension</h3>
+  <p>
+    Khi models ngày càng capable, câu hỏi về alignment trở nên quan trọng hơn:
+    model làm đúng <em>điều được yêu cầu</em> hay đúng <em>điều người dùng thực sự muốn</em>?
+    Hai điều này không phải lúc nào cũng giống nhau. Anthropic (Constitutional AI),
+    OpenAI (RLHF), Google (RLAIF) đều có research teams tập trung vào vấn đề này.
+  </p>
+
+  <h2 id="eval-open-problems">22.5 Open Problems trong Evaluation</h2>
+  <p>
+    Evaluation vẫn là một trong những unsolved problems trong AI engineering. Thách thức ngày càng lớn hơn khi models ngày càng capable.
+  </p>
+
+  <h3>Eval saturation</h3>
+  <p>
+    Models đạt near-perfect scores trên nhiều benchmarks truyền thống (MMLU, HumanEval).
+    Không phải vì bài toán đã solved — mà vì benchmarks quá dễ so với real-world complexity.
+    Community liên tục phải tạo harder benchmarks (GPQA, FrontierMath, SWE-bench).
+  </p>
+
+  <h3>Benchmark contamination</h3>
+  <p>
+    Models được train trên internet data, và nhiều benchmark tests tồn tại trên internet.
+    Kết quả: models có thể "biết" test answers từ training data, không phải vì genuinely solve được.
+    Rất khó detect và prevent hoàn toàn.
+  </p>
+
+  <h3>Goodhart's Law cho AI</h3>
+  <blockquote>
+    "When a measure becomes a target, it ceases to be a good measure." — Goodhart's Law
+  </blockquote>
+  <p>
+    Khi optimize quá nhiều cho một metric cụ thể, models learn cách "game" metric đó mà không
+    thực sự improve theo dimension bạn care about. Ví dụ: optimize cho reward model → model
+    learn "flattery" thay vì truthfulness.
+  </p>
+
+  <h3>What's being worked on</h3>
+  <ul>
+    <li>Dynamic benchmarks: test cases được generate fresh mỗi lần evaluation</li>
+    <li>Multi-metric holistic evaluation thay vì single score</li>
+    <li>Real-world task benchmarks (SWE-bench, WebArena) thay vì academic tests</li>
+    <li>Human + AI hybrid evaluation panels</li>
+  </ul>
+
+  <h2 id="reasoning-tools">22.6 Reasoning + Tools Convergence</h2>
+  <p>
+    Một trong những trend quan trọng nhất là sự hội tụ giữa <strong>reasoning capability</strong>
+    và <strong>tool use</strong>. Models không chỉ "nghĩ" mà còn "làm" — và ngày càng tốt hơn ở việc
+    plan khi nào dùng tool nào, cách interpret tool results, và adapt plan khi tool fail.
+  </p>
+
+  <p>
+    Ví dụ: reasoning model + code execution có thể giải toán phức tạp theo cách
+    "think → write code → run → observe result → refine". Đây hiệu quả hơn nhiều so với
+    "think → answer" cho các bài toán computational.
+  </p>
+
+  <h3>Emerging patterns</h3>
+  <ul>
+    <li><strong>Think-then-act loop</strong>: Reasoning trước mỗi tool call, evaluate result sau</li>
+    <li><strong>Self-correction</strong>: Khi tool call fail hoặc cho unexpected result, model tự adjust plan</li>
+    <li><strong>Tool selection reasoning</strong>: Không chỉ biết dùng tool, mà biết khi nào không nên dùng</li>
+    <li><strong>Multi-step tool chaining</strong>: Kết quả tool này là input cho tool tiếp theo, với reasoning ở từng bước</li>
+  </ul>
+
+  <h2 id="science-models">22.7 Foundation Models for Science</h2>
+  <p>
+    Ngoài general-purpose LLMs, có một class models được train đặc biệt cho science domains.
+    AlphaFold đã chứng minh rằng foundation models có thể giải quyết các bài toán khoa học
+    mà con người không thể làm hiệu quả trong vài thập kỷ.
+  </p>
+
+  <h3>Domain-specific science models</h3>
+  <ul>
+    <li><strong>Biology</strong>: AlphaFold2/3 (protein structure prediction), ESM-2 (protein embeddings), AlphaGenome (genomics)</li>
+    <li><strong>Chemistry</strong>: ChemBERTa, MolBERT (molecular property prediction), RFdiffusion (protein design)</li>
+    <li><strong>Medicine</strong>: Med-PaLM, BioGPT (clinical note understanding, drug discovery)</li>
+    <li><strong>Climate</strong>: Pangu-Weather, GraphCast (weather forecasting)</li>
+    <li><strong>Materials</strong>: GNoME (Google DeepMind, discovery of 2.2M stable crystal structures)</li>
+  </ul>
+
+  <p>
+    Điều thú vị cho AI Engineer: nhiều trong số này có API public hoặc open weights, có thể
+    integrate vào applications theo cách tương tự LLM API.
+  </p>
+
+  <h2 id="multi-agent">22.8 Multi-Agent Ecosystems</h2>
+  <p>
+    Từ single agent, xu hướng đang shift sang <strong>multi-agent systems</strong>: nhiều agents
+    specialized, collaborate với nhau để giải quyết bài toán phức tạp.
+  </p>
+
+  <h3>Patterns multi-agent</h3>
+  <ul>
+    <li>
+      <strong>Orchestrator + workers</strong>: Một agent plan và phân công, nhiều agents thực hiện
+      parallel. OpenAI Swarm, Anthropic multi-agent patterns.
+    </li>
+    <li>
+      <strong>Peer-to-peer debate</strong>: Nhiều agents với góc nhìn khác nhau debate đến consensus —
+      giảm hallucination và tăng reasoning quality.
+    </li>
+    <li>
+      <strong>Specialist routing</strong>: Router agent quyết định task nào gửi tới specialist agent nào
+      (code agent, research agent, data agent).
+    </li>
+    <li>
+      <strong>Human-agent hybrid</strong>: Agents làm phần boring/repetitive, human làm judgment calls —
+      "AI co-pilot" pattern ở tổ chức level.
+    </li>
+  </ul>
+
+  <h3>Challenges đặc thù multi-agent</h3>
+  <ul>
+    <li>Context passing giữa agents — không phải free, cần careful design</li>
+    <li>Error handling khi một agent trong chain fail</li>
+    <li>Cost multiplied: N agents × cost per agent</li>
+    <li>Debugging: trace lỗi qua nhiều agent hops phức tạp hơn nhiều</li>
+    <li>Trust boundaries: agent A có nên trust blindly output của agent B không?</li>
+  </ul>
+
+  <div class="callout warn">
+    <div class="icon">!</div>
+    <div>
+      <div class="title">Multi-agent là powerful nhưng dễ over-engineer</div>
+      <p>
+        Trước khi build multi-agent system, hỏi: "Single agent with good prompt + tools có solve được không?"
+        Rất thường xuyên câu trả lời là có. Multi-agent chỉ worth overhead khi tasks thực sự parallel
+        hoặc cần specialist expertise thực sự khác nhau.
+      </p>
+    </div>
+  </div>
+
+  <h2 id="cost-hardware">22.9 Cost Trends, Hardware Roadmap</h2>
+  <p>
+    Một trong những force quan trọng nhất shaping AI engineering là sự giảm cost liên tục.
+  </p>
+
+  <h3>Cost đang giảm theo exponential trend</h3>
+  <p>
+    Từ 2020 đến 2025, cost per token đã giảm ~100x. Một phần do competition giữa providers,
+    phần khác do hardware (H100 → H200 → Blackwell) và software optimization (quantization,
+    speculative decoding, continuous batching).
+  </p>
+
+  <h3>Hardware roadmap</h3>
+  <ul>
+    <li><strong>NVIDIA</strong>: Blackwell (H100 successor) → Rubin (2026) — mỗi gen ~2–4x compute per dollar</li>
+    <li><strong>AMD</strong>: MI300X, MI400 series — competitive với NVIDIA cho inference workloads</li>
+    <li><strong>Google TPU</strong>: TPU v5, v6 — cực tối ưu cho Google models, ít accessible bên ngoài</li>
+    <li><strong>Custom inference chips</strong>: Groq LPU (cực low latency), Cerebras, SambaNova — focus vào inference</li>
+    <li><strong>Apple Silicon</strong>: M-series chips — inference per watt tốt nhất cho on-device</li>
+  </ul>
+
+  <h3>Implication cho AI Engineers</h3>
+  <p>
+    Cost giảm → things that are too expensive today become viable tomorrow.
+    Current "too expensive" use cases (agentic automation for everyone, real-time video analysis,
+    very long context for every user) có thể mainstream trong 2–3 năm.
+    Build architecture để take advantage của cost reduction — abstract model + routing layer
+    cho phép bạn seamlessly switch khi cost/quality frontier shifts.
+  </p>
+
+  <h2 id="what-to-learn">22.10 What to Learn Next</h2>
+  <p>
+    Với field tiến hóa nhanh như AI Engineering, learning strategy quan trọng không kém
+    technical knowledge. Dưới đây là resources được curate cẩn thận:
+  </p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Loại</th><th>Resource</th><th>Tại sao đọc</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="tag">Sách</span></td>
+          <td><strong>"AI Engineering"</strong> — Chip Huyen</td>
+          <td>Toàn diện nhất về AI Engineering discipline, từ foundation đến production. Highly recommended.</td>
+        </tr>
+        <tr>
+          <td><span class="tag">Sách</span></td>
+          <td><strong>"Hands-On Large Language Models"</strong> — Jay Alammar, Maarten Grootendorst</td>
+          <td>Practical, code-heavy, visual. Tốt cho hiểu cơ chế LLM từ embedding đến fine-tuning.</td>
+        </tr>
+        <tr>
+          <td><span class="tag blue">Paper</span></td>
+          <td><strong>GPT-3: Language Models are Few-Shot Learners</strong> (Brown et al., 2020)</td>
+          <td>Paper khai sinh kỷ nguyên foundation models. Hiểu tại sao few-shot prompting work.</td>
+        </tr>
+        <tr>
+          <td><span class="tag blue">Paper</span></td>
+          <td><strong>Chinchilla Scaling Laws</strong> (Hoffmann et al., 2022)</td>
+          <td>Hiểu optimal training compute vs data ratio — giải thích tại sao model size không phải tất cả.</td>
+        </tr>
+        <tr>
+          <td><span class="tag blue">Paper</span></td>
+          <td><strong>InstructGPT / RLHF</strong> (Ouyang et al., 2022)</td>
+          <td>Nền tảng của instruction-following và alignment via human feedback.</td>
+        </tr>
+        <tr>
+          <td><span class="tag blue">Paper</span></td>
+          <td><strong>ReAct: Reasoning and Acting</strong> (Yao et al., 2022)</td>
+          <td>Nền tảng cho agent design pattern — think-act-observe loop.</td>
+        </tr>
+        <tr>
+          <td><span class="tag blue">Paper</span></td>
+          <td><strong>Constitutional AI</strong> (Anthropic, 2022)</td>
+          <td>Cách Anthropic train Claude để helpful + harmless — hiểu safety techniques.</td>
+        </tr>
+        <tr>
+          <td><span class="tag green">Blog</span></td>
+          <td><strong>Anthropic Research Blog</strong> (anthropic.com/research)</td>
+          <td>First-hand research insights, model capabilities, safety research.</td>
+        </tr>
+        <tr>
+          <td><span class="tag green">Blog</span></td>
+          <td><strong>Simon Willison's Weblog</strong> (simonwillison.net)</td>
+          <td>Practical, opinionated, very high signal-to-noise về AI tools và techniques.</td>
+        </tr>
+        <tr>
+          <td><span class="tag green">Blog</span></td>
+          <td><strong>Eugene Yan</strong> (eugeneyan.com)</td>
+          <td>Deep dives vào recommendation systems, LLM evaluation, production ML.</td>
+        </tr>
+        <tr>
+          <td><span class="tag green">Blog</span></td>
+          <td><strong>Lilian Weng</strong> (lilianweng.github.io)</td>
+          <td>Exceptional technical depth: attention, agents, RLHF, diffusion — từ Researcher tại OpenAI.</td>
+        </tr>
+        <tr>
+          <td><span class="tag lilac">Course</span></td>
+          <td><strong>Deeplearning.ai Short Courses</strong></td>
+          <td>Hands-on courses từ Andrew Ng + AI companies. RAG, agents, fine-tuning, evals — mỗi course 1–2 giờ.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Learning strategy</h3>
+  <ul>
+    <li><strong>Build first, read theory second</strong>: Học bằng cách build project thực, không chỉ đọc</li>
+    <li><strong>Follow practitioners</strong>: Twitter/X của Simon Willison, Eugene Yan, Lilian Weng, Andrej Karpathy</li>
+    <li><strong>Read papers selectively</strong>: Abstract + intro + conclusion đủ cho hầu hết papers. Đọc detail chỉ khi cực relevant</li>
+    <li><strong>Join communities</strong>: Latent.Space, AI Alignment Forum, LessWrong (safety), Hugging Face Discord</li>
+    <li><strong>Teach others</strong>: Viết blog, talk tại meetups — explaining là cách học sâu nhất</li>
+  </ul>
+
+  <h2 id="final-mindset">22.11 Final Mindset</h2>
+  <p>
+    AI Engineering là field đang định hình chính nó trong real-time. Không ai có đầy đủ câu trả lời.
+    Điều quan trọng nhất không phải là biết tất cả — mà là có mindset đúng để navigate sự thay đổi liên tục.
+  </p>
+
+  <h3>Ship, measure, iterate</h3>
+  <p>
+    Đây là vòng lặp quan trọng nhất. Không có eval, không có learning.
+    Không có ship, không có real data. Không có iterate, không có improvement.
+    Perfect là kẻ thù của good — ship cái đủ tốt, measure nó, và cải thiện liên tục.
+  </p>
+
+  <h3>Healthy skepticism toward hype</h3>
+  <div class="callout tip">
+    <div class="icon">★</div>
+    <div>
+      <div class="title">Checklist cho mỗi claim mới</div>
+      <p>
+        Khi thấy claim "AI mới này làm được X!" — hỏi: Trên benchmark nào? Ai test? Có independently verified chưa?
+        Trên data in training set không? Behavior ổn định hay cherry-picked demo?
+        Healthy skepticism không phải pessimism — là foundation của engineering rigor.
+      </p>
+    </div>
+  </div>
+
+  <h3>Embrace uncertainty</h3>
+  <p>
+    Không biết model sẽ thay đổi thế nào, không biết provider nào sẽ win, không biết
+    capability nào sẽ emerge tiếp theo. Thay vì anxiety, treat uncertainty như opportunity:
+    những ai build tốt trên foundation vững (eval, observability, abstractions) sẽ adapt nhanh nhất.
+  </p>
+
+  <h3>Human + AI collaboration</h3>
+  <p>
+    Mindset cuối cùng: AI không thay thế AI Engineer — nó amplify. Người nào biết dùng AI
+    tools hiệu quả nhất sẽ build nhanh hơn, tốt hơn, với ít người hơn. Nhưng judgment,
+    creativity, product sense, và ethical reasoning vẫn là human territory. Biết cái gì
+    để AI làm và cái gì bạn phải làm — đó là AI Engineering.
+  </p>
+
+  <div class="callout note">
+    <div class="icon">≡</div>
+    <div>
+      <div class="title">Cảm ơn bạn đã đọc đến đây</div>
+      <p>
+        Series này cover một snapshot của AI Engineering vào năm 2025–2026. Field sẽ tiếp tục
+        evolve — nhưng nguyên tắc cốt lõi sẽ còn đó: eval rigorously, ship incrementally,
+        observe carefully, và luôn đặt câu hỏi "đây có thực sự giúp được người dùng không?"
+      </p>
+    </div>
+  </div>
+
+  <h2 id="tom-tat">Tóm tắt</h2>
+  <ol>
+    <li><strong>Reasoning models</strong> scale inference-time compute — mạnh hơn cho multi-step logic, tốn hơn về cost và latency. Dùng khi cần, không phải mọi nơi.</li>
+    <li><strong>Long context</strong> giải quyết nhiều RAG use cases đơn giản, nhưng lost-in-the-middle và cost vẫn là thách thức.</li>
+    <li><strong>On-device AI</strong> mở ra use cases về privacy và offline — NPU trên modern chips làm on-device practical hơn.</li>
+    <li><strong>Autonomous agents</strong> là frontier đang nóng nhất — sandbox, oversight, và irreversibility awareness là critical.</li>
+    <li><strong>Eval vẫn là open problem</strong>: benchmark saturation, contamination, Goodhart's Law — field đang tích cực work on this.</li>
+    <li><strong>Cost sẽ tiếp tục giảm</strong> — design cho flexibility, đừng hardcode assumptions về cost level hiện tại.</li>
+    <li><strong>Mindset quan trọng nhất</strong>: ship → measure → iterate. Healthy skepticism. Embrace uncertainty. Human + AI collaboration.</li>
+  </ol>
+
+  <nav class="section-footer">
+    <a href="21-team-process.html" class="prev">
+      <div class="label">← trước</div>
+      <div class="title">21 — Team &amp; Process</div>
+    </a>
+    <a href="23-agent-design-patterns.html" class="next">
+      <div class="label">tiếp theo →</div>
+      <div class="title">23 — Agent Design Patterns nâng cao</div>
+    </a>
+  </nav>
+
+</main>
+
+<script src="../assets/script.js"></script>
+</body>
+</html>

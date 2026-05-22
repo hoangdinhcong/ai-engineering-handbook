@@ -1,0 +1,861 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>03 · Cách LLM hoạt động — AI Engineering</title>
+<link rel="stylesheet" href="../assets/style.css">
+<style>
+  /* ── Token color palette for interactive demo ── */
+  .token-0 { background: rgba(255,184,107,0.22); color: var(--accent); border: 1px solid rgba(255,184,107,0.35); }
+  .token-1 { background: rgba(124,196,255,0.22); color: var(--accent-2); border: 1px solid rgba(124,196,255,0.35); }
+  .token-2 { background: rgba(180,224,122,0.22); color: var(--accent-3); border: 1px solid rgba(180,224,122,0.35); }
+  .token-3 { background: rgba(211,164,255,0.22); color: var(--accent-4); border: 1px solid rgba(211,164,255,0.35); }
+  .token-4 { background: rgba(255,138,138,0.22); color: var(--danger); border: 1px solid rgba(255,138,138,0.35); }
+
+  #token-output { min-height: 40px; margin-top: 10px; line-height: 2.0; word-break: break-all; }
+  #token-count  { font-family: var(--font-mono); font-size: 12px; color: var(--text-mute); margin-top: 6px; }
+
+  /* Temperature demo bars */
+  .temp-bars { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
+  .temp-bar-row { display: flex; align-items: center; gap: 10px; font-family: var(--font-mono); font-size: 12px; color: var(--text-soft); }
+  .temp-bar-label { width: 80px; flex-shrink: 0; }
+  .temp-bar-track { flex: 1; background: var(--bg-code); border-radius: 3px; height: 18px; overflow: hidden; border: 1px solid var(--line-soft); }
+  .temp-bar-fill  { height: 100%; border-radius: 3px; transition: width 0.25s ease; }
+  .temp-bar-val   { width: 40px; text-align: right; flex-shrink: 0; }
+  #temp-display   { font-family: var(--font-mono); font-size: 22px; font-weight: 700; color: var(--accent); }
+  #temp-label     { font-size: 12px; color: var(--text-mute); }
+</style>
+</head>
+<body>
+
+<nav class="top-nav">
+  <div class="brand"><span class="dot"></span> AI Engineering</div>
+  <div class="crumbs"><a href="../index.html">Mục lục</a> › Phần 1 · <span>03 — Cách LLM hoạt động</span></div>
+  <div class="nav-actions">
+    <a href="02-foundation-models.html">← Trước</a>
+    <a href="04-prompt-engineering.html">Tiếp →</a>
+  </div>
+</nav>
+
+<main class="page">
+
+  <section class="hero">
+    <span class="eyebrow">Phần 1 · §03</span>
+    <h1>Cách LLM hoạt động <span style="color: var(--text-mute); font-weight:400; font-size: 0.7em">(đủ để engineer hiểu)</span></h1>
+    <p class="lede">
+      Tokenization, embeddings, transformer &amp; attention, sampling parameters,
+      context window — tất cả những gì bạn cần biết để làm việc hiệu quả với LLMs
+      mà không cần bằng ML.
+    </p>
+    <img class="hero-image" src="../images/03-how-llm-works.png" alt="Hero illustration" onerror="this.style.display='none'">
+  </section>
+
+  <aside class="toc">
+    <div class="toc-title">Trong trang này</div>
+    <ul>
+      <li><a href="#tokenization">3.1 Tokenization</a></li>
+      <li><a href="#embeddings">3.2 Embeddings</a></li>
+      <li><a href="#transformer">3.3 Transformer &amp; Attention</a></li>
+      <li><a href="#sampling">3.4 Sampling — cách model chọn token</a></li>
+      <li><a href="#context">3.5 Context Window</a></li>
+      <li><a href="#api-params">3.6 Tham số API quan trọng</a></li>
+      <li><a href="#tom-tat">Tóm tắt</a></li>
+    </ul>
+  </aside>
+
+  <!-- ─────────────────────────────────────────────── -->
+  <h2 id="tokenization">3.1 Tokenization</h2>
+
+  <p>
+    Trước khi LLM xử lý bất cứ thứ gì, văn bản phải được chuyển thành
+    <strong>tokens</strong> — đơn vị cơ bản nhất mà model "nhìn thấy".
+    Điều quan trọng cần hiểu ngay: <strong>token ≠ từ và token ≠ ký tự</strong>.
+  </p>
+
+  <p>
+    Token thường là <em>subword unit</em> — một mảnh của từ, một từ nguyên, hoặc
+    đôi khi chỉ là một ký tự hoặc dấu câu. Ví dụ trong tiếng Anh:
+    <code>"unbelievable"</code> có thể thành <code>["un", "believ", "able"]</code> —
+    3 tokens, 1 từ. Ngược lại, <code>"the"</code> = 1 token, <code>"AI"</code> = 1 token.
+  </p>
+
+  <h3>Thuật toán Tokenization phổ biến</h3>
+  <ul>
+    <li>
+      <strong>BPE</strong> (Byte-Pair Encoding): Khởi đầu từ từng ký tự, merge cặp hay gặp nhất
+      lặp đi lặp lại cho đến khi đủ vocab size. Dùng bởi GPT-2, GPT-3, GPT-4 (tiktoken), Llama.
+    </li>
+    <li>
+      <strong>SentencePiece / Unigram</strong>: Approach khác — train probabilistic model để chọn
+      segmentation tối ưu. Dùng bởi T5, LLaMA (SentencePiece + BPE), Gemma.
+    </li>
+    <li>
+      <strong>WordPiece</strong>: Tương tự BPE nhưng maximize likelihood thay vì frequency.
+      Dùng bởi BERT và các encoder models.
+    </li>
+  </ul>
+
+  <h3>Tại sao điều này quan trọng với AI Engineer?</h3>
+
+  <div class="grid-2">
+    <div class="card">
+      <h4>Cost = số tokens, không phải số từ</h4>
+      <p>
+        APIs charge theo tokens. Một prompt 1000 từ tiếng Anh ≈ 1300 tokens.
+        Cùng nội dung đó bằng tiếng Việt có thể lên đến 2000–2500 tokens
+        vì tiếng Việt tokenize kém hiệu quả hơn (ít text VI trong pre-training data → vocab ít).
+      </p>
+    </div>
+    <div class="card">
+      <h4>Context limit tính bằng tokens</h4>
+      <p>
+        "Context 200k" = 200.000 tokens, không phải từ hay ký tự.
+        Một trang A4 text ≈ 500 từ ≈ 650 tokens (EN) ≈ 1000-1200 tokens (VI).
+        Tính toán sai có thể gây lỗi context overflow bất ngờ.
+      </p>
+    </div>
+  </div>
+
+  <h3>Ước lượng nhanh</h3>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Đơn vị</th><th>Tokens (EN)</th><th>Tokens (VI)</th><th>Ghi chú</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>1 từ tiếng Anh thông thường</td><td>≈ 1.3</td><td>—</td><td>"hello" = 1, "unbelievable" = 3</td></tr>
+        <tr><td>1 từ tiếng Việt</td><td>—</td><td>2–4</td><td>Dấu, tổ hợp âm tiết riêng lẻ</td></tr>
+        <tr><td>1 trang A4 (~500 từ EN)</td><td>≈ 650</td><td>≈ 1100</td><td>Ước lượng thực tế</td></tr>
+        <tr><td>1 dòng code Python</td><td>≈ 5–15</td><td>—</td><td>Tuỳ indent &amp; identifiers</td></tr>
+        <tr><td>1000 tokens</td><td>≈ 750 từ</td><td>≈ 400–500 từ</td><td>Rule of thumb thường dùng</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout warn">
+    <div class="icon">!</div>
+    <div>
+      <div class="title">The "strawberry R's" problem</div>
+      <p>
+        Câu hỏi nổi tiếng: "Có bao nhiêu chữ R trong từ 'strawberry'?" — LLMs thường đếm sai (đáp án: 3).
+        Nguyên nhân: model không thấy ký tự, chỉ thấy tokens. <code>"strawberry"</code> tokenize thành
+        <code>["str", "aw", "berry"]</code> — model phải "nhớ" rằng <code>"str"</code> có R, <code>"aw"</code>
+        không có, <code>"berry"</code> có R — rất dễ nhầm. Đây là lý do character-level tasks (đánh vần,
+        counting letters) thường không đáng tin cậy với LLMs.
+      </p>
+    </div>
+  </div>
+
+  <!-- ── INTERACTIVE TOKENIZER DEMO ── -->
+  <div class="demo">
+    <div class="demo-title">Interactive Demo — Tokenizer Approximation</div>
+    <p style="color: var(--text-mute); font-size: 13px; margin-bottom: 10px;">
+      Demo này chia text thành chunks ~3-4 ký tự để minh họa khái niệm tokenization.
+      Không phản ánh chính xác tokenizer thực tế (BPE), nhưng cho thấy tại sao token ≠ từ.
+    </p>
+    <textarea id="token-input" placeholder="Nhập text vào đây... thử tiếng Việt vs tiếng Anh để thấy sự khác biệt">The quick brown fox jumps over the lazy dog</textarea>
+    <div style="display:flex; gap: 10px; align-items: center; margin-top: 8px; flex-wrap: wrap;">
+      <button id="btn-tokenize" style="background: var(--accent); color: #000; border: 0; padding: 8px 18px; border-radius: var(--radius-sm); font-family: inherit; font-weight: 600; cursor: pointer; font-size: 14px;">Tokenize →</button>
+      <button id="btn-vi" style="background: transparent; color: var(--accent-2); border: 1px solid var(--accent-2); padding: 8px 14px; border-radius: var(--radius-sm); font-family: inherit; cursor: pointer; font-size: 13px;">Thử tiếng Việt</button>
+      <button id="btn-code" style="background: transparent; color: var(--accent-3); border: 1px solid var(--accent-3); padding: 8px 14px; border-radius: var(--radius-sm); font-family: inherit; cursor: pointer; font-size: 13px;">Thử code Python</button>
+    </div>
+    <div id="token-output"></div>
+    <div id="token-count"></div>
+  </div>
+
+  <!-- ─────────────────────────────────────────────── -->
+  <h2 id="embeddings">3.2 Embeddings</h2>
+
+  <p>
+    Sau khi tokenize, mỗi token được chuyển thành một <strong>vector số</strong>
+    (embedding) — thường là 768 đến 4096 chiều. Vector này là cách model "hiểu"
+    nghĩa của token trong không gian toán học.
+  </p>
+  <p>
+    Điều kỳ diệu: <strong>semantic similarity = khoảng cách vector nhỏ</strong>.
+    "Paris" và "France" gần nhau hơn "Paris" và "banana" trong embedding space.
+    Phép toán nổi tiếng: <code>king − man + woman ≈ queen</code>.
+  </p>
+
+  <h3>Hai loại embeddings AI Engineer cần biết</h3>
+
+  <div class="grid-2">
+    <div class="card">
+      <h4>Internal token embeddings</h4>
+      <p>
+        Input layer của LLM. Mỗi token trong vocab có một embedding vector được
+        <em>học trong quá trình pre-training</em>. Đây là "từ điển" riêng của model.
+        Bạn không dùng trực tiếp — chỉ hiểu để biết cách model "đọc" input.
+      </p>
+    </div>
+    <div class="card">
+      <h4>Dedicated embedding models</h4>
+      <p>
+        Models chuyên biệt để encode text thành vector — dùng cho semantic search,
+        RAG retrieval. Ví dụ: <code>text-embedding-3-large</code>,
+        <code>voyage-3</code>, <code>BGE-M3</code>.
+        Khác với LLMs: không generate text, chỉ produce vector.
+      </p>
+    </div>
+  </div>
+
+  <div class="callout tip">
+    <div class="icon">★</div>
+    <div>
+      <div class="title">Embeddings trong RAG</div>
+      <p>
+        Quy trình cơ bản: chunk documents → embed từng chunk → lưu vào vector DB.
+        Khi có query: embed query → tìm chunks gần nhất (cosine similarity) →
+        đưa vào LLM context. Chất lượng embedding model ảnh hưởng trực tiếp đến
+        recall — không kém phần quan trọng so với LLM chính.
+      </p>
+    </div>
+  </div>
+
+  <!-- ─────────────────────────────────────────────── -->
+  <h2 id="transformer">3.3 Transformer &amp; Attention</h2>
+
+  <p>
+    LLMs hiện đại đều dựa trên kiến trúc <strong>Transformer</strong> (Vaswani et al. 2017,
+    "Attention is All You Need"). Bạn không cần hiểu mọi chi tiết toán học,
+    nhưng cần biết những khái niệm sau để ra quyết định đúng khi build.
+  </p>
+
+  <h3>Self-Attention — cơ chế cốt lõi</h3>
+  <p>
+    Attention cho phép mỗi token "nhìn" tất cả các token khác trong context
+    và quyết định token nào quan trọng nhất để predict token tiếp theo.
+    Đây là lý do LLMs xử lý ngữ nghĩa và coreference tốt hơn RNNs trước đây —
+    không có "forgetting" khi sequence dài.
+  </p>
+  <p>
+    <strong>Multi-head attention</strong>: Chạy nhiều attention "heads" song song,
+    mỗi head học các pattern khác nhau (syntax, semantics, positional patterns).
+    Kết quả được concat lại. Model lớn hơn = nhiều heads và layers hơn.
+  </p>
+
+  <h3>Autoregressive generation</h3>
+  <p>
+    LLMs generate text theo kiểu <strong>autoregressive</strong>:
+    predict <em>một token tại một thời điểm</em>, token mới được thêm vào context,
+    rồi predict token kế tiếp. Vòng lặp này tiếp tục cho đến khi gặp
+    stop token hoặc đạt max_tokens.
+  </p>
+
+  <svg class="diagram" viewBox="0 0 760 180" role="img" aria-label="Autoregressive generation loop">
+    <defs>
+      <marker id="arr3" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#6f7c92"/>
+      </marker>
+    </defs>
+
+    <!-- Input context -->
+    <rect class="node-accent" x="20" y="50" width="180" height="60" rx="8"/>
+    <text x="110" y="76" text-anchor="middle" font-weight="600" font-size="13">Context tokens</text>
+    <text x="110" y="96" text-anchor="middle" font-size="11" class="label-sm">"The quick brown"</text>
+
+    <!-- Arrow -->
+    <line class="arrow" x1="200" y1="80" x2="240" y2="80" marker-end="url(#arr3)"/>
+
+    <!-- Transformer block -->
+    <rect class="node-blue" x="242" y="30" width="180" height="100" rx="8"/>
+    <text x="332" y="68" text-anchor="middle" font-weight="700" font-size="13">Transformer</text>
+    <text x="332" y="86" text-anchor="middle" font-size="11">Self-attention</text>
+    <text x="332" y="104" text-anchor="middle" font-size="11">Feed-forward</text>
+    <text x="332" y="120" text-anchor="middle" font-size="11" class="label-sm">N layers deep</text>
+
+    <!-- Arrow -->
+    <line class="arrow" x1="422" y1="80" x2="462" y2="80" marker-end="url(#arr3)"/>
+
+    <!-- Sample next token -->
+    <rect class="node-green" x="464" y="50" width="160" height="60" rx="8"/>
+    <text x="544" y="76" text-anchor="middle" font-weight="600" font-size="13">Sample next token</text>
+    <text x="544" y="96" text-anchor="middle" font-size="11" class="label-sm">"fox" (with temperature)</text>
+
+    <!-- Arrow back -->
+    <path class="arrow" d="M 544 110 L 544 145 L 110 145 L 110 110" fill="none" marker-end="url(#arr3)"/>
+    <text x="330" y="162" text-anchor="middle" font-size="11" class="label-sm">Append to context, repeat until stop token or max_tokens</text>
+  </svg>
+
+  <h3>KV Cache và Prompt Caching</h3>
+  <p>
+    Tính toán attention rất tốn kém. Để tránh tính lại, model cache
+    <strong>Key-Value matrices</strong> (KV Cache) của các tokens đã xử lý.
+    Khi generate token tiếp theo, chỉ cần tính KV cho token mới — các token cũ đã cached.
+  </p>
+  <p>
+    <strong>Prompt Caching</strong> của Anthropic/OpenAI là extension của ý tưởng này lên level API:
+    nếu prefix của prompt giống nhau giữa các requests, provider cache
+    KV computation — giảm đến 90% cost và latency cho phần cached.
+    Rất có giá trị khi bạn có <em>system prompt dài cố định</em> và nhiều conversations.
+  </p>
+
+  <div class="callout tip">
+    <div class="icon">★</div>
+    <div>
+      <div class="title">Tối ưu với Prompt Caching</div>
+      <p>
+        Đặt <em>system prompt</em> và bất kỳ context dài cố định nào (documents, personas, instructions)
+        ở <strong>đầu prompt</strong> và giữ nguyên. Phần thay đổi (user messages) đặt cuối.
+        Với Anthropic Claude: dùng <code>cache_control: {type: "ephemeral"}</code> trên block cần cache.
+      </p>
+    </div>
+  </div>
+
+  <details>
+    <summary>Tại sao LLMs không "biết" vị trí tuyệt đối của token?</summary>
+    <p>
+      Transformer gốc không có khái niệm thứ tự — self-attention xử lý tất cả tokens song song.
+      Để biết "token này ở vị trí thứ mấy", người ta thêm
+      <strong>positional encoding</strong> vào embedding. Các model hiện đại dùng
+      <strong>RoPE</strong> (Rotary Position Embedding) hoặc <strong>ALiBi</strong>
+      để hỗ trợ context dài và extrapolate tốt hơn ra ngoài training length.
+    </p>
+  </details>
+
+  <!-- ─────────────────────────────────────────────── -->
+  <h2 id="sampling">3.4 Sampling — cách model chọn token tiếp theo</h2>
+
+  <p>
+    Sau khi Transformer tính xong, output là một vector <strong>logits</strong> —
+    một số thực cho mỗi token trong vocab (thường 32K–128K tokens).
+    Softmax chuyển chúng thành probability distribution.
+    Bước cuối: <strong>sampling</strong> — chọn một token từ distribution đó.
+  </p>
+  <p>
+    Các tham số bạn truyền vào API control chính xác bước sampling này.
+    Hiểu chúng = kiểm soát được behavior của model.
+  </p>
+
+  <h3>Các tham số sampling quan trọng</h3>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Tham số</th><th>Ý nghĩa</th><th>Range</th><th>Rule of thumb</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>temperature</code></td>
+          <td>Scale logits trước softmax. Cao → distribution phẳng → creative/random. Thấp → distribution nhọn → focused/deterministic.</td>
+          <td>0 – 2</td>
+          <td><code>0</code> cho code/JSON/structured; <code>0.7–1.0</code> cho creative writing; <code>1.0</code> default "balanced"</td>
+        </tr>
+        <tr>
+          <td><code>top_p</code> (nucleus sampling)</td>
+          <td>Chỉ sample từ top tokens có cumulative probability ≤ p. Loại bỏ các tokens unlikely bất thường.</td>
+          <td>0 – 1</td>
+          <td><code>1.0</code> (disabled) hoặc <code>0.95</code> thường tốt. Không dùng cùng <code>temperature</code> và <code>top_p</code> một lúc — chọn một.</td>
+        </tr>
+        <tr>
+          <td><code>top_k</code></td>
+          <td>Chỉ sample từ k tokens có probability cao nhất. Đơn giản hơn top_p.</td>
+          <td>1 – vocab_size</td>
+          <td>Ít dùng trong inference API; phổ biến hơn trong local inference (Ollama, llama.cpp). <code>top_k=1</code> = greedy.</td>
+        </tr>
+        <tr>
+          <td><code>frequency_penalty</code></td>
+          <td>Giảm probability của token đã xuất hiện, tỷ lệ với số lần đã xuất hiện. Chống lặp từ.</td>
+          <td>0 – 2</td>
+          <td><code>0.1–0.5</code> cho long-form content để tránh repetition. Quá cao → output bất thường.</td>
+        </tr>
+        <tr>
+          <td><code>presence_penalty</code></td>
+          <td>Giảm probability của token đã xuất hiện ít nhất một lần (flat penalty). Khuyến khích diversity.</td>
+          <td>0 – 2</td>
+          <td>Dùng thay <code>frequency_penalty</code> khi muốn đa dạng topic hơn là chống lặp từ.</td>
+        </tr>
+        <tr>
+          <td><code>stop</code></td>
+          <td>Mảng strings — model dừng ngay khi generate ra một trong các strings này.</td>
+          <td>Array of strings</td>
+          <td><code>["```", "\n\n", "Human:"]</code>. Rất hữu ích để kiểm soát output format.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout note">
+    <div class="icon">≡</div>
+    <div>
+      <div class="title">temperature = 0 không hoàn toàn deterministic</div>
+      <p>
+        <code>temperature=0</code> gần với greedy decoding (chọn token có probability cao nhất),
+        nhưng <strong>không đảm bảo</strong> output giống nhau hoàn toàn 100% do floating-point
+        non-determinism ở GPU và batching. Để reproducibility tốt hơn, dùng kết hợp với <code>seed</code>
+        (OpenAI) hoặc <code>top_p=0</code> (nếu API cho phép).
+      </p>
+    </div>
+  </div>
+
+  <!-- ── INTERACTIVE TEMPERATURE DEMO ── -->
+  <div class="demo">
+    <div class="demo-title">Interactive Demo — Temperature &amp; Probability Distribution</div>
+    <p style="color: var(--text-mute); font-size: 13px; margin-bottom: 12px;">
+      Di chuyển slider để thấy temperature ảnh hưởng thế nào đến distribution xác suất của 5 candidate tokens.
+      Temperature thấp → model "confident" vào token tốt nhất. Temperature cao → model "ngẫu hứng" hơn.
+    </p>
+    <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 12px;">
+      <span style="font-family: var(--font-mono); font-size: 13px; color: var(--text-soft);">temp =</span>
+      <span id="temp-display">1.0</span>
+      <span id="temp-label"></span>
+    </div>
+    <input type="range" id="temp-slider" min="0" max="200" value="100" step="1">
+    <div class="temp-bars" id="temp-bars"></div>
+    <p style="color: var(--text-mute); font-size: 12px; margin-top: 12px;">
+      Logits gốc: "fox" = 3.2, "dog" = 2.1, "cat" = 1.8, "rabbit" = 1.0, "banana" = 0.2
+    </p>
+  </div>
+
+  <!-- ─────────────────────────────────────────────── -->
+  <h2 id="context">3.5 Context Window</h2>
+
+  <p>
+    <strong>Context window</strong> (hay <em>context length</em>) là số token tối đa
+    mà model có thể "nhìn" cùng lúc — bao gồm cả input (system prompt + conversation history)
+    và output được generate.
+  </p>
+
+  <h3>Sự tiến hóa của context window</h3>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Năm</th><th>Model</th><th>Context</th><th>Milestone</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>2020</td>
+          <td>GPT-3</td>
+          <td><span class="tag">4K tokens</span></td>
+          <td>Baseline; 1 đoạn văn dài</td>
+        </tr>
+        <tr>
+          <td>2023</td>
+          <td>GPT-4 Turbo</td>
+          <td><span class="tag blue">128K tokens</span></td>
+          <td>Cả cuốn sách nhỏ; đột phá lớn</td>
+        </tr>
+        <tr>
+          <td>2023</td>
+          <td>Claude 2.1</td>
+          <td><span class="tag blue">200K tokens</span></td>
+          <td>~150.000 từ tiếng Anh</td>
+        </tr>
+        <tr>
+          <td>2024</td>
+          <td>Gemini 1.5 Pro</td>
+          <td><span class="tag green">1M tokens</span></td>
+          <td>1 giờ video, 11 giờ audio, 700K dòng code</td>
+        </tr>
+        <tr>
+          <td>2025</td>
+          <td>Gemini 2.5 Pro</td>
+          <td><span class="tag green">2M tokens</span></td>
+          <td>Cả codebase lớn trong một lần</td>
+        </tr>
+        <tr>
+          <td>2025</td>
+          <td>Claude Opus 4</td>
+          <td><span class="tag lilac">1M+</span></td>
+          <td>Competitive với Gemini</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Những điều cần biết về context window</h3>
+
+  <div class="grid-2">
+    <div class="card">
+      <h4>Input ≠ Output tokens</h4>
+      <p>
+        Context window thường chỉ total input+output. Max <em>output</em> tokens thường
+        nhỏ hơn nhiều: GPT-4o max 16K output, Claude 3.7 max 64K output.
+        Nếu cần generate văn bản dài, plan cho output limit này.
+      </p>
+    </div>
+    <div class="card">
+      <h4>Cost tăng theo token count</h4>
+      <p>
+        Self-attention complexity = O(n²) — 2x context = 4x computation.
+        Cost API cũng tăng theo tokens. Context 1M tokens có thể đắt hơn rất nhiều
+        so với 128K. Dùng RAG thay vì stuffing toàn bộ data vào context.
+      </p>
+    </div>
+  </div>
+
+  <div class="callout warn">
+    <div class="icon">!</div>
+    <div>
+      <div class="title">"Lost in the Middle" problem</div>
+      <p>
+        Ngay cả khi context window lớn, model thường <strong>chú ý nhiều hơn đến đầu và cuối context</strong>,
+        bỏ sót thông tin ở giữa (Liu et al. 2023, "Lost in the Middle").
+        Nếu cần model "thấy" thông tin quan trọng, đặt nó ở đầu (system prompt) hoặc cuối (recent user message),
+        không phải ở giữa một đống context dài.
+      </p>
+    </div>
+  </div>
+
+  <details>
+    <summary>Context window thực sự dùng như thế nào? (Practical breakdown)</summary>
+    <p>Tổng context window = System Prompt + Few-shot examples + Retrieved context (RAG) + Conversation history + User message + Output buffer.</p>
+    <p>
+      Ví dụ với model 128K: System prompt 2K, retrieved context 30K, history 10K,
+      user message 1K, output buffer 10K → đã dùng 53K.
+      Luôn track token usage và có chiến lược <em>context management</em>
+      (truncation, summarization, sliding window) cho long conversations.
+    </p>
+  </details>
+
+  <!-- ─────────────────────────────────────────────── -->
+  <h2 id="api-params">3.6 Tham số API quan trọng</h2>
+
+  <p>
+    Ngoài sampling parameters, LLM APIs cung cấp nhiều tham số ảnh hưởng đến
+    behavior, cost, và debugging. Đây là những tham số bạn sẽ dùng thường xuyên nhất.
+  </p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Tham số</th><th>Mô tả</th><th>Khi nào dùng</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>max_tokens</code><br><span class="tag">Nên set luôn</span></td>
+          <td>Giới hạn tokens tối đa cho output. Không set = model generate đến limit → cost cao, latency cao.</td>
+          <td>Luôn set. Với structured outputs: 500–2K. Long-form: 4K–16K.</td>
+        </tr>
+        <tr>
+          <td><code>system</code></td>
+          <td>Instructions cho model — persona, format, constraints. Được xử lý trước user messages.</td>
+          <td>Mọi production app. Đây là nơi bạn control behavior cốt lõi.</td>
+        </tr>
+        <tr>
+          <td><code>tools</code> / <code>functions</code></td>
+          <td>Định nghĩa các functions mà model có thể gọi. Kích hoạt tool use / function calling.</td>
+          <td>Khi build agents, khi cần model extract structured data, hoặc trigger external actions.</td>
+        </tr>
+        <tr>
+          <td><code>response_format</code></td>
+          <td>OpenAI: <code>{type: "json_object"}</code> hoặc <code>json_schema</code>. Đảm bảo output là valid JSON theo schema.</td>
+          <td>Khi cần parse output programmatically. Đáng tin cậy hơn "instruct model return JSON" trong prompt.</td>
+        </tr>
+        <tr>
+          <td><code>seed</code></td>
+          <td>Seed cho random number generator — cùng seed + cùng input → output gần giống nhau hơn (OpenAI).</td>
+          <td>Testing, debugging, reproducibility. Không 100% deterministic do GPU non-determinism.</td>
+        </tr>
+        <tr>
+          <td><code>stream</code></td>
+          <td>Trả về tokens ngay khi generate thay vì đợi full response. Dùng Server-Sent Events.</td>
+          <td>Gần như mọi chat UI — cải thiện perceived latency đáng kể.</td>
+        </tr>
+        <tr>
+          <td><code>logprobs</code></td>
+          <td>Trả về log-probability cho mỗi token được generate. Hữu ích cho uncertainty estimation.</td>
+          <td>Evals, uncertainty calibration, debugging unexpected outputs.</td>
+        </tr>
+        <tr>
+          <td><code>n</code></td>
+          <td>Generate n completions cho cùng một prompt. Cost nhân n lần.</td>
+          <td>Best-of-N sampling, evals, diversity exploration. Ít dùng trong production.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Ví dụ: Gọi API với các tham số trên</h3>
+
+<pre><code><span class="cm">// TypeScript / Node.js — Anthropic Claude</span>
+<span class="kw">import</span> Anthropic <span class="kw">from</span> <span class="str">'@anthropic-ai/sdk'</span>;
+
+<span class="kw">const</span> client = <span class="kw">new</span> <span class="fn">Anthropic</span>();
+
+<span class="kw">const</span> response = <span class="kw">await</span> client.messages.<span class="fn">create</span>({
+  model: <span class="str">'claude-opus-4-5'</span>,
+  max_tokens: <span class="num">1024</span>,
+  temperature: <span class="num">0</span>,           <span class="cm">// deterministic cho structured output</span>
+  system: <span class="str">'You are a data extraction assistant. Always respond with valid JSON.'</span>,
+  messages: [
+    { role: <span class="str">'user'</span>, content: userMessage }
+  ]
+});
+
+<span class="cm">// stream = true thì dùng stream() method:</span>
+<span class="kw">const</span> stream = client.messages.<span class="fn">stream</span>({
+  model: <span class="str">'claude-opus-4-5'</span>,
+  max_tokens: <span class="num">1024</span>,
+  messages: [{ role: <span class="str">'user'</span>, content: userMessage }]
+});
+<span class="kw">for await</span> (<span class="kw">const</span> chunk <span class="kw">of</span> stream) {
+  process.stdout.<span class="fn">write</span>(chunk.delta?.text ?? <span class="str">''</span>);
+}</code></pre>
+
+  <!-- ─────────────────────────────────────────────── -->
+  <h2 id="tom-tat">Tóm tắt</h2>
+  <ol>
+    <li>
+      <strong>Token ≠ từ ≠ ký tự</strong>. Tiếng Việt tốn 2–4x tokens so với tiếng Anh cùng nội dung.
+      Mọi cost, context limit đều tính bằng tokens — phải estimate đúng.
+    </li>
+    <li>
+      <strong>Embedding</strong> = vector representation của text. Semantic similarity = khoảng cách vector.
+      Dedicated embedding models là nền tảng của RAG và search.
+    </li>
+    <li>
+      <strong>Autoregressive generation</strong>: LLM predict một token mỗi lần, dùng KV Cache để hiệu quả.
+      Prompt Caching ở API level tiết kiệm đến 90% cost cho prefix cố định.
+    </li>
+    <li>
+      <strong>Temperature</strong> là tham số quan trọng nhất: <code>0</code> cho code/JSON,
+      <code>0.7–1.0</code> cho creative. Đừng dùng <code>top_p</code> và <code>temperature</code> cùng nhau.
+    </li>
+    <li>
+      Context window lớn không có nghĩa là "nhồi hết vào". Chú ý "lost in the middle",
+      cost tăng theo quy mô, và output token limits riêng biệt so với input.
+    </li>
+    <li>
+      Luôn set <code>max_tokens</code>, dùng <code>stream: true</code> cho UX tốt hơn,
+      và <code>response_format</code> / <code>tools</code> khi cần structured output đáng tin cậy.
+    </li>
+  </ol>
+
+  <nav class="section-footer">
+    <a href="02-foundation-models.html" class="prev">
+      <div class="label">← quay lại</div>
+      <div class="title">02 — Foundation Models cơ bản</div>
+    </a>
+    <a href="04-prompt-engineering.html" class="next">
+      <div class="label">tiếp theo →</div>
+      <div class="title">04 — Prompt Engineering</div>
+    </a>
+  </nav>
+
+</main>
+
+<script src="../assets/script.js"></script>
+<script>
+/* ═══════════════════════════════════════════════
+   Interactive Tokenizer Demo
+   Uses safe DOM methods; text content is escaped
+   before insertion — no untrusted data rendered.
+═══════════════════════════════════════════════ */
+(function () {
+  var TOKEN_CLASSES = ['token-0', 'token-1', 'token-2', 'token-3', 'token-4'];
+
+  /* Split text into approximate subword chunks (mimics BPE concept) */
+  function approxTokenize(text) {
+    var result = [];
+    var i = 0;
+    while (i < text.length) {
+      /* whitespace run → separate token */
+      if (/\s/.test(text[i])) {
+        var ws = '';
+        while (i < text.length && /\s/.test(text[i])) { ws += text[i]; i++; }
+        result.push({ text: ws, kind: 'space' });
+        continue;
+      }
+      /* ASCII punctuation → single token */
+      if (/[^\w\sÀ-ỹÀ-ɏ]/.test(text[i])) {
+        result.push({ text: text[i], kind: 'punct' });
+        i++;
+        continue;
+      }
+      /* word → split into subword chunks of 3-4 chars */
+      var word = '';
+      while (i < text.length && /[\wÀ-ỹÀ-ɏ]/.test(text[i])) { word += text[i]; i++; }
+      if (word.length <= 4) {
+        result.push({ text: word, kind: 'word' });
+      } else {
+        var j = 0;
+        while (j < word.length) {
+          var sz = (word.length - j <= 5) ? word.length - j : (Math.random() < 0.5 ? 3 : 4);
+          result.push({ text: word.slice(j, j + sz), kind: 'word' });
+          j += sz;
+        }
+      }
+    }
+    return result;
+  }
+
+  function renderTokens(tokens) {
+    var container = document.getElementById('token-output');
+    var countEl = document.getElementById('token-count');
+    /* clear safely */
+    while (container.firstChild) { container.removeChild(container.firstChild); }
+
+    var colorIdx = 0;
+    var wordCount = 0;
+
+    tokens.forEach(function (t) {
+      if (t.kind === 'space') {
+        /* render whitespace / newlines as plain text nodes */
+        t.text.split('').forEach(function (ch) {
+          if (ch === '\n') {
+            container.appendChild(document.createElement('br'));
+          } else {
+            container.appendChild(document.createTextNode(ch));
+          }
+        });
+      } else {
+        var span = document.createElement('span');
+        span.className = 'token ' + TOKEN_CLASSES[colorIdx % TOKEN_CLASSES.length];
+        span.textContent = t.text; /* safe: textContent, not innerHTML */
+        container.appendChild(span);
+        colorIdx++;
+        wordCount++;
+      }
+    });
+
+    /* count display — built with DOM, not innerHTML */
+    while (countEl.firstChild) { countEl.removeChild(countEl.firstChild); }
+    var strong = document.createElement('strong');
+    strong.style.color = 'var(--accent)';
+    strong.textContent = '≈' + wordCount + ' tokens';
+    countEl.appendChild(strong);
+    var rawText = document.getElementById('token-input').value;
+    var wordEstimate = rawText.trim().split(/\s+/).filter(Boolean).length;
+    countEl.appendChild(document.createTextNode(
+      ' (ước lượng demo, không phải BPE thực tế) · ' +
+      'Số từ: ~' + wordEstimate + ' · ' +
+      'Số ký tự: ' + rawText.length
+    ));
+  }
+
+  function run() {
+    var val = document.getElementById('token-input').value;
+    if (!val.trim()) {
+      var out = document.getElementById('token-output');
+      while (out.firstChild) { out.removeChild(out.firstChild); }
+      var placeholder = document.createElement('span');
+      placeholder.style.color = 'var(--text-mute)';
+      placeholder.textContent = 'Nhập text để tokenize...';
+      out.appendChild(placeholder);
+      var cnt = document.getElementById('token-count');
+      while (cnt.firstChild) { cnt.removeChild(cnt.firstChild); }
+      return;
+    }
+    renderTokens(approxTokenize(val));
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    document.getElementById('btn-tokenize').addEventListener('click', run);
+
+    document.getElementById('btn-vi').addEventListener('click', function () {
+      document.getElementById('token-input').value =
+        'Kỹ sư phần mềm cần hiểu cách mô hình ngôn ngữ lớn hoạt động để xây dựng ứng dụng AI hiệu quả.';
+      run();
+    });
+
+    document.getElementById('btn-code').addEventListener('click', function () {
+      document.getElementById('token-input').value =
+        'def fibonacci(n: int) -> int:\n    if n <= 1:\n        return n\n    return fibonacci(n-1) + fibonacci(n-2)';
+      run();
+    });
+
+    run();
+  });
+}());
+
+
+/* ═══════════════════════════════════════════════
+   Interactive Temperature Demo
+   All DOM mutations use safe methods (textContent,
+   style assignments). No user input is rendered.
+═══════════════════════════════════════════════ */
+(function () {
+  var BASE_LOGITS = [3.2, 2.1, 1.8, 1.0, 0.2];
+  var LABELS = ['"fox"', '"dog"', '"cat"', '"rabbit"', '"banana"'];
+  var COLORS = [
+    'var(--accent)', 'var(--accent-2)', 'var(--accent-3)',
+    'var(--accent-4)', 'var(--danger)'
+  ];
+
+  function softmax(logits) {
+    var maxL = Math.max.apply(null, logits);
+    var exps = logits.map(function (l) { return Math.exp(l - maxL); });
+    var sum = exps.reduce(function (a, b) { return a + b; }, 0);
+    return exps.map(function (e) { return e / sum; });
+  }
+
+  function scaled(temp) {
+    var t = temp < 0.001 ? 0.001 : temp;
+    return BASE_LOGITS.map(function (l) { return l / t; });
+  }
+
+  function buildBars() {
+    var container = document.getElementById('temp-bars');
+    /* create rows once */
+    LABELS.forEach(function (lbl, i) {
+      var row = document.createElement('div');
+      row.className = 'temp-bar-row';
+
+      var labelEl = document.createElement('span');
+      labelEl.className = 'temp-bar-label';
+      labelEl.textContent = lbl;
+      row.appendChild(labelEl);
+
+      var track = document.createElement('div');
+      track.className = 'temp-bar-track';
+      var fill = document.createElement('div');
+      fill.className = 'temp-bar-fill';
+      fill.style.background = COLORS[i];
+      fill.dataset.idx = i;
+      track.appendChild(fill);
+      row.appendChild(track);
+
+      var val = document.createElement('span');
+      val.className = 'temp-bar-val';
+      val.dataset.valIdx = i;
+      row.appendChild(val);
+
+      container.appendChild(row);
+    });
+  }
+
+  function updateBars(temp) {
+    var probs = softmax(scaled(temp));
+    probs.forEach(function (p, i) {
+      var pct = Math.round(p * 100);
+      var fill = document.querySelector('.temp-bar-fill[data-idx="' + i + '"]');
+      var val = document.querySelector('.temp-bar-val[data-val-idx="' + i + '"]');
+      if (fill) fill.style.width = pct + '%';
+      if (val) val.textContent = pct + '%';
+    });
+  }
+
+  function tempLabel(t) {
+    if (t < 0.1) return '← gần deterministic (greedy)';
+    if (t < 0.4) return '← rất focused';
+    if (t < 0.8) return '← balanced';
+    if (t < 1.2) return '← creative (default range)';
+    if (t < 1.6) return '← random';
+    return '← rất ngẫu nhiên';
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    var slider = document.getElementById('temp-slider');
+    var display = document.getElementById('temp-display');
+    var label = document.getElementById('temp-label');
+    if (!slider) return;
+
+    buildBars();
+
+    function update() {
+      var temp = slider.value / 100;
+      display.textContent = temp.toFixed(1);
+      label.textContent = tempLabel(temp);
+      updateBars(temp);
+    }
+
+    slider.addEventListener('input', update);
+    update();
+  });
+}());
+</script>
+</body>
+</html>
