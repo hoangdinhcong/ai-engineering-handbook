@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>404 — Không tìm thấy · AI Engineering</title>
+<link rel="stylesheet" href="/assets/style.css">
+<style>
+  .nf-page {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 96px 24px 96px;
+    text-align: center;
+  }
+  .nf-code {
+    font-family: var(--font-mono);
+    font-size: 96px;
+    line-height: 1;
+    color: var(--accent);
+    text-shadow: 0 0 24px rgba(255, 184, 107, 0.25);
+    margin-bottom: 8px;
+  }
+  .nf-title {
+    font-size: 28px;
+    margin: 0 0 12px;
+  }
+  .nf-lede {
+    color: var(--text-soft);
+    font-size: 16px;
+    margin: 0 0 32px;
+  }
+  .nf-actions {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    justify-content: center;
+    margin-bottom: 48px;
+  }
+  .nf-btn {
+    padding: 10px 18px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: var(--bg-elev);
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: 13px;
+    transition: border-color 0.15s ease, color 0.15s ease;
+  }
+  .nf-btn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+  }
+  .nf-suggest {
+    margin-top: 48px;
+    padding-top: 24px;
+    border-top: 1px solid var(--line-soft);
+    text-align: left;
+  }
+  .nf-suggest h2 {
+    font-size: 13px;
+    font-family: var(--font-mono);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-mute);
+    margin: 0 0 12px;
+  }
+  .nf-suggest ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px 24px;
+  }
+  .nf-suggest li a {
+    display: block;
+    padding: 6px 0;
+    color: var(--text-soft);
+    border-bottom: 1px solid transparent;
+  }
+  .nf-suggest li a:hover { color: var(--accent-2); border-bottom-color: var(--accent-2); }
+  @media (max-width: 600px) {
+    .nf-suggest ul { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<nav class="top-nav">
+  <div class="brand"><span class="dot"></span> AI Engineering</div>
+  <div class="crumbs"><a href="/">Mục lục</a> › <span>404</span></div>
+  <div class="nav-actions">
+    <a href="/">Mục lục</a>
+  </div>
+</nav>
+
+<main class="page nf-page">
+  <div class="nf-code">404</div>
+  <h1 class="nf-title">Trang này lạc đâu mất rồi</h1>
+  <p class="nf-lede">
+    URL bạn truy cập không khớp với bất kỳ bài nào trong sổ tay. Có thể bài
+    đã được đổi tên, hoặc bạn gõ nhầm. Thử quay về mục lục hoặc nhảy
+    sang một bài phổ biến bên dưới.
+  </p>
+
+  <div class="nf-actions">
+    <a href="/" class="nf-btn">← Quay về mục lục</a>
+    <a href="https://github.com/hoangdinhcong/ai-engineering-handbook/issues" class="nf-btn" target="_blank" rel="noopener">Báo lỗi link</a>
+  </div>
+
+  <div class="nf-suggest">
+    <h2>Bài phổ biến</h2>
+    <ul>
+      <li><a href="/sections/01-what-is-ai-engineering">§01 — AI Engineering là gì?</a></li>
+      <li><a href="/sections/02-foundation-models">§02 — Foundation Models cơ bản</a></li>
+      <li><a href="/sections/04-prompt-engineering">§04 — Prompt Engineering</a></li>
+      <li><a href="/sections/09-rag">§09 — RAG</a></li>
+      <li><a href="/sections/10-agents">§10 — Agents &amp; Tool Use</a></li>
+      <li><a href="/sections/18-code-generating-ai">§18 — Code-generating AI</a></li>
+    </ul>
+  </div>
+</main>
+
+<script src="/assets/script.js"></script>
+</body>
+</html>

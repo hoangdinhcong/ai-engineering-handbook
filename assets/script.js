@@ -1,6 +1,22 @@
 // Shared scripts for AI Engineering docs
 const REPO_URL = 'https://github.com/hoangdinhcong/ai-engineering-handbook';
 
+// Giscus (GitHub Discussions-backed comments) — chỉ render trên trang /sections/*.
+// Setup:
+//   1. Enable Discussions trên repo (Settings → General → Features → Discussions)
+//   2. Install giscus app: https://github.com/apps/giscus → chọn repo này
+//   3. Vào https://giscus.app, nhập repo "hoangdinhcong/ai-engineering-handbook",
+//      pick category (vd "Comments" hoặc "Announcements"), copy repoId + categoryId
+//   4. Thay 2 giá trị REPLACE_ME bên dưới — comments sẽ tự render mỗi bài
+const GISCUS = {
+  repo: 'hoangdinhcong/ai-engineering-handbook',
+  repoId: 'REPLACE_ME',
+  category: 'Comments',
+  categoryId: 'REPLACE_ME',
+  theme: 'dark_dimmed',
+  lang: 'vi',
+};
+
 function makeEl(tag, props = {}, children = []) {
   const el = document.createElement(tag);
   Object.assign(el, props);
@@ -98,9 +114,50 @@ function injectSiteFooter() {
   main.appendChild(makeEl('footer', { className: 'site-credit' }, [iconsRow, contribLine]));
 }
 
+function injectGiscus() {
+  // Only on lesson pages, and only if config has been filled in
+  if (!location.pathname.includes('/sections/')) return;
+  if (GISCUS.repoId === 'REPLACE_ME' || GISCUS.categoryId === 'REPLACE_ME') return;
+
+  const main = document.querySelector('main');
+  if (!main) return;
+  const nav = main.querySelector('.section-footer');
+
+  const heading = makeEl('h2', { id: 'comments', className: 'giscus-heading', textContent: 'Bình luận' });
+  const container = makeEl('div', { className: 'giscus-container' });
+
+  const s = document.createElement('script');
+  s.src = 'https://giscus.app/client.js';
+  Object.entries({
+    'data-repo': GISCUS.repo,
+    'data-repo-id': GISCUS.repoId,
+    'data-category': GISCUS.category,
+    'data-category-id': GISCUS.categoryId,
+    'data-mapping': 'pathname',
+    'data-strict': '0',
+    'data-reactions-enabled': '1',
+    'data-emit-metadata': '0',
+    'data-input-position': 'bottom',
+    'data-theme': GISCUS.theme,
+    'data-lang': GISCUS.lang,
+    crossorigin: 'anonymous',
+  }).forEach(([k, v]) => s.setAttribute(k, v));
+  s.async = true;
+  container.appendChild(s);
+
+  if (nav) {
+    main.insertBefore(heading, nav);
+    main.insertBefore(container, nav);
+  } else {
+    main.appendChild(heading);
+    main.appendChild(container);
+  }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   injectHeaderGithub();
   injectSiteFooter();
+  injectGiscus();
 
   // Tabs
   document.querySelectorAll('.tabs').forEach(tabs => {

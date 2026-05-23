@@ -584,23 +584,28 @@ kbd {
   color: var(--text);
 }
 
-/* knowledge freshness pill — sits to the right of the .eyebrow line in the hero */
+/* hero meta row — eyebrow on left, readtime + updated pill on right */
 .eyebrow-row {
   display: flex;
-  justify-content: space-between;
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
   margin-bottom: 8px;
 }
+.eyebrow-row .eyebrow {
+  margin-right: auto; /* pushes readtime + pill to the right edge */
+}
+.hero-readtime,
 .hero-updated {
   font-family: var(--font-mono);
   font-size: 11px;
   letter-spacing: 0.04em;
   color: var(--text-mute);
+  white-space: nowrap;
+}
+.hero-updated {
   border-bottom: 1px dashed transparent;
   transition: color 0.15s ease, border-bottom-color 0.15s ease;
-  white-space: nowrap;
 }
 .hero-updated:hover {
   color: var(--accent-3);
@@ -656,3 +661,20 @@ kbd {
   color: var(--accent-2);
   border-bottom-color: var(--accent-2);
 }
+
+/* ============================================================
+   Comments (giscus, injected by script.js)
+   ============================================================ */
+.giscus-heading {
+  margin: 64px 0 8px;
+  padding-top: 24px;
+  border-top: 1px solid var(--line-soft);
+  font-size: 13px;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-mute);
+  font-weight: 500;
+}
+.giscus-container { margin-bottom: 32px; }
+.giscus-container iframe { color-scheme: dark; }
