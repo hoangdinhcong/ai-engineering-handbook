@@ -678,3 +678,149 @@ kbd {
 }
 .giscus-container { margin-bottom: 32px; }
 .giscus-container iframe { color-scheme: dark; }
+
+/* ============================================================
+   Glossary term links (auto-wrapped trong lessons bởi glossary.js)
+   ============================================================ */
+a.term {
+  color: inherit;
+  border-bottom: 1px dotted var(--accent-3);
+  cursor: pointer;
+  transition: border-bottom-color 0.15s ease, color 0.15s ease;
+}
+a.term:hover {
+  color: var(--accent-3);
+  border-bottom: 1px solid var(--accent-3);
+}
+a.term:focus-visible {
+  outline: 2px solid var(--accent-3);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* Tooltip popover */
+.term-tooltip {
+  position: absolute;
+  z-index: 1000;
+  background: var(--bg-card);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px 14px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.15s ease;
+  pointer-events: none;
+  max-width: 380px;
+  font-size: 13px;
+  line-height: 1.55;
+}
+.term-tooltip.visible {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+.term-tooltip .tt-name {
+  font-weight: 600;
+  color: var(--accent-3);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  margin-bottom: 6px;
+}
+.term-tooltip .tt-def {
+  color: var(--text-soft);
+  margin-bottom: 8px;
+}
+.term-tooltip .tt-foot {
+  padding-top: 8px;
+  margin-top: 4px;
+  border-top: 1px solid var(--line-soft);
+  font-size: 11.5px;
+  font-family: var(--font-mono);
+  color: var(--text-mute);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.term-tooltip .tt-refs {
+  color: var(--text-mute);
+}
+.term-tooltip .tt-refs a {
+  color: var(--text-soft);
+  border-bottom: 1px dashed transparent;
+  margin-right: 4px;
+}
+.term-tooltip .tt-refs a:hover {
+  color: var(--accent-2);
+  border-bottom-color: var(--accent-2);
+}
+.term-tooltip .tt-open {
+  color: var(--text-mute);
+  border-bottom: 1px dashed transparent;
+  align-self: flex-start;
+}
+.term-tooltip .tt-open:hover {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+/* ============================================================
+   Glossary page (rendered bởi glossary.js)
+   ============================================================ */
+.glossary-page { max-width: 880px; margin: 0 auto; padding: 32px 24px 96px; }
+.glossary-toc {
+  margin: 24px 0 40px;
+  padding: 14px 16px;
+  background: var(--bg-elev);
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-mute);
+  line-height: 1.9;
+}
+.glossary-toc strong { color: var(--text-soft); margin-right: 6px; }
+.glossary-toc a { color: var(--text-soft); }
+.glossary-toc a:hover { color: var(--accent-3); border-bottom-color: var(--accent-3); }
+
+.glossary-cat {
+  margin-bottom: 48px;
+  scroll-margin-top: 80px;
+}
+.glossary-cat h2 {
+  font-size: 14px;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line-soft);
+  margin: 0 0 20px;
+}
+.glossary-list { margin: 0; }
+.glossary-list dt {
+  font-weight: 600;
+  color: var(--text);
+  font-size: 16px;
+  margin-top: 22px;
+  margin-bottom: 6px;
+  scroll-margin-top: 80px;
+}
+.glossary-list dt:first-of-type { margin-top: 0; }
+.glossary-list dd {
+  margin: 0;
+  color: var(--text-soft);
+  font-size: 14.5px;
+  line-height: 1.7;
+}
+.glossary-refs {
+  margin-left: 6px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-mute);
+}
+.glossary-refs a {
+  color: var(--text-mute);
+  border-bottom: 1px dashed transparent;
+}
+.glossary-refs a:hover { color: var(--accent-2); border-bottom-color: var(--accent-2); }
