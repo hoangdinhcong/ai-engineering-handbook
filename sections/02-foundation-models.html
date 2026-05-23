@@ -13,6 +13,7 @@
   <div class="crumbs"><a href="../index.html">Mục lục</a> › Phần 1 · <span>02 — Foundation Models cơ bản</span></div>
   <div class="nav-actions">
     <a href="01-what-is-ai-engineering.html">← Trước</a>
+    <a href="../index.html">Mục lục</a>
     <a href="03-how-llm-works.html">Tiếp →</a>
   </div>
 </nav>
@@ -20,7 +21,7 @@
 <main class="page">
 
   <section class="hero">
-    <span class="eyebrow">Phần 1 · §02</span>
+    <div class="eyebrow-row"><span class="eyebrow">Phần 1 · §02</span><a class="hero-updated" href="../KNOWLEDGE_UPDATES.md" title="Lịch sử cập nhật kiến thức">↻ 2026-05-23</a></div>
     <h1>Foundation Models cơ bản</h1>
     <p class="lede">
       Hiểu Foundation Model là gì, vòng đời training của một LLM, Scaling Laws,
@@ -111,48 +112,48 @@
     <div class="tab-panel active">
       <ul>
         <li>
-          <strong>GPT-4o, GPT-4.1, o3</strong> <span class="tag">OpenAI</span> —
-          flagship models của OpenAI; multimodal, context dài; o3 đặc biệt mạnh về reasoning
+          <strong>GPT-5.5, GPT-5.4, GPT-5</strong> <span class="tag">OpenAI</span> —
+          flagship models của OpenAI; GPT-5.5 là model mạnh nhất hiện tại, context lên đến 1M tokens; GPT-4o/4.1/o4-mini đã bị retire từ tháng 2/2026
         </li>
         <li>
-          <strong>Claude 3.5 Sonnet, Claude 3.7 Sonnet, Claude Opus 4</strong> <span class="tag blue">Anthropic</span> —
-          nổi tiếng về safety, instruction-following tốt, context 200k tokens
+          <strong>Claude Opus 4.7, Claude Sonnet 4.6, Claude Haiku 4.5</strong> <span class="tag blue">Anthropic</span> —
+          nổi tiếng về safety, instruction-following tốt; Opus 4.7 &amp; Sonnet 4.6 context 1M tokens
         </li>
         <li>
-          <strong>Gemini 2.0 Flash, Gemini 2.5 Pro</strong> <span class="tag green">Google</span> —
-          tích hợp sâu với Google ecosystem, context 1M–2M tokens, multimodal native
+          <strong>Gemini 3 Flash, Gemini 3.5 Flash, Gemini 2.5 Pro</strong> <span class="tag green">Google</span> —
+          tích hợp sâu với Google ecosystem, context 1M–2M tokens, multimodal native; Gemini 3 Flash là default model mới
         </li>
         <li>
-          <strong>Grok 3</strong> <span class="tag lilac">xAI</span> —
-          tích hợp với X/Twitter data, thinking mode cho reasoning phức tạp
+          <strong>Grok 4.3</strong> <span class="tag lilac">xAI</span> —
+          flagship của xAI từ tháng 4/2026; context 1M tokens, tích hợp với X/Twitter data, thinking mode cho reasoning phức tạp
         </li>
       </ul>
     </div>
     <div class="tab-panel">
       <ul>
         <li>
-          <strong>Llama 3.1, Llama 3.3, Llama 4</strong> <span class="tag">Meta</span> —
-          family mạnh nhất trong open-weight; Llama 4 multimodal native; có thể self-host
+          <strong>Llama 4 Scout, Llama 4 Maverick</strong> <span class="tag">Meta</span> —
+          family mạnh nhất trong open-weight; MoE architecture, natively multimodal; Scout có context 10M tokens, fit vào 1 GPU H100
         </li>
         <li>
-          <strong>Mistral, Mixtral (MoE), Mistral Large</strong> <span class="tag blue">Mistral AI</span> —
-          compact, hiệu quả; Mixtral dùng kiến trúc Mixture-of-Experts
+          <strong>Mistral Large 3 (675B MoE), Mistral Small 4</strong> <span class="tag blue">Mistral AI</span> —
+          Large 3 là MoE 41B active/675B total params; Small 4 tích hợp reasoning + vision + coding vào một model
         </li>
         <li>
-          <strong>DeepSeek-V3, DeepSeek-R1</strong> <span class="tag green">DeepSeek</span> —
-          training cost thấp bất ngờ; R1 dùng pure RL để đạt reasoning tốt; gây chấn động đầu 2025
+          <strong>DeepSeek-V4, DeepSeek-V3.2, DeepSeek-R1</strong> <span class="tag green">DeepSeek</span> —
+          V4 (tháng 4/2026) hỗ trợ context 1M tokens; R1 dùng pure RL để đạt reasoning tốt; gây chấn động đầu 2025
         </li>
         <li>
-          <strong>Qwen2.5, QwQ</strong> <span class="tag lilac">Alibaba</span> —
-          mạnh về tiếng Trung và đa ngôn ngữ; QwQ là reasoning model; Qwen2.5-Coder xuất sắc về code
+          <strong>Qwen3.7, Qwen3.6, Qwen3</strong> <span class="tag lilac">Alibaba</span> —
+          mạnh về đa ngôn ngữ; Qwen3.7-Max-Preview (tháng 5/2026) là reasoning model với context 1M tokens; Apache 2.0
         </li>
         <li>
-          <strong>Gemma 3</strong> <span class="tag">Google</span> —
-          lightweight, tối ưu cho edge/local; dễ fine-tune với ít dữ liệu
+          <strong>Gemma 4</strong> <span class="tag">Google</span> —
+          released tháng 4/2026 (Apache 2.0); sizes 5B–31B; lightweight, tối ưu cho edge/local; dễ fine-tune với ít dữ liệu
         </li>
         <li>
-          <strong>Phi-4</strong> <span class="tag blue">Microsoft</span> —
-          small model (~14B) nhưng hiệu suất cao nhờ data curation kỹ lưỡng
+          <strong>Phi-4, Phi-4-reasoning, Phi-4-multimodal</strong> <span class="tag blue">Microsoft</span> —
+          small model family (~14B) nhưng hiệu suất cao; Phi-4-multimodal hỗ trợ text + audio + vision; Phi-4-reasoning vượt o1-mini
         </li>
       </ul>
     </div>
@@ -259,7 +260,7 @@
   <p>
     Tùy mục tiêu: fine-tune thêm cho reasoning (DeepSeek-R1 dùng pure RL với verifiable rewards),
     coding (CodeLlama, DeepSeek-Coder), ngôn ngữ cụ thể, hoặc domain (y tế, pháp lý).
-    Các "thinking models" như o1, o3, QwQ được train ở đây để tạo
+    Các "thinking models" như GPT-5 series, DeepSeek-R1, Qwen3.7 được train ở đây để tạo
     <em>chain-of-thought nội bộ</em> trước khi trả lời.
   </p>
 
@@ -331,8 +332,8 @@
   <p>
     Frontier mới nhất (2024-2025): thay vì chỉ scale training compute, có thể scale
     <strong>inference-time compute</strong> bằng cách cho model "think longer".
-    OpenAI o1/o3, DeepSeek-R1, Gemini Thinking đều dùng approach này —
-    tạo chain-of-thought nội bộ trước khi trả lời.
+    GPT-5 series (tích hợp reasoning vào model chính), DeepSeek-R1, Gemini Thinking đều dùng approach này —
+    tạo chain-of-thought nội bộ trước khi trả lời. o3 đã được kế thừa bởi GPT-5 trong lineup của OpenAI.
   </p>
   <p>
     Hệ quả với AI Engineer: reasoning models <strong>tốn token nhiều hơn</strong> (và đắt hơn),
@@ -435,7 +436,7 @@
       <tbody>
         <tr>
           <td><strong>Hiệu suất frontier</strong></td>
-          <td><span class="tag green">✓ Dẫn đầu</span> GPT-4o, Claude 3.7, Gemini 2.5</td>
+          <td><span class="tag green">✓ Dẫn đầu</span> GPT-5.5, Claude Opus 4.7, Gemini 3.5 Flash</td>
           <td>Gần đây rút ngắn khoảng cách đáng kể (Llama 4, DeepSeek-V3)</td>
         </tr>
         <tr>
@@ -534,7 +535,7 @@
         translation, code generation, classification, extraction.
       </p>
       <p>
-        Models: GPT-4o (text mode), Claude 3.x, Llama 3.x, Mistral, DeepSeek, Gemma…
+        Models: GPT-5.5, Claude Opus 4.7/Sonnet 4.6, Llama 4 Scout/Maverick, Mistral Large 3, DeepSeek-V4, Gemma 4…
       </p>
       <p>
         <em>Lưu ý</em>: "text" ngày nay thường bao gồm cả <code>tool_use</code> và
@@ -548,8 +549,8 @@
         chart understanding, UI screenshot analysis, document parsing.
       </p>
       <p>
-        Models: GPT-4o (vision), Claude 3 (vision), Gemini 2.x (native multimodal),
-        Llama 4 Scout/Maverick, LLaVA, Qwen-VL, InternVL2.
+        Models: GPT-5.5 (vision), Claude Opus 4.7/Sonnet 4.6 (vision), Gemini 3.x (native multimodal),
+        Llama 4 Scout/Maverick (natively multimodal), Qwen3.7, Phi-4-multimodal, InternVL2.
       </p>
       <div class="callout note">
         <div class="icon">≡</div>
@@ -601,12 +602,12 @@
     <div class="tab-panel">
       <h4>Video &amp; Natively Multimodal</h4>
       <p>
-        <strong>Video understanding</strong>: Gemini 2.5 Pro có thể nhận video dài làm input;
+        <strong>Video understanding</strong>: Gemini 2.5 Pro/Gemini 3 Flash có thể nhận video dài làm input;
         dùng cho video Q&amp;A, transcript với visual context, video surveillance.
       </p>
       <p>
         <strong>Natively multimodal</strong>: Thay vì "LLM + vision adapter",
-        các model như Gemini 2.x và GPT-4o được train từ đầu trên multiple modalities,
+        các model như Gemini 3.x, GPT-5.5, và Llama 4 được train từ đầu trên multiple modalities,
         dẫn đến cross-modal reasoning tốt hơn.
       </p>
       <p>
@@ -645,15 +646,14 @@
       use case và trade-off riêng.
     </li>
   </ol>
-
   <nav class="section-footer">
     <a href="01-what-is-ai-engineering.html" class="prev">
-      <div class="label">← quay lại</div>
+      <div class="label">← Trước</div>
       <div class="title">01 — AI Engineering là gì?</div>
     </a>
     <a href="03-how-llm-works.html" class="next">
-      <div class="label">tiếp theo →</div>
-      <div class="title">03 — Cách LLM hoạt động</div>
+      <div class="label">Tiếp theo →</div>
+      <div class="title">03 — </div>
     </a>
   </nav>
 

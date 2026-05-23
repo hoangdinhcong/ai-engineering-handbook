@@ -12,15 +12,16 @@
   <div class="brand"><span class="dot"></span> AI Engineering</div>
   <div class="crumbs"><a href="../index.html">Mục lục</a> › Phần 6 · <span>18 — Code-generating AI Systems</span></div>
   <div class="nav-actions">
-    <a href="17-multimodal.html">← 17</a>
-    <a href="19-mlops.html">Tiếp →</a>
+    <a href="17-multimodal.html">← Trước</a>
+    <a href="../index.html">Mục lục</a>
+    <a href="19-mlops-llmops.html">Tiếp →</a>
   </div>
 </nav>
 
 <main class="page">
 
   <section class="hero">
-    <span class="eyebrow">Phần 6 · §18</span>
+    <div class="eyebrow-row"><span class="eyebrow">Phần 6 · §18</span><a class="hero-updated" href="../KNOWLEDGE_UPDATES.md" title="Lịch sử cập nhật kiến thức">↻ 2026-05-23</a></div>
     <h1>Code-generating AI Systems</h1>
     <p class="lede">
       Từ inline completion đến autonomous coding agents — architecture, context strategies, sandboxing, và evaluation của các hệ thống AI viết code.
@@ -47,7 +48,7 @@
 
   <h2 id="landscape">18.1 Landscape</h2>
   <p>
-    Code-generating AI đã trở thành một trong những ứng dụng AI phổ biến nhất — GitHub Copilot báo cáo &gt;1 triệu paying users năm 2024. Landscape hiện tại chia thành ba lớp:
+    Code-generating AI đã trở thành một trong những ứng dụng AI phổ biến nhất. Năm 2025–2026, thị trường bùng nổ: GitHub Copilot vượt 15 triệu users, Cursor đạt $2B ARR, MCP protocol của Anthropic vượt 10.000 public servers và 97M SDK downloads/tháng (Q1 2026). Landscape hiện tại chia thành <strong>bốn lớp</strong>:
   </p>
 
   <div class="table-wrap">
@@ -56,14 +57,23 @@
         <tr><th>Tool</th><th>Type</th><th>Điểm mạnh</th><th>Model underlying</th></tr>
       </thead>
       <tbody>
-        <tr><td><strong>GitHub Copilot</strong></td><td>IDE extension (inline + chat)</td><td>Deep GitHub integration, widespread adoption, multiple IDEs</td><td>GPT-4o, Claude 3.5 (user chọn)</td></tr>
-        <tr><td><strong>Cursor</strong></td><td>IDE fork (VS Code base)</td><td>Composer (multi-file), Codebase indexing, Agent mode</td><td>Claude 3.5 Sonnet, GPT-4o, own models</td></tr>
-        <tr><td><strong>Windsurf</strong></td><td>IDE fork</td><td>Cascade flow (agent), deep codebase awareness</td><td>Claude + own models</td></tr>
-        <tr><td><strong>Claude Code</strong></td><td>CLI agent</td><td>Long context, strong agentic loop, terminal-native</td><td>Claude Sonnet/Opus</td></tr>
-        <tr><td><strong>Aider</strong></td><td>CLI + agent</td><td>Open-source, supports any model, git-integrated diffs</td><td>Any (Claude, GPT-4o, local)</td></tr>
-        <tr><td><strong>Cody (Sourcegraph)</strong></td><td>IDE extension</td><td>Enterprise codebases, code search integration</td><td>Claude 3.5, GPT-4o</td></tr>
-        <tr><td><strong>Continue</strong></td><td>IDE extension</td><td>Open-source, self-hostable, local model support</td><td>Any (local or API)</td></tr>
-        <tr><td><strong>OpenAI Codex CLI</strong></td><td>CLI agent</td><td>Simple, sandboxed execution, o3 reasoning</td><td>o3, o4-mini</td></tr>
+        <tr><td colspan="4" style="background:rgba(124,196,255,0.06);font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#7cc4ff">Lớp 1 — AI-native IDE (local + cloud agents)</td></tr>
+        <tr><td><strong>Cursor</strong></td><td>IDE fork; Cursor 3 (Apr 2026): agent-first workspace</td><td>Background agents (8 song song), multi-repo, seamless local↔cloud handoff, MCP native</td><td>Claude Sonnet, GPT-4o, Gemini, Cursor own models</td></tr>
+        <tr><td><strong>Windsurf</strong></td><td>IDE fork; Windsurf 2.0 (Apr 2026)</td><td>Cascade agentic flow, Devin Cloud one-click delegation, Agent Command Center (Kanban), Spaces</td><td>Claude + own models (SWE-focused)</td></tr>
+        <tr><td colspan="4" style="background:rgba(124,196,255,0.06);font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#7cc4ff">Lớp 2 — CLI / terminal agents</td></tr>
+        <tr><td><strong>Claude Code</strong></td><td>CLI agent (Agent SDK)</td><td>Subagents (parallel), Agent Teams, Hooks system, MCP native, CLAUDE.md conventions, spec-driven dev</td><td>Claude Sonnet/Opus (user chọn)</td></tr>
+        <tr><td><strong>OpenAI Codex</strong></td><td>Cloud agent (ra mắt May 2025)</td><td>Issue→PR autonomous; mỗi task chạy trong cloud sandbox riêng; tích hợp ChatGPT Plus</td><td>codex-1 (o3-optimized for SWE)</td></tr>
+        <tr><td><strong>Aider</strong></td><td>CLI + agent (open-source)</td><td>Repo map, git-integrated diffs, model-agnostic, unix composable</td><td>Any (Claude, GPT-4o, DeepSeek, local)</td></tr>
+        <tr><td><strong>Cline</strong></td><td>VS Code extension (open-source)</td><td>~4M installs, plan+diff+approve flow, MCP tools</td><td>Any via API</td></tr>
+        <tr><td colspan="4" style="background:rgba(124,196,255,0.06);font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#7cc4ff">Lớp 3 — IDE extension / cloud workspace</td></tr>
+        <tr><td><strong>GitHub Copilot</strong></td><td>Extension + Cloud Coding Agent (GA Sep 2025)</td><td>Issue→PR autonomous (GitHub Actions sandbox); agentic code review tạo fix-PR; 15M+ users</td><td>GPT-4o, Claude, Gemini (user chọn)</td></tr>
+        <tr><td><strong>Devin 2.0</strong></td><td>Autonomous cloud agent (Apr 2025)</td><td>Devin Search + Wiki, SWE-1.6 model, giá $20/tháng; Goldman Sachs pilot 3-4x productivity</td><td>SWE-1.6 (Cognition proprietary)</td></tr>
+        <tr><td><strong>Continue</strong></td><td>IDE extension (open-source)</td><td>Self-hostable, local model support</td><td>Any (local or API)</td></tr>
+        <tr><td colspan="4" style="background:rgba(124,196,255,0.06);font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#7cc4ff">Lớp 4 — App builders (natural language → full-stack app)</td></tr>
+        <tr><td><strong>Lovable</strong></td><td>Browser-based full-stack builder</td><td>Auth + DB + payments; $100M ARR trong 8 tháng</td><td>Claude (primarily)</td></tr>
+        <tr><td><strong>Bolt</strong></td><td>Browser-based JS app builder</td><td>Bolt v2: built-in auth, edge functions, storage; Figma/GitHub import</td><td>Claude + others</td></tr>
+        <tr><td><strong>Replit Agent</strong></td><td>Cloud IDE + agent (Agent 4, Mar 2026)</td><td>Parallel tasks, Design Mode, checkpoint rollback, $100M ARR in 9 months</td><td>Multiple</td></tr>
+        <tr><td><strong>V0 (Vercel)</strong></td><td>UI/component generator</td><td>Best for Next.js teams; component-level focus</td><td>GPT-4o + Vercel models</td></tr>
       </tbody>
     </table>
   </div>
@@ -350,32 +360,40 @@
     Coding agents là AI systems có thể thực hiện nhiều bước tự động để complete một coding task. Khác với chat completion — agent có persistent state, tool access, và tự quyết định các bước tiếp theo.
   </p>
 
-  <h3>Claude Code patterns</h3>
+  <h3>Claude Code patterns (2026)</h3>
   <p>
-    Claude Code (CLI) được thiết kế như "pair programmer" trong terminal. Patterns quan trọng:
+    Claude Code đã tiến hóa từ "pair programmer" đơn lẻ sang nền tảng agent SDK hoàn chỉnh (Claude Agent SDK). Patterns quan trọng:
   </p>
   <ul>
     <li><strong>CLAUDE.md</strong>: project-specific instructions (conventions, commands, architecture). Agent đọc đầu tiên mỗi session.</li>
+    <li><strong>Subagents</strong>: agent chính spawn subagents song song để xử lý subtasks độc lập — mỗi subagent có context riêng và tool set riêng, tránh context drift trong main conversation.</li>
+    <li><strong>Agent Teams (experimental)</strong>: khác với subagents chỉ report về agent chính, teammates trong Agent Team có thể giao tiếp trực tiếp với nhau — phù hợp cho tasks cần coordination phức tạp.</li>
+    <li><strong>Hooks system</strong>: custom actions tự động kích hoạt theo events (pre-tool, post-edit, on-stop). Core mechanism để automate development workflows mà không cần prompt mỗi lần.</li>
     <li><strong>Permission model</strong>: yêu cầu user approval cho shell commands không trong allowed list. Incremental permission expansion thay vì upfront.</li>
-    <li><strong>Ultracompact mode</strong>: tối thiểu output text, maximize action. Phù hợp cho long-running tasks.</li>
-    <li><strong>Task files</strong>: với task phức tạp, write plan ra file trước, execute theo plan — giảm context drift qua nhiều iterations.</li>
+    <li><strong>Task files / spec-driven dev</strong>: với task phức tạp, write plan ra file trước, execute theo plan — giảm context drift qua nhiều iterations.</li>
   </ul>
 
   <h3>Aider patterns</h3>
   <p>
-    Aider là open-source pioneer của agentic coding. Key patterns:
+    Aider là open-source pioneer của agentic coding, giờ recommend Claude 3.7 Sonnet hoặc DeepSeek V4. Key patterns:
   </p>
   <ul>
     <li><strong>/add và /drop</strong>: explicit context management — user control files nào trong context</li>
     <li><strong>Git integration</strong>: mỗi change tự động commit với descriptive message → dễ rollback</li>
-    <li><strong>Architect mode</strong>: dùng strong model (Opus) để architect + plan, weak model (Haiku) để execute changes</li>
+    <li><strong>Architect mode</strong>: dùng strong model để architect + plan, weak model để execute changes</li>
     <li><strong>Whole file edit format</strong>: reliable hơn diff format cho nhiều models</li>
   </ul>
 
-  <h3>Multi-agent coding (emerging)</h3>
+  <h3>Multi-agent coding (mainstream 2025–2026)</h3>
   <p>
-    Pattern mới nổi: multiple specialized agents collaborate — Orchestrator agent nhận task cấp cao, chia thành subtasks, dispatch sang Coder agents (song song), Review agent validate results, Integrator agent merge. Cursor Background Agents và GitHub Copilot Workspaces đi theo hướng này.
+    Pattern đã trở thành mainstream: multiple specialized agents collaborate — Orchestrator nhận task cấp cao, chia subtasks, dispatch Coder agents (song song), Review agent validate, Integrator merge. Các tool đã GA:
   </p>
+  <ul>
+    <li><strong>Cursor Background Agents</strong>: tối đa 8 agents song song trong cloud sandbox; nhận PR khi xong. Cursor 3 (Apr 2026) cung cấp unified workspace quản lý cả local lẫn cloud agents.</li>
+    <li><strong>GitHub Copilot Coding Agent</strong> (GA Sep 2025): assign GitHub issue → agent làm việc trong GitHub Actions sandbox → mở PR. Agentic code review (Mar 2026) tự tạo fix-PR từ review comments.</li>
+    <li><strong>OpenAI Codex</strong> (May 2025): issue→PR workflow, mỗi task trong cloud sandbox riêng; GitHub báo cáo &gt;1 triệu AI-created PRs từ May–Sep 2025.</li>
+    <li><strong>Devin 2.0 + Windsurf</strong>: Windsurf tích hợp Devin Cloud làm one-click delegation target từ Cascade.</li>
+  </ul>
 
   <h2 id="eval">18.9 Evaluation cho code AI</h2>
   <p>
@@ -385,17 +403,25 @@
   <div class="table-wrap">
     <table>
       <thead>
-        <tr><th>Benchmark</th><th>Loại</th><th>Metric</th><th>Điểm yếu</th></tr>
+        <tr><th>Benchmark</th><th>Loại</th><th>Metric</th><th>Top score (May 2026)</th><th>Điểm yếu</th></tr>
       </thead>
       <tbody>
-        <tr><td><strong>HumanEval</strong></td><td>Function completion từ docstring</td><td>pass@k (% tests pass)</td><td>164 problems, tất cả Python, memorization risk</td></tr>
-        <tr><td><strong>MBPP</strong></td><td>Programming problems</td><td>pass@k</td><td>Simple problems, không reflect real codebase</td></tr>
-        <tr><td><strong>SWE-bench</strong></td><td>Real GitHub issues → code change</td><td>% issues resolved</td><td>Expensive to run, setup complex, ~2024 issues có thể in training</td></tr>
-        <tr><td><strong>SWE-bench Verified</strong></td><td>Subset được human verify</td><td>% issues resolved</td><td>250 problems — statistically limited</td></tr>
-        <tr><td><strong>LiveCodeBench</strong></td><td>Live competitive programming</td><td>pass@k</td><td>Requires frequent updates</td></tr>
-        <tr><td><strong>Real PR acceptance rate</strong></td><td>Internal metric</td><td>% AI PRs merged without major changes</td><td>Không public, hard to compare cross-company</td></tr>
+        <tr><td><strong>HumanEval</strong></td><td>Function completion từ docstring</td><td>pass@k</td><td>~99% (bão hòa)</td><td>164 problems, tất cả Python, memorization risk, không còn phân biệt được models</td></tr>
+        <tr><td><strong>MBPP</strong></td><td>Programming problems</td><td>pass@k</td><td>~95% (bão hòa)</td><td>Simple problems, không reflect real codebase</td></tr>
+        <tr><td><strong>SWE-bench Verified</strong></td><td>500 real GitHub issues (human-verified), real Python repos</td><td>% issues resolved</td><td><strong>93.9%</strong> (Claude Mythos Preview, May 2026); Claude Opus 4.7 87.6%; GPT-5.3 Codex 85%</td><td>500 problems — bắt đầu bão hòa top models; risk của test-set contamination</td></tr>
+        <tr><td><strong>SWE-bench Pro</strong></td><td>Harder variant, ít contamination hơn</td><td>% issues resolved</td><td>~57% (best); avg ~25%</td><td>Còn mới, ít data; nhưng phân biệt tốt hơn giữa top models</td></tr>
+        <tr><td><strong>LiveCodeBench</strong></td><td>Live competitive programming (cập nhật liên tục)</td><td>pass@k</td><td>Varies</td><td>Biased toward algorithmic problems; không reflect software engineering thực tế</td></tr>
+        <tr><td><strong>Real PR acceptance rate</strong></td><td>Internal metric</td><td>% AI PRs merged without major changes</td><td>Không public</td><td>Không public, hard to compare cross-company</td></tr>
       </tbody>
     </table>
+  </div>
+
+  <div class="callout tip">
+    <div class="icon">★</div>
+    <div>
+      <div class="title">SWE-bench Verified đang bão hòa — dùng SWE-bench Pro để phân biệt top models</div>
+      <p>Với top models đạt 87–94% trên SWE-bench Verified (500 problems), benchmark này đang mất tính phân biệt. SWE-bench Pro (harder, ít contamination) cho thấy thực tế hơn: best model đạt ~57%, average ~25%. Khi evaluate coding agents cho production, ưu tiên SWE-bench Pro hoặc internal benchmarks trên codebase thực của team.</p>
+    </div>
   </div>
 
   <h3>Eval cho production coding AI</h3>
@@ -448,23 +474,23 @@
 
   <h2 id="tom-tat">Tóm tắt</h2>
   <ol>
-    <li><strong>Ba architecture</strong>: inline FIM completion (latency-critical, &lt;500ms), chat-based (context-rich, file-level), agent-based (multi-step, autonomous). Chọn theo use case, không phải "agent > chat > inline" tuyệt đối.</li>
+    <li><strong>Bốn lớp landscape</strong>: AI-native IDE (Cursor 3, Windsurf 2.0), CLI agents (Claude Code, OpenAI Codex, Aider, Cline), cloud workspace (GitHub Copilot Coding Agent, Devin 2.0), app builders (Lovable, Bolt, Replit Agent, V0). Chọn theo use case — không có "winner" tuyệt đối.</li>
+    <li><strong>Multi-agent đã mainstream</strong>: Cursor Background Agents, GitHub Copilot Coding Agent, OpenAI Codex đều issue→PR autonomously. Claude Code có Subagents + Agent Teams + Hooks. Năm 2025: &gt;1 triệu AI-created PRs trên GitHub.</li>
+    <li><strong>MCP là lingua franca mới</strong>: MCP vượt 10.000 public servers (Q1 2026); Apple, OpenAI, Google đều support. Mọi coding agent mới đều nói MCP để kết nối tools, databases, external services.</li>
     <li><strong>Context là tất cả</strong>: repo map (Aider), retrieval-based indexing (Cursor), LSP info, git history — kết hợp để model có context đúng không phải context nhiều.</li>
     <li><strong>Sandbox trước khi execute</strong>: E2B cho cloud sandbox, Docker cho self-managed. Restrict network, filesystem, và resources.</li>
     <li><strong>Verify sau mỗi change</strong>: syntax → type check → lint → affected tests. Target &lt;30s per iteration.</li>
-    <li><strong>Diff application</strong>: full file rewrite cho files nhỏ, unified diff (git apply) cho granular review, AST-based cho structural changes.</li>
-    <li><strong>SWE-bench</strong> là benchmark thực tế nhất cho agentic coding; academic benchmarks (HumanEval) không đủ để evaluate production AI coding tools.</li>
+    <li><strong>SWE-bench Verified đang bão hòa</strong> (top ~94%); chuyển sang SWE-bench Pro (best ~57%) để phân biệt thực sự. HumanEval/MBPP đã bão hòa hoàn toàn — không dùng để evaluate production tools.</li>
     <li><strong>Risks top 3</strong>: destructive shell ops, secret leakage, hallucinated/vulnerable dependencies. Require approval cho irreversible actions, never include .env trong context, audit dependencies sau mỗi AI change.</li>
   </ol>
-
   <nav class="section-footer">
     <a href="17-multimodal.html" class="prev">
-      <div class="label">← trước</div>
+      <div class="label">← Trước</div>
       <div class="title">17 — Multimodal Applications</div>
     </a>
-    <a href="19-mlops.html" class="next">
-      <div class="label">tiếp theo →</div>
-      <div class="title">19 — MLOps &amp; AI Infrastructure</div>
+    <a href="19-mlops-llmops.html" class="next">
+      <div class="label">Tiếp theo →</div>
+      <div class="title">19 — MLOps / LLMOps</div>
     </a>
   </nav>
 

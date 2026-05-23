@@ -13,7 +13,7 @@
   <div class="crumbs"><a href="../index.html">Mục lục</a> › Phần 12 · <span>38 — Inference-time Compute Scaling</span></div>
   <div class="nav-actions">
     <a href="37-continuous-eval.html">← Trước</a>
-    <a href="../index.html">Index</a>
+    <a href="../index.html">Mục lục</a>
     <a href="39-computer-use-agents.html">Tiếp →</a>
   </div>
 </nav>
@@ -21,7 +21,7 @@
 <main class="page">
 
   <section class="hero">
-    <span class="eyebrow">Phần 12 · §38</span>
+    <div class="eyebrow-row"><span class="eyebrow">Phần 12 · §38</span><a class="hero-updated" href="../KNOWLEDGE_UPDATES.md" title="Lịch sử cập nhật kiến thức">↻ 2026-05-23</a></div>
     <h1>Inference-time Compute Scaling</h1>
     <p class="lede">
       Paradigm shift từ "train to be smarter" sang "think longer at runtime": Best-of-N, self-consistency,
@@ -122,6 +122,15 @@
   <blockquote>
     Đôi khi tốt hơn nếu dùng model nhỏ hơn suy nghĩ lâu hơn, thay vì model lớn hơn suy nghĩ nhanh.
   </blockquote>
+
+  <p>
+    Bằng chứng thực nghiệm mạnh mẽ nhất đến từ hai hướng: <strong>DeepSeek-R1-Zero</strong>
+    (tháng 1/2025) — model được train thuần túy bằng RL không có SFT — đạt AIME 2024 pass@1 từ
+    15.6% lên 71.0%, và với majority voting lên 86.7%, ngang hàng OpenAI o1. Bài báo
+    <strong>s1</strong> (Stanford, tháng 1/2025) giới thiệu kỹ thuật <em>budget forcing</em>:
+    kéo dài quá trình thinking của model bằng cách append "Wait" khi model chuẩn bị kết thúc —
+    Qwen2.5-32B fine-tuned trên 1,000 bài toán vượt o1-preview trên AIME24 tới 27%.
+  </p>
 
   <p>
     Cơ chế chính là: nhiều compute → nhiều "nhánh suy nghĩ" được khám phá →
@@ -578,18 +587,18 @@
         <tr>
           <td><strong>o3 / o4-mini</strong></td>
           <td>OpenAI</td>
-          <td><code>reasoning_effort</code><br><span class="label-sm">(low/medium/high)</span></td>
+          <td><code>reasoning_effort</code><br><span class="label-sm">(none/minimal/low/medium/high/xhigh — model-dependent)</span></td>
           <td>~100k tokens thinking</td>
           <td>Ẩn (summary only)</td>
-          <td>Mạnh nhất về coding &amp; math; o4-mini cost hiệu quả hơn</td>
+          <td>Mạnh nhất về coding &amp; math; o4-mini cost hiệu quả hơn; o4-mini không expose effort param như o3</td>
         </tr>
         <tr>
-          <td><strong>Claude 3.7+ Extended Thinking</strong></td>
+          <td><strong>Claude Opus 4.7+ Adaptive Thinking</strong></td>
           <td>Anthropic</td>
-          <td><code>thinking.budget_tokens</code><br><span class="label-sm">(số tokens)</span></td>
-          <td>~64k tokens thinking</td>
-          <td>Có thể inspect thinking blocks</td>
-          <td>Thinking có thể đọc được; interleaved thinking + tool use</td>
+          <td><code>thinking: {type:'adaptive'}</code> + <code>effort</code><br><span class="label-sm">(low/medium/high/xhigh/max)</span></td>
+          <td>Dynamic — model tự quyết theo độ khó</td>
+          <td>Có thể inspect thinking blocks; interleaved thinking bật tự động</td>
+          <td>Opus 4.7 (tháng 4/2026): adaptive thinking thay thế fixed budget; <code>budget_tokens</code> deprecated và bị từ chối trên Opus 4.7+</td>
         </tr>
         <tr>
           <td><strong>DeepSeek-R1</strong></td>
@@ -608,12 +617,12 @@
           <td>Open source; cạnh tranh với proprietary; mạnh về toán</td>
         </tr>
         <tr>
-          <td><strong>Gemini 2.x Thinking</strong></td>
+          <td><strong>Gemini 2.5 Pro Thinking</strong></td>
           <td>Google</td>
-          <td><code>thinking_config.thinking_budget</code><br><span class="label-sm">(số tokens)</span></td>
-          <td>~32k tokens thinking</td>
+          <td><code>thinkingConfig.thinkingBudget</code><br><span class="label-sm">(128–32768; -1 = dynamic)</span></td>
+          <td>32,768 tokens thinking (mặc định 8,192)</td>
           <td>Thinking summaries</td>
-          <td>Tích hợp tốt với Google tools; multimodal reasoning</td>
+          <td>Tích hợp tốt với Google tools; multimodal reasoning; <code>-1</code> cho dynamic thinking (model tự quyết)</td>
         </tr>
       </tbody>
     </table>
@@ -793,26 +802,28 @@
 console.<span class="fn">log</span>(response.usage.completion_tokens_details.reasoning_tokens);
 </code></pre>
 
-  <h3>Anthropic — <code>thinking.budget_tokens</code></h3>
+  <h3>Anthropic — Adaptive Thinking (<code>effort</code>) · Claude Opus 4.7+</h3>
   <pre><code><span class="kw">import</span> Anthropic <span class="kw">from</span> <span class="str">'@anthropic-ai/sdk'</span>;
 
 <span class="kw">const</span> client = <span class="kw">new</span> <span class="fn">Anthropic</span>();
 
-<span class="cm">// budget_tokens: số thinking tokens tối đa (min 1024, recommended ≥ 10000 cho hard tasks)</span>
-<span class="cm">// Thinking blocks xuất hiện trong response.content trước TextBlock</span>
+<span class="cm">// Từ Claude Opus 4.7 (tháng 4/2026): dùng adaptive thinking + effort</span>
+<span class="cm">// CẢNH BÁO: budget_tokens bị deprecated; Opus 4.7+ trả HTTP 400 nếu dùng budget_tokens</span>
+<span class="cm">// effort: 'low' | 'medium' | 'high' | 'xhigh' | 'max'</span>
+<span class="cm">// Interleaved thinking (thinking xen giữa tool calls) bật tự động</span>
 <span class="kw">const</span> response = <span class="kw">await</span> client.messages.<span class="fn">create</span>({
-  model: <span class="str">'claude-opus-4-5'</span>,
+  model: <span class="str">'claude-opus-4-7-20260416'</span>,
   max_tokens: <span class="num">16000</span>,
   thinking: {
-    type: <span class="str">'enabled'</span>,
-    budget_tokens: <span class="num">10000</span>,          <span class="cm">// ← nút điều chỉnh</span>
+    type: <span class="str">'adaptive'</span>,
+    effort: <span class="str">'xhigh'</span>,               <span class="cm">// ← nút điều chỉnh (mặc định 'high')</span>
   },
   messages: [
     { role: <span class="str">'user'</span>, content: <span class="str">'Solve this competitive programming problem...'</span> }
   ],
 });
 
-<span class="cm">// Thinking blocks có thể inspect</span>
+<span class="cm">// Thinking blocks có thể inspect (như trước)</span>
 <span class="kw">for</span> (<span class="kw">const</span> block <span class="kw">of</span> response.content) {
   <span class="kw">if</span> (block.type === <span class="str">'thinking'</span>) {
     console.<span class="fn">log</span>(<span class="str">'Thinking:'</span>, block.thinking);   <span class="cm">// readable CoT</span>
@@ -827,13 +838,14 @@ console.<span class="fn">log</span>(response.usage.completion_tokens_details.rea
 
 <span class="kw">const</span> genAI = <span class="kw">new</span> <span class="fn">GoogleGenerativeAI</span>(process.env.GEMINI_API_KEY);
 
-<span class="cm">// thinkingBudget: 0 = thinking tắt; -1 = dynamic (model tự quyết)</span>
-<span class="cm">// Giá trị cụ thể (e.g. 8192) = budget tokens tối đa</span>
+<span class="cm">// thinkingBudget: 128–32768 cho Gemini 2.5 Pro; -1 = dynamic (model tự quyết)</span>
+<span class="cm">// Gemini 2.5 Pro KHÔNG hỗ trợ thinkingBudget = 0 (phải ≥ 128)</span>
+<span class="cm">// Dùng -1 để model tự điều chỉnh theo độ phức tạp của câu hỏi</span>
 <span class="kw">const</span> model = genAI.<span class="fn">getGenerativeModel</span>({
-  model: <span class="str">'gemini-2.0-flash-thinking-exp'</span>,
+  model: <span class="str">'gemini-2.5-pro'</span>,
   generationConfig: {
     thinkingConfig: {
-      thinkingBudget: <span class="num">8192</span>,               <span class="cm">// ← nút điều chỉnh</span>
+      thinkingBudget: <span class="num">8192</span>,               <span class="cm">// ← nút điều chỉnh; hoặc -1 cho dynamic</span>
     },
   },
 });
@@ -845,12 +857,14 @@ console.<span class="fn">log</span>(result.response.<span class="fn">text</span>
   <div class="callout warn">
     <div class="icon">!</div>
     <div>
-      <div class="title">Thinking tokens không đi qua system prompt bình thường</div>
+      <div class="title">Anthropic: budget_tokens deprecated từ Opus 4.7</div>
       <p>
-        Với Claude extended thinking, nếu bạn muốn instruct model về cách thinking (e.g., "think step by step"),
-        hãy đặt hướng dẫn đó trong <code>user</code> message, không phải <code>system</code>.
-        Thinking tokens không thể cache được với standard prompt caching — lưu ý khi thiết kế pipeline
-        để tránh tốn kém không cần thiết.
+        API cũ dùng <code>thinking: {type: 'enabled', budget_tokens: N}</code> bị deprecated trên
+        Claude Opus 4.6 / Sonnet 4.6 và sẽ bị xóa trong bản tiếp theo. Trên Claude Opus 4.7+,
+        gửi <code>budget_tokens</code> sẽ nhận HTTP 400. Hãy migrate sang
+        <code>thinking: {type: 'adaptive'}</code> kết hợp với tham số <code>effort</code>.
+        Ngoài ra, thinking tokens không thể cache được với standard prompt caching — lưu ý khi
+        thiết kế pipeline agentic để tránh tốn kém không cần thiết.
       </p>
     </div>
   </div>
@@ -1026,18 +1040,19 @@ console.<span class="fn">log</span>(result.response.<span class="fn">text</span>
         internal search loop (backtrack, verify, refine). Optionally, một external verifier/PRM
         đánh giá kết quả. Budget được điều chỉnh theo task complexity.
       </p>
-      <pre><code><span class="cm">// Cách hiện tại — 2025–2026</span>
+      <pre><code><span class="cm">// Cách hiện tại — 2025–2026 (Anthropic Adaptive Thinking)</span>
 
-<span class="cm">// 1. Route bởi task complexity</span>
-<span class="kw">const</span> effort = taskComplexity === <span class="str">'hard'</span> ? <span class="str">'high'</span> : <span class="str">'low'</span>;
+<span class="cm">// 1. Route bởi task complexity → chọn effort level</span>
+<span class="cm">// Opus 4.7+: dùng 'adaptive' + effort thay vì 'enabled' + budget_tokens</span>
+<span class="kw">const</span> effort = taskComplexity === <span class="str">'hard'</span> ? <span class="str">'xhigh'</span> : <span class="str">'low'</span>;
 
-<span class="cm">// 2. Gọi reasoning model với budget</span>
+<span class="cm">// 2. Gọi reasoning model với adaptive thinking</span>
 <span class="kw">const</span> response = <span class="kw">await</span> anthropic.messages.<span class="fn">create</span>({
-  model: <span class="str">'claude-opus-4-5'</span>,
+  model: <span class="str">'claude-opus-4-7-20260416'</span>,
   max_tokens: <span class="num">16000</span>,
   thinking: {
-    type: <span class="str">'enabled'</span>,
-    budget_tokens: effort === <span class="str">'high'</span> ? <span class="num">20000</span> : <span class="num">2000</span>,
+    type: <span class="str">'adaptive'</span>,
+    effort: effort,                    <span class="cm">// ← 'low'|'medium'|'high'|'xhigh'|'max'</span>
   },
   messages: [{ role: <span class="str">'user'</span>, content: problem }],
 });
@@ -1079,7 +1094,7 @@ console.<span class="fn">log</span>(result.response.<span class="fn">text</span>
         <tr>
           <td>Compute control</td>
           <td>Không có — mọi query đều tốn lượng compute tương đương</td>
-          <td>Explicit budget knob (<code>reasoning_effort</code>, <code>budget_tokens</code>)</td>
+          <td>Explicit budget knob (<code>reasoning_effort</code> — OpenAI; <code>effort</code> adaptive — Anthropic; <code>thinkingBudget</code> — Gemini)</td>
         </tr>
         <tr>
           <td>Backtracking</td>
@@ -1126,9 +1141,10 @@ console.<span class="fn">log</span>(result.response.<span class="fn">text</span>
       vượt trội so với CoT tuyến tính khi bài toán cần khám phá nhiều hướng và phát hiện sai lầm sớm.
     </li>
     <li>
-      <strong>Reasoning models 2025–2026</strong> (o3/o4-mini, Claude extended thinking, DeepSeek-R1, QwQ, Gemini Thinking)
+      <strong>Reasoning models 2025–2026</strong> (o3/o4-mini, Claude Opus 4.7 adaptive thinking, DeepSeek-R1, QwQ, Gemini 2.5 Pro Thinking)
       internalize reasoning qua RL training, không chỉ là prompting tricks.
-      Mỗi provider expose thinking budget qua API khác nhau.
+      Mỗi provider expose thinking budget qua API khác nhau: Anthropic đã chuyển sang
+      <code>effort</code>-based adaptive thinking; <code>budget_tokens</code> bị deprecated.
     </li>
     <li>
       <strong>Long CoT vs structured search</strong>: Dùng reasoning model trước (đơn giản hơn, ít API calls);
@@ -1147,15 +1163,14 @@ console.<span class="fn">log</span>(result.response.<span class="fn">text</span>
       Simple chat, retrieval, formatting, high-throughput low-latency — no.
     </li>
   </ol>
-
   <nav class="section-footer">
     <a href="37-continuous-eval.html" class="prev">
-      <div class="label">← trước</div>
-      <div class="title">37 — Continuous Evaluation</div>
+      <div class="label">← Trước</div>
+      <div class="title">37 — Continuous Eval &amp; Regression cho AI</div>
     </a>
     <a href="39-computer-use-agents.html" class="next">
-      <div class="label">tiếp theo →</div>
-      <div class="title">39 — Computer-Use Agents</div>
+      <div class="label">Tiếp theo →</div>
+      <div class="title">39 — Computer-use &amp; Browser-use Agents</div>
     </a>
   </nav>
 

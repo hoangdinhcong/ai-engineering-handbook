@@ -34,6 +34,7 @@
   <div class="crumbs"><a href="../index.html">Mục lục</a> › Phần 1 · <span>03 — Cách LLM hoạt động</span></div>
   <div class="nav-actions">
     <a href="02-foundation-models.html">← Trước</a>
+    <a href="../index.html">Mục lục</a>
     <a href="04-prompt-engineering.html">Tiếp →</a>
   </div>
 </nav>
@@ -41,7 +42,7 @@
 <main class="page">
 
   <section class="hero">
-    <span class="eyebrow">Phần 1 · §03</span>
+    <div class="eyebrow-row"><span class="eyebrow">Phần 1 · §03</span><a class="hero-updated" href="../KNOWLEDGE_UPDATES.md" title="Lịch sử cập nhật kiến thức">↻ 2026-05-23</a></div>
     <h1>Cách LLM hoạt động <span style="color: var(--text-mute); font-weight:400; font-size: 0.7em">(đủ để engineer hiểu)</span></h1>
     <p class="lede">
       Tokenization, embeddings, transformer &amp; attention, sampling parameters,
@@ -60,6 +61,7 @@
       <li><a href="#sampling">3.4 Sampling — cách model chọn token</a></li>
       <li><a href="#context">3.5 Context Window</a></li>
       <li><a href="#api-params">3.6 Tham số API quan trọng</a></li>
+      <li><a href="#reasoning-models">3.7 Reasoning Models &amp; Test-Time Compute</a></li>
       <li><a href="#tom-tat">Tóm tắt</a></li>
     </ul>
   </aside>
@@ -311,6 +313,42 @@
       <strong>positional encoding</strong> vào embedding. Các model hiện đại dùng
       <strong>RoPE</strong> (Rotary Position Embedding) hoặc <strong>ALiBi</strong>
       để hỗ trợ context dài và extrapolate tốt hơn ra ngoài training length.
+      Kỹ thuật <strong>YaRN</strong> (Yet another RoPE extensioN) và <strong>rope_scaling</strong>
+      cho phép extend context vượt training length không cần train lại toàn bộ model.
+    </p>
+  </details>
+
+  <details>
+    <summary>Mixture of Experts (MoE) — kiến trúc cho model lớn hiệu quả</summary>
+    <p>
+      Thay vì kích hoạt toàn bộ tham số cho mỗi token, <strong>MoE</strong> chia model thành
+      nhiều "experts" (feed-forward sub-networks) và chỉ kích hoạt một tập nhỏ cho mỗi token.
+      Kết quả: model có tổng tham số lớn nhưng <em>active parameters</em> mỗi forward pass nhỏ hơn nhiều.
+    </p>
+    <p>Các model MoE tiêu biểu 2025:</p>
+    <ul>
+      <li><strong>DeepSeek-V3</strong>: 671B tổng tham số, chỉ 37B active mỗi token. Dùng Multi-head Latent Attention (MLA) để giảm KV cache, và DeepSeekMoE routing.</li>
+      <li><strong>Llama 4 Scout</strong>: 17B active / 16 experts, context window 10M tokens, chạy được trên 1 GPU H100.</li>
+      <li><strong>Llama 4 Maverick</strong>: 17B active / 128 experts, benchmark ngang DeepSeek-V3 với active params thấp hơn 2x.</li>
+    </ul>
+    <p>
+      Với AI Engineer: MoE ảnh hưởng đến <em>inference cost và latency</em> — model 671B MoE
+      có thể chạy rẻ hơn dense model 70B nếu so sánh theo active params.
+      Khi chọn self-hosted model, luôn hỏi "total params" vs "active params per token".
+    </p>
+  </details>
+
+  <details>
+    <summary>Speculative decoding — tăng tốc inference 2–3x không đổi output</summary>
+    <p>
+      <strong>Speculative decoding</strong> dùng một <em>draft model</em> nhỏ, nhanh để đề xuất
+      nhiều tokens cùng lúc, sau đó <em>target model</em> lớn verify song song trong một forward pass.
+      Nếu draft tokens được accept, throughput tăng 2–3x mà không thay đổi output quality.
+    </p>
+    <p>
+      Đây là kỹ thuật đã vào production chuẩn (2024–2025): tích hợp native trong vLLM, SGLang,
+      TensorRT-LLM. NVIDIA công bố 3.6x throughput improvement trên H200 GPU.
+      Bạn không cần implement thủ công — chọn serving framework hỗ trợ là đủ.
     </p>
   </details>
 
@@ -452,14 +490,14 @@
         <tr>
           <td>2025</td>
           <td>Gemini 2.5 Pro</td>
-          <td><span class="tag green">2M tokens</span></td>
-          <td>Cả codebase lớn trong một lần</td>
+          <td><span class="tag green">1M–2M tokens</span></td>
+          <td>Ra mắt 1M, 2M đang rollout (mid-2025)</td>
         </tr>
         <tr>
-          <td>2025</td>
-          <td>Claude Opus 4</td>
-          <td><span class="tag lilac">1M+</span></td>
-          <td>Competitive với Gemini</td>
+          <td>2025–2026</td>
+          <td>Claude Sonnet/Opus 4.6+</td>
+          <td><span class="tag lilac">1M tokens</span></td>
+          <td>GA từ tháng 3/2026; Opus 4.5 ban đầu 200K</td>
         </tr>
       </tbody>
     </table>
@@ -472,8 +510,8 @@
       <h4>Input ≠ Output tokens</h4>
       <p>
         Context window thường chỉ total input+output. Max <em>output</em> tokens thường
-        nhỏ hơn nhiều: GPT-4o max 16K output, Claude 3.7 max 64K output.
-        Nếu cần generate văn bản dài, plan cho output limit này.
+        nhỏ hơn nhiều: GPT-4o max 16K output, Claude Opus/Sonnet 4.x max 64K output
+        (300K qua beta header trên Batch API). Nếu cần generate văn bản dài, plan cho output limit này.
       </p>
     </div>
     <div class="card">
@@ -576,7 +614,7 @@
 <span class="kw">const</span> client = <span class="kw">new</span> <span class="fn">Anthropic</span>();
 
 <span class="kw">const</span> response = <span class="kw">await</span> client.messages.<span class="fn">create</span>({
-  model: <span class="str">'claude-opus-4-5'</span>,
+  model: <span class="str">'claude-opus-4-7'</span>,
   max_tokens: <span class="num">1024</span>,
   temperature: <span class="num">0</span>,           <span class="cm">// deterministic cho structured output</span>
   system: <span class="str">'You are a data extraction assistant. Always respond with valid JSON.'</span>,
@@ -587,13 +625,74 @@
 
 <span class="cm">// stream = true thì dùng stream() method:</span>
 <span class="kw">const</span> stream = client.messages.<span class="fn">stream</span>({
-  model: <span class="str">'claude-opus-4-5'</span>,
+  model: <span class="str">'claude-opus-4-7'</span>,
   max_tokens: <span class="num">1024</span>,
   messages: [{ role: <span class="str">'user'</span>, content: userMessage }]
 });
 <span class="kw">for await</span> (<span class="kw">const</span> chunk <span class="kw">of</span> stream) {
   process.stdout.<span class="fn">write</span>(chunk.delta?.text ?? <span class="str">''</span>);
 }</code></pre>
+
+  <!-- ─────────────────────────────────────────────── -->
+  <h2 id="reasoning-models">3.7 Reasoning Models &amp; Test-Time Compute</h2>
+
+  <p>
+    Từ cuối 2024, một paradigm mới xuất hiện bên cạnh scaling model size:
+    <strong>test-time compute scaling</strong> — thay vì dùng model lớn hơn, tăng compute
+    <em>lúc inference</em> bằng cách để model "suy nghĩ" nhiều bước trước khi trả lời.
+  </p>
+
+  <h3>Cơ chế: Chain-of-Thought nội bộ (thinking tokens)</h3>
+  <p>
+    Reasoning models sinh ra một chuỗi <em>internal thinking tokens</em> — quá trình lý luận
+    từng bước, thử đề xuất rồi bác bỏ, kiểm tra lại — trước khi output câu trả lời cuối.
+    Người dùng thường không thấy phần thinking này (hoặc thấy dạng collapsed).
+    Kết quả: hiệu suất đột phá trên toán, code, science benchmarks.
+  </p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Model</th><th>Nhà phát triển</th><th>Đặc điểm</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>o1 / o3</strong></td>
+          <td>OpenAI</td>
+          <td>o3 (đầu 2025) đạt kết quả ngang chuyên gia trên toán và khoa học. Internal chain-of-thought không expose API.</td>
+        </tr>
+        <tr>
+          <td><strong>DeepSeek-R1</strong></td>
+          <td>DeepSeek</td>
+          <td>Open-source. Khả năng reasoning ngang o1 với chi phí thấp hơn 70%. Chain-of-thought visible trong <code>&lt;think&gt;</code> tags.</td>
+        </tr>
+        <tr>
+          <td><strong>Claude — extended thinking</strong></td>
+          <td>Anthropic</td>
+          <td>Dùng <code>thinking: {type: "enabled"}</code>. Trước đây có <code>budget_tokens</code>; từ Claude 4.6 chuyển sang <code>effort</code> parameter (adaptive thinking).</td>
+        </tr>
+        <tr>
+          <td><strong>Gemini 2.5 Pro (Thinking)</strong></td>
+          <td>Google DeepMind</td>
+          <td>Thinking mode tích hợp; điều chỉnh qua <code>thinkingConfig</code>.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout warn">
+    <div class="icon">!</div>
+    <div>
+      <div class="title">Trade-off: reasoning depth vs latency và cost</div>
+      <p>
+        Thinking tokens tốn thêm thời gian và tiền — DeepSeek-R1 generate 10–100x tokens nhiều hơn
+        so với non-reasoning mode. Dùng reasoning models khi bài toán thực sự cần (<em>math, code review,
+        complex reasoning</em>). Với lookup, formatting, simple QA — dùng standard mode nhanh hơn và rẻ hơn.
+        Anthropic đã deprecated <code>budget_tokens</code> trên Claude 4.6+; thay bằng <code>effort</code>
+        trong adaptive thinking API.
+      </p>
+    </div>
+  </div>
 
   <!-- ─────────────────────────────────────────────── -->
   <h2 id="tom-tat">Tóm tắt</h2>
@@ -622,15 +721,23 @@
       Luôn set <code>max_tokens</code>, dùng <code>stream: true</code> cho UX tốt hơn,
       và <code>response_format</code> / <code>tools</code> khi cần structured output đáng tin cậy.
     </li>
+    <li>
+      <strong>Reasoning models</strong> (o3, DeepSeek-R1, Claude extended thinking) dùng
+      <em>test-time compute</em> — sinh thinking tokens nội bộ để cải thiện reasoning.
+      Trade-off: latency và cost cao hơn; chỉ dùng khi bài toán thực sự cần suy luận sâu.
+    </li>
+    <li>
+      <strong>MoE architecture</strong> (DeepSeek-V3, Llama 4) kích hoạt chỉ một phần tham số
+      mỗi token — tổng params lớn nhưng inference cost dựa trên <em>active params</em>.
+    </li>
   </ol>
-
   <nav class="section-footer">
     <a href="02-foundation-models.html" class="prev">
-      <div class="label">← quay lại</div>
+      <div class="label">← Trước</div>
       <div class="title">02 — Foundation Models cơ bản</div>
     </a>
     <a href="04-prompt-engineering.html" class="next">
-      <div class="label">tiếp theo →</div>
+      <div class="label">Tiếp theo →</div>
       <div class="title">04 — Prompt Engineering</div>
     </a>
   </nav>

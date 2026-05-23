@@ -13,6 +13,7 @@
   <div class="crumbs"><a href="../index.html">Mục lục</a> › Phần 10 · <span>31 — Sandboxing &amp; Isolation cho AI Agents</span></div>
   <div class="nav-actions">
     <a href="30-agent-threats.html">← Trước</a>
+    <a href="../index.html">Mục lục</a>
     <a href="32-ai-red-team.html">Tiếp →</a>
   </div>
 </nav>
@@ -20,7 +21,7 @@
 <main class="page">
 
   <section class="hero">
-    <span class="eyebrow">Phần 10 · §31</span>
+    <div class="eyebrow-row"><span class="eyebrow">Phần 10 · §31</span><a class="hero-updated" href="../KNOWLEDGE_UPDATES.md" title="Lịch sử cập nhật kiến thức">↻ 2026-05-23</a></div>
     <h1>Sandboxing &amp; Isolation cho AI Agents</h1>
     <p class="lede">
       AI agent có thể thực thi code, gọi tool, đọc/ghi file — tất cả đều là untrusted operations. Sandboxing là lớp bảo vệ cuối cùng: ngay cả khi agent bị compromise, tác động chỉ bị giới hạn trong một ephemeral environment không thể thoát ra ngoài.
@@ -33,7 +34,7 @@
     <ul>
       <li><a href="#why-sandbox">31.1 Tại sao cần sandbox</a></li>
       <li><a href="#isolation-spectrum">31.2 Isolation spectrum</a></li>
-      <li><a href="#container-limits">31.3 Giới hạn của container security</a></li>
+      <li><a href="#container-limits">31.3 Giới hạn của container security + OS primitives</a></li>
       <li><a href="#gvisor-kata-firecracker">31.4 gVisor, Kata Containers, Firecracker</a></li>
       <li><a href="#microvm-advantages">31.5 microVM advantages</a></li>
       <li><a href="#wasm">31.6 WASM sandboxes</a></li>
@@ -263,6 +264,34 @@
     hoặc <strong>user-provided code</strong> — đây là threat model khác hoàn toàn.
   </p>
 
+  <h3>OS-level primitives: Landlock + seccomp-bpf (Linux) / Seatbelt (macOS)</h3>
+  <p>
+    Khi microVM quá nặng (latency, cost), một lớp bảo vệ nhẹ hơn là <strong>kernel-level process isolation</strong>
+    không cần root, không cần namespace. Ba cơ chế phổ biến nhất 2025–2026:
+  </p>
+  <div class="grid-2">
+    <div class="card">
+      <strong>Linux Landlock</strong>
+      <p>Filesystem + network access control trong kernel (Linux ≥ 5.13). Process tự áp dụng policy (<em>unprivileged</em>). Chặn truy cập file ngoài workspace, chặn bind socket đến port cụ thể. Không cần root. Được dùng trong <strong>Cursor agent sandbox</strong> và nhiều AI coding tools 2025.</p>
+      <span class="tag">No-root</span> <span class="tag">Lightweight</span>
+    </div>
+    <div class="card">
+      <strong>seccomp-bpf</strong>
+      <p>Lọc syscall bằng BPF program — chặn các syscall nguy hiểm (<code>ptrace</code>, <code>mount</code>, <code>kexec_load</code>, <code>perf_event_open</code>). Kết hợp với Landlock tạo defense-in-depth cho process. Thư viện <strong>Sandlock</strong> (Python, 2026) bọc cả Landlock + seccomp-bpf + seccomp user notification trong một API.</p>
+      <span class="tag">Syscall filter</span> <span class="tag">BPF-powered</span>
+    </div>
+    <div class="card">
+      <strong>macOS Seatbelt (sandbox-exec)</strong>
+      <p>Cùng cơ chế App Store sandbox. Dùng Sandbox Profile Language (SPL) với baseline <code>(deny default)</code> — allowlist từng operation. Được dùng bởi <strong>Claude Code</strong> (off by default) và các tool như <code>agent-seatbelt</code>, <code>scode</code> để ngăn agent đọc secrets ngoài project directory hoặc gọi network không kiểm soát.</p>
+      <span class="tag">macOS</span> <span class="tag">Kernel-level</span>
+    </div>
+    <div class="card">
+      <strong>Khi nào dùng OS primitives vs microVM</strong>
+      <p>OS primitives (Landlock/Seatbelt) phù hợp khi: agent chạy <em>local</em> trên máy developer, không thể dùng KVM, cần latency &lt; 5ms. microVM (Firecracker) phù hợp khi: multi-tenant cloud, untrusted user code, compliance nghiêm ngặt. Không thay thế nhau — có thể dùng cả hai (defense-in-depth).</p>
+      <span class="tag">Decision guide</span>
+    </div>
+  </div>
+
   <h2 id="gvisor-kata-firecracker">31.4 gVisor, Kata Containers, Firecracker</h2>
 
   <div class="tabs" data-tabs>
@@ -434,11 +463,25 @@ PUT /actions { "action_type": "InstanceStart" }</code></pre>
     không có memory access ngoài linear memory của module.
   </p>
 
+  <div class="callout note">
+    <div class="icon">≡</div>
+    <div>
+      <div class="title">WASI 0.2 (Preview 2) — stable từ 24/01/2024; WASI 0.3 async đang tới</div>
+      <p>
+        <strong>WASI 0.2.0</strong> (tên cũ: Preview 2) được phát hành chính thức tháng 1/2024, tích hợp
+        <strong>Component Model</strong> — cho phép build ứng dụng từ các Wasm components độc lập với giao diện
+        WIT (WebAssembly Interface Types). Bao gồm <code>wasi-cli</code>, <code>wasi-sockets</code> (TCP/UDP).
+        <strong>WASI 0.3</strong> (native async I/O + Component Model) đang phát triển, RC đầu tiên cuối 2025;
+        <strong>WASI 1.0</strong> stable dự kiến 2026.
+      </p>
+    </div>
+  </div>
+
   <div class="grid-2">
     <div class="card">
       <strong>Wasmtime</strong> (Bytecode Alliance / Mozilla)
-      <p>Runtime WASM production-grade nhất. Dùng Cranelift JIT compiler. Hỗ trợ WASI (WebAssembly System Interface) để access file, network một cách controlled. Được dùng trong Fastly Compute@Edge.</p>
-      <span class="tag">Rust</span> <span class="tag">Production-ready</span>
+      <p>Runtime WASM production-grade nhất. Dùng Cranelift JIT compiler. Hỗ trợ WASI 0.2 (Component Model) để access file, network, socket một cách controlled. Dùng trong Fastly Compute@Edge và nhiều AI sandbox.</p>
+      <span class="tag">Rust</span> <span class="tag">WASI 0.2</span> <span class="tag">Production-ready</span>
     </div>
     <div class="card">
       <strong>Wasmer</strong>
@@ -451,9 +494,9 @@ PUT /actions { "action_type": "InstanceStart" }</code></pre>
       <span class="tag">AI-optimized</span> <span class="tag">CNCF</span>
     </div>
     <div class="card">
-      <strong>Lucet</strong> (Fastly, deprecated → Wasmtime)
-      <p>Tiên phong trong AOT compilation cho WASM. Đã được merge vào Wasmtime. Chứng minh WASM có thể chạy untrusted code ở microsecond-level latency với isolation.</p>
-      <span class="tag">Historical</span> <span class="tag">AOT</span>
+      <strong>Lucet</strong> (Fastly, merged → Wasmtime)
+      <p>Tiên phong trong AOT compilation cho WASM. Đã được merge hoàn toàn vào Wasmtime (không còn duy trì riêng). Chứng minh WASM có thể chạy untrusted code ở microsecond-level latency với isolation.</p>
+      <span class="tag">Merged into Wasmtime</span> <span class="tag">AOT</span>
     </div>
   </div>
 
@@ -461,16 +504,16 @@ PUT /actions { "action_type": "InstanceStart" }</code></pre>
   <div class="table-wrap">
     <table>
       <thead>
-        <tr><th>Tiêu chí</th><th>WASM</th><th>Firecracker microVM</th></tr>
+        <tr><th>Tiêu chí</th><th>WASM (WASI 0.2)</th><th>Firecracker microVM</th></tr>
       </thead>
       <tbody>
-        <tr><td>Isolation model</td><td>Capability-based, no syscall</td><td>VM-level, full kernel isolation</td></tr>
-        <tr><td>Language support</td><td>Phụ thuộc WASM compilation — Python hạn chế, Rust/Go tốt</td><td>Bất kỳ ngôn ngữ nào, binary bất kỳ</td></tr>
-        <tr><td>Boot/startup</td><td>Microseconds đến milliseconds</td><td>~125ms</td></tr>
-        <tr><td>Memory model</td><td>Linear memory, explicit bounds</td><td>Full OS memory model</td></tr>
+        <tr><td>Isolation model</td><td>Capability-based, no syscall; Component Model enforces interface contracts</td><td>VM-level, full kernel isolation</td></tr>
+        <tr><td>Language support</td><td>Phụ thuộc WASM compilation — Python hạn chế, Rust/Go/JS tốt; C extensions vẫn là điểm yếu</td><td>Bất kỳ ngôn ngữ nào, binary bất kỳ</td></tr>
+        <tr><td>Boot/startup</td><td>Microseconds đến milliseconds</td><td>~78–125ms (p50 E2B 78ms, cold boot 125ms)</td></tr>
+        <tr><td>Memory model</td><td>Linear memory, explicit bounds; Component Model adds type-safe inter-component calls</td><td>Full OS memory model</td></tr>
         <tr><td>Python ecosystem</td><td>Pyodide/py2wasm — hạn chế C extensions</td><td>Full CPython, all packages</td></tr>
-        <tr><td>System calls</td><td>Chỉ qua WASI interface — controlled</td><td>Full Linux syscall (trong VM)</td></tr>
-        <tr><td>Use case tốt nhất</td><td>Plugin system, untrusted functions nhỏ, edge</td><td>Full Python/bash agent execution</td></tr>
+        <tr><td>System calls</td><td>Chỉ qua WASI 0.2 interface — controlled; wasi-sockets cho TCP/UDP</td><td>Full Linux syscall (trong VM)</td></tr>
+        <tr><td>Use case tốt nhất</td><td>Plugin system, untrusted functions nhỏ, edge (Fastly Compute@Edge)</td><td>Full Python/bash agent execution</td></tr>
       </tbody>
     </table>
   </div>
@@ -510,11 +553,11 @@ PUT /actions { "action_type": "InstanceStart" }</code></pre>
         <tr>
           <td><strong>E2B</strong></td>
           <td>Firecracker microVM</td>
-          <td>~150ms cold, &lt;10ms warm</td>
+          <td>~78ms p50 (Jan 2026); &lt;10ms warm</td>
           <td>Python, Node.js, + custom images</td>
-          <td>Snapshot/restore; filesystem persist</td>
+          <td>Snapshot/restore; filesystem persist; sessions tới 24h</td>
           <td>Egress allowlist configurable; metadata blocked</td>
-          <td>$0.000165/s compute</td>
+          <td>Hobby free; Pro $150/mo; ~$0.05/hr/vCPU</td>
         </tr>
         <tr>
           <td><strong>Modal Sandboxes</strong></td>
@@ -522,7 +565,7 @@ PUT /actions { "action_type": "InstanceStart" }</code></pre>
           <td>~200ms</td>
           <td>Python first; custom images</td>
           <td>Volume mounts; ephemeral default</td>
-          <td>Default open; network policy beta</td>
+          <td>Default open; network policy GA 2025</td>
           <td>$0.00006/s (CPU)</td>
         </tr>
         <tr>
@@ -551,6 +594,24 @@ PUT /actions { "action_type": "InstanceStart" }</code></pre>
           <td>Volume mount; ephemeral default</td>
           <td>Egress for web access; configurable</td>
           <td>Self-hosted</td>
+        </tr>
+        <tr>
+          <td><strong>OpenAI Code Interpreter</strong> (Agents SDK)</td>
+          <td>gVisor trên Kubernetes (container trong VM)</td>
+          <td>~1–3s (container reuse giảm latency)</td>
+          <td>Python (full CPython); file upload/download</td>
+          <td>Container reuse trong session; auto hoặc explicit container ID</td>
+          <td>Outbound blocked; isolated cluster node</td>
+          <td>Tính theo token + tool call (ChatGPT/API)</td>
+        </tr>
+        <tr>
+          <td><strong>Vercel Sandbox</strong> (2025)</td>
+          <td>microVM (gVisor-backed)</td>
+          <td>~100ms</td>
+          <td>Node.js, Python; custom runtimes</td>
+          <td>Ephemeral; persistent volume option</td>
+          <td>Configurable egress; default restricted</td>
+          <td>Usage-based; tích hợp Vercel billing</td>
         </tr>
         <tr>
           <td><strong>CodeSandbox</strong></td>
@@ -783,26 +844,28 @@ mount -t overlay overlay \
     </div>
     <div class="tab-panel">
       <h3>Snapshot/Restore</h3>
-      <p>Firecracker hỗ trợ snapshot VM state (memory + disk) và restore sau ~30ms. Dùng để:</p>
+      <p>Firecracker hỗ trợ snapshot VM state (memory + disk) và restore sau ~30–70ms (2025 changelog: giảm 30–70ms nhờ pre-allocate fdtable). Dùng để:</p>
       <ul>
         <li>Lưu trạng thái sau khi đã cài packages (warm snapshot sau <code>pip install</code>)</li>
         <li>Resume session dài (agent bị interrupt, restore đúng chỗ)</li>
         <li>Fast clone: restore nhiều instance từ cùng snapshot (copy-on-write memory)</li>
       </ul>
-      <pre><code><span class="cm"># Firecracker snapshot API</span>
+      <pre><code><span class="cm"># Firecracker snapshot API (v1.x)</span>
 POST /snapshot/create {
   "snapshot_type": "Full",
   "snapshot_path": "/snapshots/agent-base-v3.snap",
   "mem_file_path": "/snapshots/agent-base-v3.mem"
 }
 
-<span class="cm"># Restore (~30ms vs ~125ms cold boot)</span>
+<span class="cm"># Restore (~30–70ms vs ~125ms cold boot)</span>
+<span class="cm"># track_dirty_pages (thay cho enable_diff_snapshots đã deprecated)</span>
 PUT /snapshot/load {
   "snapshot_path": "/snapshots/agent-base-v3.snap",
   "mem_backend": {
     "backend_type": "File",
     "backend_path": "/snapshots/agent-base-v3.mem"
-  }
+  },
+  "track_dirty_pages": true
 }</code></pre>
     </div>
     <div class="tab-panel">
@@ -940,8 +1003,8 @@ cgset -r memory.max=536870912 sandbox-agent    <span class="cm"># 512MB RAM hard
       <tbody>
         <tr>
           <td>Cold start mỗi request</td>
-          <td>~150ms overhead + exec time</td>
-          <td>Pay per second: ~$0.000165 × duration</td>
+          <td>~78ms p50 / ~125ms p99 overhead + exec time</td>
+          <td>~$0.05/hr/vCPU (E2B Pro); chỉ trả khi sandbox chạy</td>
           <td>Low-frequency, independent tasks</td>
         </tr>
         <tr>
@@ -1059,7 +1122,8 @@ cgset -r memory.max=536870912 sandbox-agent    <span class="cm"># 512MB RAM hard
     <div class="card">
       <strong style="color:#b4e07a">Cách hiện tại (2025–2026)</strong>
       <ul>
-        <li>microVM hoặc gVisor là minimum bar cho code execution</li>
+        <li>microVM hoặc gVisor là minimum bar cho code execution trên cloud</li>
+        <li>Landlock + seccomp-bpf (Linux) / Seatbelt (macOS) cho local agent tools — không cần root, overhead gần 0</li>
         <li>Ephemeral by default — mỗi session có sandbox riêng, bị destroy sau khi xong</li>
         <li>Observable — mọi syscall, network call, file access đều có thể được logged</li>
         <li>Time-limited — hard timeout với SIGKILL, không có exception</li>
@@ -1068,6 +1132,7 @@ cgset -r memory.max=536870912 sandbox-agent    <span class="cm"># 512MB RAM hard
         <li>Resource limits hard-coded vào sandbox template</li>
         <li>Tiered capabilities — sandbox chỉ được activate khi cần tier 3/4</li>
         <li>Human approval gate cho irreversible actions</li>
+        <li>OpenAI Code Interpreter dùng gVisor; E2B/Modal/Vercel Sandbox là commercial options trưởng thành</li>
       </ul>
     </div>
   </div>
@@ -1100,12 +1165,13 @@ cgset -r memory.max=536870912 sandbox-agent    <span class="cm"># 512MB RAM hard
       (~125ms boot, ~5MB overhead) làm minimum bar cho untrusted code.
     </li>
     <li>
-      <strong>WASM:</strong> phù hợp cho functions nhỏ, latency cực thấp, language support hạn chế
-      (Python ecosystem vẫn là điểm yếu do C extensions).
+      <strong>WASM / WASI 0.2:</strong> phù hợp cho functions nhỏ, latency cực thấp; Component Model (WASI 0.2 stable từ 1/2024) cải thiện composability. Python ecosystem vẫn là điểm yếu do C extensions; WASI 0.3 async đang tới.
     </li>
     <li>
-      <strong>Commercial sandboxes 2026:</strong> E2B (Firecracker), Modal (gVisor), Daytona, Replit, CodeSandbox —
-      chọn theo boot latency, language support, và persistence model.
+      <strong>OS-level primitives (no-container):</strong> Linux <strong>Landlock</strong> + <strong>seccomp-bpf</strong> (không cần root) và macOS <strong>Seatbelt</strong> — phù hợp local dev, latency &lt;5ms, defense-in-depth bên trong microVM.
+    </li>
+    <li>
+      <strong>Commercial sandboxes 2026:</strong> E2B (Firecracker, ~78ms p50, $150/mo Pro), Modal (gVisor), Daytona, Replit, Vercel Sandbox, OpenAI Code Interpreter (gVisor), CodeSandbox — chọn theo boot latency, language support, và persistence model.
     </li>
     <li>
       <strong>Network policy:</strong> default-deny egress, LUÔN block <code>169.254.169.254</code>,
@@ -1128,14 +1194,13 @@ cgset -r memory.max=536870912 sandbox-agent    <span class="cm"># 512MB RAM hard
       Tier 4 (full system, browser) cần thêm human approval gate.
     </li>
   </ol>
-
   <nav class="section-footer">
     <a href="30-agent-threats.html" class="prev">
-      <div class="label">← trước</div>
-      <div class="title">30 — Agent Threats</div>
+      <div class="label">← Trước</div>
+      <div class="title">30 — Agent-specific Threats &amp; Mitigations</div>
     </a>
     <a href="32-ai-red-team.html" class="next">
-      <div class="label">tiếp theo →</div>
+      <div class="label">Tiếp theo →</div>
       <div class="title">32 — AI Red-teaming</div>
     </a>
   </nav>

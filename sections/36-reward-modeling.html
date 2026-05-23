@@ -12,15 +12,16 @@
   <div class="brand"><span class="dot"></span> AI Engineering</div>
   <div class="crumbs"><a href="../index.html">Mục lục</a> › Phần 11 · <span>36 — Reward Modeling &amp; Process Supervision</span></div>
   <div class="nav-actions">
-    <a href="35-eval-dataset-design.html">← Eval Dataset</a>
-    <a href="37-continuous-eval.html">Continuous Eval →</a>
+    <a href="35-eval-dataset-design.html">← Trước</a>
+    <a href="../index.html">Mục lục</a>
+    <a href="37-continuous-eval.html">Tiếp →</a>
   </div>
 </nav>
 
 <main class="page">
 
   <section class="hero">
-    <span class="eyebrow">Phần 11 · §36</span>
+    <div class="eyebrow-row"><span class="eyebrow">Phần 11 · §36</span><a class="hero-updated" href="../KNOWLEDGE_UPDATES.md" title="Lịch sử cập nhật kiến thức">↻ 2026-05-23</a></div>
     <h1>Reward Modeling &amp; Process Supervision</h1>
     <p class="lede">
       Từ RLHF cổ điển với 4 model song song đến DPO một bước, từ scoring kết quả cuối
@@ -230,6 +231,11 @@ loss = -log_sigmoid(reward_model(prompt, chosen) - reward_model(prompt, rejected
           <td>Helpfulness, safety classifiers</td>
           <td>OpenAI o1/o3, DeepSeek Math, PRM800K</td>
         </tr>
+        <tr>
+          <td><strong>Verifiable reward (RLVR)</strong></td>
+          <td>Không cần score riêng — dùng verifier xác định đúng/sai (compiler, calculator)</td>
+          <td>DeepSeek-R1 (GRPO), OpenAI RFT — loại bỏ cả RM lẫn value model</td>
+        </tr>
       </tbody>
     </table>
   </div>
@@ -244,6 +250,24 @@ loss = -log_sigmoid(reward_model(prompt, chosen) - reward_model(prompt, rejected
     Gemini 2.0 Flash Thinking — đều hoạt động dựa trên một chuỗi suy luận dài (<em>chain-of-thought</em>)
     trước khi đưa ra câu trả lời cuối. Đây là lúc PRM trở nên không thể thiếu.
   </p>
+
+  <div class="callout note">
+    <div class="icon">≡</div>
+    <div>
+      <div class="title">RLVR — Reinforcement Learning with Verifiable Rewards</div>
+      <p>
+        DeepSeek-R1 (tháng 1/2025) phổ biến hóa <strong>RLVR</strong>: thay vì dùng PRM/ORM
+        học từ human preferences, model nhận feedback trực tiếp từ
+        <em>deterministic verifiers</em> — compiler kiểm tra code đúng/sai, calculator kiểm tra
+        toán học, unit test kiểm tra logic. Pipeline dùng <strong>GRPO</strong> (Group Relative
+        Policy Optimization) thay PPO: loại bỏ cả reward model lẫn value model (critic),
+        chỉ cần 2 model trong VRAM thay vì 4.
+        Accuracy reward (đáp án đúng hay không) kết hợp với format reward (tuân thủ
+        <code>&lt;think&gt;...&lt;/think&gt;</code>). RLVR hiện là nền tảng của hầu hết
+        reasoning models state-of-the-art.
+      </p>
+    </div>
+  </div>
 
   <h3>Vấn đề của ORM với reasoning chains</h3>
   <p>
@@ -403,12 +427,14 @@ loss = -log_sigmoid(reward_model(prompt, chosen) - reward_model(prompt, rejected
   <div class="callout warn">
     <div class="icon">⚠</div>
     <div>
-      <div class="title">Tại sao PPO RLHF phức tạp</div>
+      <div class="title">Tại sao PPO RLHF phức tạp — và GRPO giải quyết ra sao</div>
       <p>
-        Bạn cần <strong>4 model trong VRAM cùng lúc</strong>: policy, reference, reward, value.
-        Với Llama 3 70B, đó là 4 × ~140GB = ~560GB VRAM ở FP16.
-        Training PPO không ổn định, dễ collapse nếu learning rate không đúng.
-        Chính vì điều này mà cộng đồng nghiên cứu đã tìm cách đơn giản hóa.
+        PPO cần <strong>4 model trong VRAM cùng lúc</strong>: policy, reference, reward, value.
+        Với Llama 3 70B, đó là 4 × ~140GB ≈ 560GB VRAM ở FP16.
+        Training không ổn định, dễ collapse. <strong>GRPO</strong> (DeepSeek 2024) đơn giản hóa:
+        ước lượng advantage bằng Monte Carlo rollouts (nhóm mẫu cùng prompt) thay vì dùng value
+        model — loại bỏ được critic và reward model khi dùng verifiable rewards (RLVR),
+        còn lại chỉ 2 model. Phù hợp để chạy trên single high-end GPU với LoRA.
       </p>
     </div>
   </div>
@@ -734,8 +760,8 @@ revised = model.<span class="fn">generate</span>(revision_prompt)</code></pre>
         </tr>
         <tr>
           <td><strong>Sycophancy</strong></td>
-          <td>Model đồng ý với quan điểm sai của user, thay đổi câu trả lời khi bị push back dù đúng</td>
-          <td>Include adversarial examples trong eval; train trên "maintain correct answer under pressure"</td>
+          <td>Model đồng ý với quan điểm sai của user, thay đổi câu trả lời khi bị push back dù đúng. Nghiên cứu 2025 cho thấy model lớn hơn có xu hướng sycophantic cao hơn — không phải thiếu kiến thức mà là reasoning tốt hơn giúp chúng <em>suy ra latent bias của user</em> chính xác hơn.</td>
+          <td>Include adversarial examples trong eval (SycEval framework); train trên "maintain correct answer under pressure"; defense rubric với hard veto</td>
         </tr>
         <tr>
           <td><strong>Format gaming</strong></td>
@@ -751,6 +777,11 @@ revised = model.<span class="fn">generate</span>(revision_prompt)</code></pre>
           <td><strong>Safety theater</strong></td>
           <td>Add disclaimer vô nghĩa để "an toàn hơn" mà không thực sự reduce harm</td>
           <td>Eval bằng actual harm, không chỉ presence of safety language</td>
+        </tr>
+        <tr>
+          <td><strong>Spurious correlation</strong></td>
+          <td>RM học shortcuts (tên tác giả, style) không liên quan đến chất lượng thực sự</td>
+          <td>Causal reward modeling: enforce counterfactual invariance — reward nhất quán khi thay đổi irrelevant variables (2025)</td>
         </tr>
       </tbody>
     </table>
@@ -856,6 +887,7 @@ revised = model.<span class="fn">generate</span>(revision_prompt)</code></pre>
       <p><span class="tag">Open-source</span> <span class="tag blue">Phổ biến nhất</span></p>
       <ul>
         <li>Support đầy đủ: PPOTrainer, DPOTrainer, ORPOTrainer, KTOTrainer, SimPOTrainer</li>
+        <li><strong>GRPOTrainer</strong> (thêm 2025): train theo phong cách DeepSeek-R1 với verifiable rewards, chạy được trên single GPU</li>
         <li>RewardTrainer để train standalone reward models</li>
         <li>Tích hợp với PEFT (LoRA) — tiết kiệm VRAM đáng kể</li>
         <li>Active development, documentation tốt</li>
@@ -1094,6 +1126,14 @@ llamafactory-cli train \
           <td>Phụ thuộc judge quality</td>
           <td>Scale annotation; không có đủ human labelers</td>
         </tr>
+        <tr>
+          <td><strong>GRPO + RLVR</strong></td>
+          <td>Prompts có verifiable answers (toán, code, logic)</td>
+          <td>2 (policy + ref) — không cần RM hay value model</td>
+          <td><span class="tag green">Thấp-Trung bình</span></td>
+          <td>Ổn định, reward rõ ràng</td>
+          <td>Reasoning models; task có verifier xác định đúng/sai; DeepSeek-R1 style</td>
+        </tr>
       </tbody>
     </table>
   </div>
@@ -1128,13 +1168,44 @@ llamafactory-cli train \
   <div class="callout note">
     <div class="icon">≡</div>
     <div>
-      <div class="title">Khi nào vẫn nên dùng PPO?</div>
+      <div class="title">Khi nào vẫn nên dùng PPO/GRPO thay vì DPO?</div>
       <p>
-        PPO vẫn là lựa chọn tốt nhất khi: (1) Cần reward signal phức tạp không thể
-        biểu diễn qua pairwise preference — ví dụ reward từ environment như code execution,
-        game score, verifier; (2) Cần process reward (PRM) tích hợp trong training loop;
-        (3) Building reasoning models với search-time compute. DPO/ORPO đủ tốt cho alignment
-        tiêu chuẩn, nhưng PPO với verifiable rewards vẫn là nền tảng của reasoning models.
+        PPO/GRPO vẫn là lựa chọn tốt nhất khi: (1) Task có <em>verifiable reward</em> —
+        code execution, calculator, formal verifier (RLVR / GRPO approach); (2) Cần process
+        reward (PRM) tích hợp trong training loop; (3) Building reasoning models với
+        search-time compute. DPO/ORPO đủ tốt cho alignment tiêu chuẩn, nhưng GRPO + RLVR
+        là nền tảng của reasoning models từ 2025 trở đi.
+      </p>
+    </div>
+  </div>
+
+  <div class="callout tip">
+    <div class="icon">★</div>
+    <div>
+      <div class="title">OpenAI RFT — Reinforcement Fine-Tuning (2025)</div>
+      <p>
+        OpenAI ra mắt <strong>Reinforcement Fine-Tuning (RFT)</strong> API cho o4-mini (2025):
+        developers định nghĩa một <em>grader</em> (rubric/chấm điểm tự động) và model được
+        RL-trained để maximize grader score — không cần pairwise labels. Rubric-based reward
+        cho phép align model trên open-ended tasks như y tế, pháp lý, phân tích tài chính.
+        RFT thường chỉ cần hàng chục đến vài trăm mẫu để đạt improvement đáng kể, nhờ kết hợp
+        với reasoning capability của o4-mini.
+      </p>
+    </div>
+  </div>
+
+  <div class="callout note">
+    <div class="icon">≡</div>
+    <div>
+      <div class="title">SkyworkRM &amp; RewardBench v2 — Đánh giá Reward Models (2025)</div>
+      <p>
+        <strong>RewardBench v2</strong> (AllenAI, tháng 6/2025 — arxiv 2506.01937): benchmark
+        mới khó hơn v1 khoảng 20%, dùng human prompts thực tế chưa từng thấy, đánh giá qua
+        best-of-4 classification. Đo correlation với downstream PPO và Best-of-N.
+        <strong>Skywork-Reward-V2</strong> (tháng 7/2025): series 8 reward models (600M–8B),
+        dựa trên Llama-3.1 và Qwen3. Skywork-Reward-V2-Qwen3-1.7B đã vượt INF-ORM-Llama3.1-70B
+        về average benchmark — chứng minh data quality quan trọng hơn model size.
+        Leaderboard: <a href="https://huggingface.co/collections/allenai/reward-bench-2" target="_blank">RewardBench 2 trên HuggingFace</a>.
       </p>
     </div>
   </div>
@@ -1189,20 +1260,34 @@ llamafactory-cli train \
       khỏi reference policy, ngăn reward hacking cực đoan.
     </li>
     <li>
-      <strong>Xu hướng hiện tại (2026)</strong>: PPO RLHF cho verifiable/process rewards;
-      DPO/ORPO/SimPO cho helpfulness alignment; PRM ngày càng quan trọng với sự trỗi dậy
-      của reasoning models.
+      <strong>RLVR + GRPO</strong> (DeepSeek-R1, 2025): loại bỏ RM và value model bằng cách
+      dùng verifiable rewards (compiler, calculator) + Group Relative Policy Optimization.
+      Chỉ cần 2 model, chạy được trên single GPU — hiện là nền tảng của reasoning models.
+    </li>
+    <li>
+      <strong>RFT (OpenAI)</strong>: Reinforcement Fine-Tuning với rubric-based grader —
+      align trên open-ended tasks mà không cần pairwise labels, chỉ cần vài chục mẫu.
+      Áp dụng cho o4-mini, khả dụng qua API từ 2025.
+    </li>
+    <li>
+      <strong>Reward Model Leaderboard</strong>: RewardBench v2 (AllenAI, 6/2025) là benchmark
+      chuẩn mới, khó hơn v1 20%. SkyworkRM-V2 (7/2025) dẫn đầu open-source — 1.7B model
+      đánh bại 70B model nhờ data quality.
+    </li>
+    <li>
+      <strong>Xu hướng hiện tại (2026)</strong>: GRPO/RLVR cho reasoning models; DPO/ORPO/SimPO
+      cho helpfulness alignment; RFT với rubric-grader cho domain-specific tuning; PRM ngày càng
+      quan trọng cho Best-of-N search-time compute.
     </li>
   </ol>
-
   <nav class="section-footer">
     <a href="35-eval-dataset-design.html" class="prev">
-      <div class="label">← trước đó</div>
+      <div class="label">← Trước</div>
       <div class="title">35 — Eval Dataset Design</div>
     </a>
     <a href="37-continuous-eval.html" class="next">
-      <div class="label">tiếp theo →</div>
-      <div class="title">37 — Continuous Evaluation</div>
+      <div class="label">Tiếp theo →</div>
+      <div class="title">37 — Continuous Eval &amp; Regression cho AI</div>
     </a>
   </nav>
 

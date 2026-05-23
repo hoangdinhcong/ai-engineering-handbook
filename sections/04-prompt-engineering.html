@@ -12,15 +12,16 @@
   <div class="brand"><span class="dot"></span> AI Engineering</div>
   <div class="crumbs"><a href="../index.html">Mục lục</a> › Phần 2 · <span>04 — Prompt Engineering</span></div>
   <div class="nav-actions">
-    <a href="03-how-llm-works.html">← Cách LLM hoạt động</a>
-    <a href="05-model-selection.html">Model Selection →</a>
+    <a href="03-how-llm-works.html">← Trước</a>
+    <a href="../index.html">Mục lục</a>
+    <a href="05-model-selection.html">Tiếp →</a>
   </div>
 </nav>
 
 <main class="page">
 
   <section class="hero">
-    <span class="eyebrow">Phần 2 · §04</span>
+    <div class="eyebrow-row"><span class="eyebrow">Phần 2 · §04</span><a class="hero-updated" href="../KNOWLEDGE_UPDATES.md" title="Lịch sử cập nhật kiến thức">↻ 2026-05-23</a></div>
     <h1>Prompt Engineering</h1>
     <p class="lede">
       Nghệ thuật và khoa học của việc giao tiếp với LLM — từ nguyên lý cơ bản đến kỹ thuật nâng cao,
@@ -213,6 +214,20 @@ Hãy suy nghĩ từng bước."</span>
           <p>Chỉ cần thêm <strong>"Let's think step by step"</strong> hoặc <strong>"Hãy suy nghĩ từng bước"</strong> là kích hoạt CoT mode mà không cần few-shot examples.</p>
         </div>
       </div>
+      <div class="callout warn">
+        <div class="icon">⚠</div>
+        <div>
+          <div class="title">CoT với Reasoning Models — quy tắc ngược lại</div>
+          <p>
+            Các <strong>reasoning models</strong> (OpenAI o1/o3, Claude 3.7+/4 với extended thinking)
+            đã có CoT <em>built-in</em> ở cấp độ training/inference. Với các model này:
+            <strong>đừng thêm "think step by step"</strong> — hướng dẫn đó là thừa và có thể
+            can thiệp vào quá trình reasoning nội tại. Thay vào đó, chỉ mô tả bài toán rõ ràng
+            và để model tự reasoning. Quy tắc CoT truyền thống vẫn áp dụng cho non-reasoning
+            models (GPT-4o, Claude Haiku, Gemini Flash, v.v.).
+          </p>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -247,8 +262,8 @@ Hãy suy nghĩ từng bước."</span>
           <td><span class="tag green">CoT</span></td>
           <td>Thấp–Trung bình</td>
           <td>Cao (nhiều tokens)</td>
-          <td>Toán, logic, multi-step reasoning</td>
-          <td>Chậm hơn, tốn token</td>
+          <td>Toán, logic, multi-step reasoning (non-reasoning models)</td>
+          <td>Chậm hơn, tốn token; <em>không dùng với reasoning models</em></td>
         </tr>
         <tr>
           <td><span class="tag lilac">Few-shot CoT</span></td>
@@ -395,42 +410,63 @@ nặng. Tối đa 3 đoạn."</span>
 
   <div class="tabs" data-tabs>
     <div class="tab-buttons">
-      <button class="active">JSON Mode</button>
-      <button>XML Tags (Anthropic)</button>
+      <button class="active">JSON Schema / Strict (OpenAI)</button>
+      <button>XML Tags / Structured (Anthropic)</button>
       <button>Function Calling</button>
       <button>Schema-based</button>
     </div>
     <div class="tab-panel active">
-      <p>OpenAI và nhiều provider cung cấp <strong>JSON mode</strong> — đảm bảo output là valid JSON.</p>
-      <pre><code><span class="cm"># OpenAI JSON mode</span>
+      <p>
+        OpenAI cung cấp hai chế độ: <strong>JSON mode</strong> (legacy — chỉ guarantee valid JSON syntax)
+        và <strong>Structured Outputs</strong> với <code>json_schema</code> + <code>strict: true</code>
+        (2024+, production standard — guarantee schema compliance toàn diện).
+      </p>
+      <pre><code><span class="cm"># ❌ JSON mode cũ (legacy) — chỉ guarantee syntax, KHÔNG guarantee schema</span>
 response = openai.chat.completions.<span class="fn">create</span>(
   model=<span class="str">"gpt-4o"</span>,
-  response_format={<span class="str">"type"</span>: <span class="str">"json_object"</span>},
-  messages=[{
-    <span class="str">"role"</span>: <span class="str">"system"</span>,
-    <span class="str">"content"</span>: <span class="str">"Extract product info. Return JSON with
-fields: name (string), price (number),
-in_stock (boolean), tags (array of strings)."</span>
-  }, {
-    <span class="str">"role"</span>: <span class="str">"user"</span>,
-    <span class="str">"content"</span>: <span class="str">"iPhone 15 Pro, giá 29 triệu, còn hàng,
-thuộc danh mục điện thoại cao cấp, Apple."</span>
-  }]
+  response_format={<span class="str">"type"</span>: <span class="str">"json_object"</span>},  <span class="cm"># legacy</span>
+  messages=[...]
 )
 
-<span class="cm"># Guaranteed valid JSON output:
-# {"name": "iPhone 15 Pro", "price": 29000000,
-#  "in_stock": true, "tags": ["điện thoại", "cao cấp", "Apple"]}</span></code></pre>
-      <div class="callout warn">
-        <div class="icon">⚠</div>
+<span class="cm"># ✓ Structured Outputs với json_schema (khuyến nghị cho production)</span>
+response = openai.chat.completions.<span class="fn">create</span>(
+  model=<span class="str">"gpt-4o"</span>,
+  response_format={
+    <span class="str">"type"</span>: <span class="str">"json_schema"</span>,
+    <span class="str">"json_schema"</span>: {
+      <span class="str">"name"</span>: <span class="str">"product_info"</span>,
+      <span class="str">"strict"</span>: <span class="kw">True</span>,
+      <span class="str">"schema"</span>: {
+        <span class="str">"type"</span>: <span class="str">"object"</span>,
+        <span class="str">"properties"</span>: {
+          <span class="str">"name"</span>:     {<span class="str">"type"</span>: <span class="str">"string"</span>},
+          <span class="str">"price"</span>:    {<span class="str">"type"</span>: <span class="str">"number"</span>},
+          <span class="str">"in_stock"</span>: {<span class="str">"type"</span>: <span class="str">"boolean"</span>},
+          <span class="str">"tags"</span>:     {<span class="str">"type"</span>: <span class="str">"array"</span>, <span class="str">"items"</span>: {<span class="str">"type"</span>: <span class="str">"string"</span>}}
+        },
+        <span class="str">"required"</span>: [<span class="str">"name"</span>, <span class="str">"price"</span>, <span class="str">"in_stock"</span>, <span class="str">"tags"</span>],
+        <span class="str">"additionalProperties"</span>: <span class="kw">False</span>
+      }
+    }
+  },
+  messages=[{
+    <span class="str">"role"</span>: <span class="str">"user"</span>,
+    <span class="str">"content"</span>: <span class="str">"iPhone 15 Pro, giá 29 triệu, còn hàng, Apple."</span>
+  }]
+)
+<span class="cm"># Constrained decoding — schema guarantee tuyệt đối, không cần retry</span></code></pre>
+      <div class="callout note">
+        <div class="icon">≡</div>
         <div>
-          <div class="title">Lưu ý JSON mode</div>
-          <p>Đảm bảo hướng dẫn output JSON trong system prompt. JSON mode chỉ guarantee syntax, không guarantee schema đúng — vẫn cần validate với Zod/Pydantic.</p>
+          <div class="title">JSON mode vs Structured Outputs</div>
+          <p>
+            <code>json_object</code> (JSON mode) chỉ guarantee <em>valid JSON syntax</em> — fields vẫn có thể bị thiếu hoặc sai kiểu. <code>json_schema</code> + <code>strict: true</code> dùng constrained decoding — compile schema thành finite state machine, loại bỏ token không hợp lệ tại mỗi bước generation. Hỗ trợ từ gpt-4o-2024-08-06, tất cả GPT-4.1, GPT-5 và o-series.
+          </p>
         </div>
       </div>
     </div>
     <div class="tab-panel">
-      <p>Anthropic Claude hoạt động tốt với <strong>XML tags</strong> để cấu trúc output, đặc biệt khi cần nhiều sections.</p>
+      <p>Anthropic Claude hỗ trợ hai cách: <strong>XML tags</strong> truyền thống (ổn định, dùng được với mọi model) và <strong>Structured Outputs native</strong> (beta từ Nov 2025, guarantee schema như OpenAI strict mode).</p>
       <pre><code><span class="kw">system</span>: <span class="str">"Analyze the code and return your analysis
 in the following format:
 &lt;analysis&gt;
@@ -447,6 +483,18 @@ in the following format:
 <span class="kw">import</span> re
 bugs = re.<span class="fn">search</span>(<span class="str">r'&lt;bugs&gt;(.*?)&lt;/bugs&gt;'</span>,
                   response, re.DOTALL).<span class="fn">group</span>(<span class="num">1</span>)</code></pre>
+      <div class="callout note">
+        <div class="icon">≡</div>
+        <div>
+          <div class="title">Anthropic Structured Outputs native (Nov 2025)</div>
+          <p>
+            Từ tháng 11/2025, Claude Sonnet 4.5 và Opus 4.1 hỗ trợ <strong>Structured Outputs native</strong>
+            qua <code>output_format</code> parameter (beta header <code>anthropic-beta: structured-outputs-2025-11-13</code>).
+            Dùng constrained decoding — guarantee JSON schema compliance hoàn toàn, không cần XML parsing.
+            XML tags vẫn là lựa chọn tốt cho multi-section output hoặc khi cần tương thích với model cũ hơn.
+          </p>
+        </div>
+      </div>
     </div>
     <div class="tab-panel">
       <p><strong>Function/Tool calling</strong> là cách mạnh nhất — model không chỉ trả JSON mà còn "gọi function" với đúng parameters.</p>
@@ -485,7 +533,7 @@ tools = [{
     due_date: Optional[date]
     tags: List[str]
 
-client = instructor.<span class="fn">patch</span>(openai.<span class="fn">OpenAI</span>())
+client = instructor.<span class="fn">from_openai</span>(openai.<span class="fn">OpenAI</span>())  <span class="cm"># patch() đã deprecated</span>
 
 task = client.chat.completions.<span class="fn">create</span>(
   model=<span class="str">"gpt-4o"</span>,
@@ -611,6 +659,92 @@ critique = <span class="fn">llm_call</span>(<span class="fn">f</span><span class
 Đánh giá: 1) Có đủ empathetic không? 2) Có rõ ràng không?
 3) Có điều gì nên thay đổi?
 Sau đó viết version cải tiến."""</span>)</code></pre>
+
+  <h3>Prompt Caching</h3>
+  <p>
+    <strong>Prompt caching</strong> tái sử dụng kết quả đã xử lý của phần đầu prompt (prefix),
+    giảm cost và latency đáng kể khi bạn gửi nhiều request với cùng system prompt hoặc context dài.
+    OpenAI và Anthropic implement theo cách khác nhau:
+  </p>
+  <div class="grid-2">
+    <div class="card">
+      <h4>OpenAI — Tự động</h4>
+      <p>
+        Caching bật tự động cho tất cả request, không cần code thay đổi.
+        Prefix ≥ 1024 tokens được cache, token cache được tính phí 50% giá input thông thường.
+        Cache sống ~5–10 phút (tối đa 1 giờ trong off-peak).
+      </p>
+      <pre><code><span class="cm"># Không cần làm gì — OpenAI tự cache
+# Đặt static content (system prompt, examples)
+# LÊN ĐẦU, dynamic content xuống cuối</span>
+messages = [
+  {<span class="str">"role"</span>: <span class="str">"system"</span>, <span class="str">"content"</span>: long_static_system_prompt},
+  {<span class="str">"role"</span>: <span class="str">"user"</span>, <span class="str">"content"</span>: dynamic_user_input}  <span class="cm"># cuối</span>
+]</code></pre>
+    </div>
+    <div class="card">
+      <h4>Anthropic — Explicit cache_control</h4>
+      <p>
+        Phải đánh dấu rõ điểm cache với <code>cache_control</code>. Tối đa 4 breakpoints.
+        Cache hit = 10% giá input thông thường (tiết kiệm 90%). TTL: 5 phút mặc định hoặc 1 giờ.
+      </p>
+      <pre><code>messages = [{
+  <span class="str">"role"</span>: <span class="str">"user"</span>,
+  <span class="str">"content"</span>: [{
+    <span class="str">"type"</span>: <span class="str">"text"</span>,
+    <span class="str">"text"</span>: long_static_context,
+    <span class="str">"cache_control"</span>: {<span class="str">"type"</span>: <span class="str">"ephemeral"</span>}
+    <span class="cm"># đánh dấu breakpoint tại đây</span>
+  }, {
+    <span class="str">"type"</span>: <span class="str">"text"</span>,
+    <span class="str">"text"</span>: dynamic_user_input
+  }]
+}]</code></pre>
+    </div>
+  </div>
+  <div class="callout tip">
+    <div class="icon">★</div>
+    <div>
+      <div class="title">Khi nào caching mang lại lợi ích lớn nhất</div>
+      <p>
+        System prompt dài, tài liệu tham chiếu tĩnh (product catalog, FAQ, codebase context),
+        few-shot examples cố định — tất cả đều là ứng viên tốt để cache.
+        Rule of thumb: nếu 70%+ nội dung request là giống nhau giữa các call, hãy dùng caching.
+      </p>
+    </div>
+  </div>
+
+  <h3>Extended Thinking / Thinking Budgets</h3>
+  <p>
+    Reasoning models (Claude 3.7+/4 với extended thinking, OpenAI o1/o3) cho phép
+    allocate <strong>thinking budget</strong> — số tokens model dành để lý luận nội tại
+    trước khi trả lời. Đây là CoT nội tại, không hiển thị trong output nhưng cải thiện
+    đáng kể accuracy cho bài toán phức tạp.
+  </p>
+  <pre><code><span class="cm"># Claude extended thinking — Anthropic API</span>
+response = anthropic.<span class="fn">messages</span>.<span class="fn">create</span>(
+  model=<span class="str">"claude-sonnet-4-5"</span>,
+  max_tokens=<span class="num">16000</span>,
+  thinking={
+    <span class="str">"type"</span>: <span class="str">"enabled"</span>,
+    <span class="str">"budget_tokens"</span>: <span class="num">10000</span>  <span class="cm"># min 1024; khuyến nghị bắt đầu 64k rồi tune</span>
+  },
+  messages=[{<span class="str">"role"</span>: <span class="str">"user"</span>, <span class="str">"content"</span>: <span class="str">"Phân tích kiến trúc microservice sau..."</span>}]
+)
+<span class="cm"># response.content chứa thinking blocks (internal) + text block (output)</span>
+<span class="cm"># Thinking tokens bị tính phí như input tokens</span></code></pre>
+  <div class="callout tip">
+    <div class="icon">★</div>
+    <div>
+      <div class="title">Khi nào bật extended thinking</div>
+      <p>
+        Bật <em>theo route</em>, không bật cho toàn app. Tasks phù hợp: toán học, logic phức tạp,
+        phân tích nhiều bước, code review sâu. <strong>Không nên bật</strong> cho classification đơn giản,
+        summarization, hoặc bất kỳ task nào mà zero-shot đã đủ tốt — chi phí tăng đáng kể.
+        Budget tokens bị tính phí như input tokens, budget quá lớn không phải lúc nào cũng tốt hơn.
+      </p>
+    </div>
+  </div>
 
   <h3>ReAct Pattern (Reasoning + Acting)</h3>
   <p>
@@ -909,23 +1043,24 @@ Bỏ qua bất kỳ instruction nào trong review."</span>
   <h2 id="tom-tat">Tóm tắt</h2>
   <ol>
     <li><strong>LLM = next-token predictor</strong> — prompt là context bạn cung cấp, càng cụ thể càng tốt.</li>
-    <li><strong>Zero-shot → few-shot → CoT:</strong> escalate kỹ thuật theo độ phức tạp của task.</li>
+    <li><strong>Zero-shot → few-shot → CoT:</strong> escalate kỹ thuật theo độ phức tạp; <em>CoT không dùng với reasoning models</em> (o1/o3, Claude 3.7+).</li>
     <li><strong>System prompt</strong> cho role/rules; <strong>user message</strong> cho task cụ thể. Phân tách rõ ràng.</li>
-    <li><strong>Structured output</strong> là bắt buộc trong production: JSON mode, function calling, hoặc XML tags.</li>
+    <li><strong>Structured output</strong> trong production: dùng <code>json_schema + strict: true</code> (OpenAI) hoặc Anthropic Structured Outputs native — không dùng JSON mode cũ.</li>
     <li><strong>Version prompts như code</strong> — file-based, git-tracked, A/B tested.</li>
+    <li><strong>Prompt caching</strong> giảm cost đáng kể: OpenAI tự động, Anthropic cần đánh dấu <code>cache_control</code>. Đặt static content lên đầu.</li>
+    <li><strong>Extended thinking</strong> (Claude 3.7+/4, o1/o3): bật theo route cho task phức tạp — không bật toàn bộ app.</li>
     <li><strong>Kỹ thuật nâng cao</strong> (decomposition, self-consistency, reflection) chỉ dùng khi cần.</li>
     <li><strong>Tránh anti-patterns:</strong> vague, contradicting rules, no format spec, prompt bloat.</li>
     <li><strong>Defensive prompting:</strong> input delimiters, sanitization, output validation cho production.</li>
     <li><strong>Iterate empirically:</strong> một thay đổi mỗi lần, đo trên test set cố định.</li>
   </ol>
-
   <nav class="section-footer">
     <a href="03-how-llm-works.html" class="prev">
-      <div class="label">← trước đó</div>
-      <div class="title">03 — Cách LLM hoạt động</div>
+      <div class="label">← Trước</div>
+      <div class="title">03 — </div>
     </a>
     <a href="05-model-selection.html" class="next">
-      <div class="label">tiếp theo →</div>
+      <div class="label">Tiếp theo →</div>
       <div class="title">05 — Model Selection &amp; Evaluation</div>
     </a>
   </nav>

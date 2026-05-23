@@ -12,7 +12,8 @@
   <div class="brand"><span class="dot"></span> AI Engineering</div>
   <div class="crumbs"><a href="../index.html">Mục lục</a> › Phần 12 · <span>40 — Code Execution as a Tool</span></div>
   <div class="nav-actions">
-    <a href="39-computer-use-agents.html">← 39</a>
+    <a href="39-computer-use-agents.html">← Trước</a>
+    <a href="../index.html">Mục lục</a>
     <a href="41-distributed-agent-runtimes.html">Tiếp →</a>
   </div>
 </nav>
@@ -20,7 +21,7 @@
 <main class="page">
 
   <section class="hero">
-    <span class="eyebrow">Phần 12 · §40</span>
+    <div class="eyebrow-row"><span class="eyebrow">Phần 12 · §40</span><a class="hero-updated" href="../KNOWLEDGE_UPDATES.md" title="Lịch sử cập nhật kiến thức">↻ 2026-05-23</a></div>
     <h1>Code Execution as a Tool</h1>
     <p class="lede">
       Tại sao cho agent khả năng chạy code thực sự là bước nhảy vọt về độ chính xác — từ sandbox architecture, persistent kernel sessions, file I/O, đến verifier loop và security hardening trong 2026.
@@ -129,52 +130,65 @@
       <button>Anthropic</button>
       <button>Google Gemini</button>
       <button>E2B</button>
+      <button>Daytona</button>
       <button>Modal</button>
     </div>
     <div class="tab-panel active">
       <p>
         <strong>OpenAI Code Interpreter</strong> (đã đổi tên thành <em>Data Analysis</em> trong ChatGPT)
-        là pioneer — ra mắt 2023 và vẫn là benchmark về UX. Trong API, tính năng này
-        có dưới dạng tool <code>code_interpreter</code> khi dùng Assistants API với <code>gpt-4o</code>.
+        là pioneer — ra mắt 2023 và vẫn là benchmark về UX. Kể từ tháng 3/2025,
+        OpenAI chuyển tính năng này sang <strong>Responses API</strong> (thay thế Assistants API sẽ tắt
+        hoàn toàn ngày 26/8/2026). Trong Responses API, dùng tool <code>code_interpreter</code>
+        với <code>gpt-4o</code> hay <code>o4-mini</code>.
       </p>
       <ul>
         <li>Ngôn ngữ: Python (Jupyter kernel)</li>
-        <li>Sandbox: container riêng per session, ~1GB disk, network tắt mặc định</li>
-        <li>Persistence: kernel sống trong session (~1h), variables persist across calls</li>
+        <li>Sandbox: container riêng per execution, ~1GB disk, network tắt mặc định</li>
+        <li>Persistence: kernel sống trong session (~20 phút per container), variables persist across calls</li>
         <li>File I/O: upload/download files qua Files API, max 512MB per file</li>
-        <li>Pricing: $0.03/session (bao gồm compute), không tính theo giây</li>
+        <li>Pricing: $0.03/container (từ 31/3/2026: $0.03/64GB per 20-minute session)</li>
       </ul>
-    </div>
-    <div class="tab-panel">
-      <p>
-        <strong>Anthropic Code Execution</strong> (beta, 2025) tích hợp trực tiếp vào Claude API
-        như một built-in tool, tương tự cách <code>web_search</code> hoạt động. Claude tự quyết
-        khi nào cần chạy code để verify hoặc compute.
-      </p>
-      <ul>
-        <li>Ngôn ngữ: Python</li>
-        <li>Sandbox: Anthropic-managed microVM</li>
-        <li>Persistence: theo conversation thread</li>
-        <li>File I/O: artifacts trả về dưới dạng base64 trong response</li>
-        <li>Tích hợp sâu với reasoning — Claude biết khi nào <em>nên</em> dùng code vs text</li>
-      </ul>
-      <div class="callout tip">
-        <div class="icon">★</div>
+      <div class="callout warn">
+        <div class="icon">!</div>
         <div>
-          <div class="title">Beta 2025 → GA 2026</div>
-          <p>Anthropic Code Execution dự kiến GA trong 2026 với support thêm JavaScript và khả năng install custom packages qua pip trong session.</p>
+          <div class="title">Assistants API sunset — 26/8/2026</div>
+          <p>OpenAI đã deprecated Assistants API; nếu đang dùng <code>/v1/assistants</code> hoặc <code>/v1/threads</code>, cần migrate sang Responses API trước ngày này. Code Interpreter vẫn available — chỉ đổi API endpoint.</p>
         </div>
       </div>
     </div>
     <div class="tab-panel">
       <p>
-        <strong>Google Code Execution</strong> (Gemini API) ra mắt với Gemini 1.5 Pro và hoạt động
-        qua tool <code>code_execution</code> trong Vertex AI và Google AI Studio. Nổi bật với
-        khả năng xử lý file từ Google Drive native.
+        <strong>Anthropic Code Execution</strong> <em>(GA tháng 1/2026)</em> tích hợp trực tiếp vào Claude API
+        như một built-in tool. Tool version hiện tại: <code>code_execution_20260120</code> — không còn
+        yêu cầu beta header. Hỗ trợ trên Claude Opus 4.6, Sonnet 4.6, Sonnet 4.5, Opus 4.5.
+        Claude tự quyết khi nào cần chạy code để verify hoặc compute.
+      </p>
+      <ul>
+        <li>Ngôn ngữ: Python (Bash commands và file manipulation)</li>
+        <li>Sandbox: Anthropic-managed microVM, cô lập hoàn toàn</li>
+        <li>Persistence: theo conversation thread</li>
+        <li>File I/O: artifacts trả về dưới dạng base64 trong response; files preloaded lên container</li>
+        <li>Pricing: <strong>$0.05/container-hour</strong> (miễn phí khi dùng kèm web_search hoặc web_fetch)</li>
+        <li>Tích hợp sâu với reasoning — Claude biết khi nào <em>nên</em> dùng code vs text</li>
+      </ul>
+      <div class="callout tip">
+        <div class="icon">★</div>
+        <div>
+          <div class="title">GA tháng 1/2026 — không cần beta header</div>
+          <p>Từ <code>code_execution_20260120</code>, Anthropic Code Execution chính thức GA. Khi dùng Claude Managed Agents, session runtime thay thế container-hour billing — không bị tính hai lần.</p>
+        </div>
+      </div>
+    </div>
+    <div class="tab-panel">
+      <p>
+        <strong>Google Code Execution</strong> (Gemini API) hoạt động
+        qua tool <code>code_execution</code> trong Vertex AI và Google AI Studio. Hỗ trợ trên
+        toàn bộ dòng Gemini 3.x (Pro, Flash) với khả năng xử lý file từ Google Drive native
+        và multimodal function responses.
       </p>
       <ul>
         <li>Ngôn ngữ: Python</li>
-        <li>Sandbox: Google-managed container, Gemini 2.0+ hỗ trợ multimodal output (image, audio)</li>
+        <li>Sandbox: Google-managed container; Gemini 3.x hỗ trợ multimodal output (image, PDF) trong function responses</li>
         <li>Persistence: per conversation</li>
         <li>File I/O: tích hợp với Google Drive, GCS, và Files API</li>
         <li>Pricing: tính theo token (output tokens bao gồm code output)</li>
@@ -184,21 +198,38 @@
       <p>
         <strong>E2B (e2b.dev)</strong> là provider chuyên biệt cho code execution trong AI agents —
         không phải AI model, chỉ là sandbox-as-a-service. Dùng <strong>Firecracker</strong> microVM
-        (technology cũng dùng bởi AWS Lambda) cho isolation cực nhanh.
+        (technology cũng dùng bởi AWS Lambda) cho isolation cực nhanh. Tháng 7/2025 huy động
+        được $21M Series A; hiện phục vụ hơn nửa Fortune 500.
       </p>
       <ul>
-        <li>Ngôn ngữ: Python, JavaScript/TypeScript, và bất kỳ ngôn ngữ nào qua custom Docker image</li>
-        <li>Boot time: <strong>~125ms</strong> (cold start, Firecracker) — nhanh nhất trong category</li>
-        <li>SDK: Python và JS SDK, tích hợp với LangChain, LlamaIndex, Vercel AI SDK</li>
-        <li>Persistence: sandbox có thể pause/resume, state persist qua API</li>
-        <li>Pricing: $0.000015/compute-second + $0.000001/MB-second storage</li>
-        <li>Network: configurable per sandbox (default off)</li>
+        <li>Ngôn ngữ: Python, JavaScript/TypeScript, Ruby, C++ và bất kỳ ngôn ngữ nào qua custom Docker image</li>
+        <li>Boot time: <strong>~78ms P50</strong> (cold start, Firecracker, cập nhật Jan 2026) — nhanh nhất trong category</li>
+        <li>SDK: Python và JS SDK, tích hợp với LangChain, LlamaIndex, Vercel AI SDK, smolagents</li>
+        <li>Persistence: sandbox sống tối đa 24 giờ, có thể pause/resume; state persist qua API</li>
+        <li>Pricing: Hobby free ($100 credits), Pro $150/tháng; compute $0.0504/vCPU-hour</li>
+        <li>Network: configurable per sandbox (default off); BYOC (AWS/GCP/Azure) cho Enterprise</li>
+      </ul>
+    </div>
+    <div class="tab-panel">
+      <p>
+        <strong>Daytona</strong> tái định vị từ dev environment sang <em>secure infrastructure for
+        AI-generated code</em> (tháng 2/2025) và huy động $24M Series A tháng 2/2026.
+        Cạnh tranh trực tiếp với E2B, tập trung vào persistent sandboxes và composable compute
+        cho agent workflows.
+      </p>
+      <ul>
+        <li>Ngôn ngữ: Python, TypeScript/JavaScript; Docker/OCI compatible (bất kỳ ngôn ngữ)</li>
+        <li>Boot time: <strong>&lt; 90ms</strong> (sub-90ms cold start, Docker-based)</li>
+        <li>Đặc điểm: persistent sandboxes với auto-stop/auto-archive/auto-delete policies; Computer Use sandboxes (Linux/macOS/Windows)</li>
+        <li>Tích hợp: OpenAI Agents SDK, Mastra, smolagents, LangChain; official cookbook từ OpenAI</li>
+        <li>Pricing: $200 free compute credits + 5GB storage miễn phí; $0.0504/vCPU-hour sau đó</li>
+        <li>Phù hợp: agent workflows cần persistent state dài hạn, Computer Use agents</li>
       </ul>
     </div>
     <div class="tab-panel">
       <p>
         <strong>Modal</strong> là cloud compute platform mà các AI team dùng vừa để host
-        inference workloads, vừa chạy code execution sandbox cho agents. Khác E2B là
+        inference workloads, vừa chạy code execution sandbox cho agents. Khác E2B/Daytona là
         Modal-first cho ML/Python workloads nặng, không tập trung vào agent use case.
       </p>
       <ul>
@@ -590,8 +621,8 @@ sandbox = <span class="fn">Sandbox</span>(
         </tr>
         <tr>
           <td><strong>Cold start — E2B Firecracker</strong></td>
-          <td>~125ms</td>
-          <td>Thấp — chỉ trả khi dùng</td>
+          <td>~78ms P50 (Jan 2026)</td>
+          <td>Thấp — chỉ trả khi dùng; $0.0504/vCPU-hr</td>
           <td>Agent batch task, moderate latency tolerance</td>
         </tr>
         <tr>
@@ -619,12 +650,13 @@ sandbox = <span class="fn">Sandbox</span>(
   <div class="callout tip">
     <div class="icon">★</div>
     <div>
-      <div class="title">E2B Firecracker — tại sao 125ms?</div>
+      <div class="title">E2B Firecracker — tại sao ~78ms (P50, Jan 2026)?</div>
       <p>
         Firecracker là VMM (Virtual Machine Monitor) do AWS phát triển cho Lambda/Fargate,
-        được thiết kế để boot microVM trong &lt; 125ms. Thay vì khởi động full Linux kernel,
-        Firecracker dùng minimal kernel stripped-down và không load nhiều drivers không cần thiết.
-        E2B xây sandbox API trên top Firecracker, mang lại VM-level isolation với container-like speed.
+        được thiết kế để boot microVM dưới 125ms. E2B xây sandbox API trên Firecracker và
+        liên tục tối ưu: từ ~125ms (2024) xuống còn ~78ms P50 tính đến tháng 1/2026.
+        Thay vì khởi động full Linux kernel, Firecracker dùng minimal kernel stripped-down
+        và không load drivers không cần thiết — đạt VM-level isolation với container-like speed.
       </p>
     </div>
   </div>
@@ -1006,22 +1038,22 @@ plt.<span class="fn">savefig</span>(<span class="str">'/outputs/top5_q4.png'</sp
         <tr>
           <td><strong>OpenAI Code Interpreter</strong></td>
           <td>Python</td>
-          <td>Session (~1h)</td>
+          <td>Container (~20 phút per session)</td>
           <td>Off (fixed)</td>
           <td>Upload/download qua Files API</td>
           <td>Container (OpenAI managed)</td>
-          <td>$0.03/session</td>
-          <td>ChatGPT / Assistants API, quick analysis</td>
+          <td>$0.03/container (Responses API)</td>
+          <td>Responses API, ChatGPT; Assistants API sunset 26/8/2026</td>
         </tr>
         <tr>
           <td><strong>Anthropic Code Exec</strong></td>
-          <td>Python</td>
+          <td>Python + Bash</td>
           <td>Conversation thread</td>
           <td>Off</td>
-          <td>Base64 artifacts trong response</td>
+          <td>Base64 artifacts; files preloaded lên container</td>
           <td>Anthropic microVM</td>
-          <td>Bundled với Claude API tokens</td>
-          <td>Claude native integration, built-in reasoning</td>
+          <td>$0.05/container-hour (GA Jan 2026)</td>
+          <td>Claude native integration, built-in reasoning; miễn phí kèm web_search</td>
         </tr>
         <tr>
           <td><strong>Google Gemini Code Exec</strong></td>
@@ -1031,17 +1063,27 @@ plt.<span class="fn">savefig</span>(<span class="str">'/outputs/top5_q4.png'</sp
           <td>Google Drive / GCS native; Files API</td>
           <td>Google managed container</td>
           <td>Token-based (output bao gồm code output)</td>
-          <td>Google Workspace integration, multimodal output</td>
+          <td>Google Workspace, Gemini 3.x multimodal function responses</td>
         </tr>
         <tr>
           <td><strong>E2B</strong></td>
-          <td>Python, JS/TS, bất kỳ (custom template)</td>
-          <td>Pause/resume qua API</td>
+          <td>Python, JS/TS, Ruby, C++, bất kỳ (custom template)</td>
+          <td>Tối đa 24h; pause/resume qua API</td>
           <td>Off / allowlist configurable</td>
           <td>Upload/download filesystem API</td>
           <td>Firecracker microVM</td>
-          <td>$0.000015/compute-sec + storage</td>
-          <td>AI agent frameworks, fast cold start, custom env</td>
+          <td>Pro $150/tháng; $0.0504/vCPU-hour</td>
+          <td>AI agent frameworks, ~78ms P50 cold start, custom env, BYOC</td>
+        </tr>
+        <tr>
+          <td><strong>Daytona</strong></td>
+          <td>Python, JS/TS; Docker/OCI (bất kỳ)</td>
+          <td>Persistent; auto-stop/archive/delete configurable</td>
+          <td>Configurable</td>
+          <td>Filesystem API; volume mounts</td>
+          <td>Docker/OCI containers</td>
+          <td>$0.0504/vCPU-hour; $200 free credits</td>
+          <td>Persistent agent workflows, Computer Use agents, OpenAI Agents SDK integration</td>
         </tr>
         <tr>
           <td><strong>Modal</strong></td>
@@ -1073,7 +1115,8 @@ plt.<span class="fn">savefig</span>(<span class="str">'/outputs/top5_q4.png'</sp
       <div class="title">Lựa chọn theo use case</div>
       <p>
         Dùng <strong>OpenAI/Anthropic/Gemini</strong> khi đã integrate sẵn với provider đó và không cần custom environment.
-        Dùng <strong>E2B</strong> khi build agent framework riêng và cần fast cold start + framework integrations.
+        Dùng <strong>E2B</strong> khi build agent framework riêng và cần fast cold start (~78ms), sessions đến 24h, BYOC.
+        Dùng <strong>Daytona</strong> khi cần persistent sandboxes dài hạn cho agent workflows phức tạp hoặc Computer Use agents; tích hợp tốt với OpenAI Agents SDK.
         Dùng <strong>Modal</strong> khi tasks nặng về compute/ML hoặc cần GPU execution.
         Dùng <strong>Self-hosted</strong> khi data không được ra khỏi on-prem.
       </p>
@@ -1174,8 +1217,12 @@ plt.<span class="fn">savefig</span>(<span class="str">'/outputs/top5_q4.png'</sp
       (chart, file) — không thể thay thế bằng prompt engineering.
     </li>
     <li>
-      <strong>Providers 2026</strong>: OpenAI Code Interpreter (Assistants API), Anthropic Code Execution (beta → GA),
-      Google Gemini Code Execution, E2B (Firecracker, ~125ms cold start), Modal (ML-heavy workloads).
+      <strong>Providers 2026</strong>: OpenAI Code Interpreter (Responses API — Assistants API sunset 26/8/2026),
+      Anthropic Code Execution (GA tháng 1/2026, $0.05/container-hour, tool <code>code_execution_20260120</code>),
+      Google Gemini Code Execution (Gemini 3.x, multimodal function responses),
+      E2B (Firecracker, ~78ms P50 cold start, session tối đa 24h),
+      Daytona (mới nổi, Docker &lt;90ms, persistent, tích hợp OpenAI Agents SDK),
+      Modal (ML-heavy workloads, GPU).
       Chọn dựa trên provider bạn đã dùng, latency requirement, và mức độ tùy biến sandbox.
     </li>
     <li>
@@ -1203,14 +1250,13 @@ plt.<span class="fn">savefig</span>(<span class="str">'/outputs/top5_q4.png'</sp
       là yêu cầu bắt buộc cho bất kỳ AI application nghiêm túc nào liên quan đến số liệu.
     </li>
   </ol>
-
   <nav class="section-footer">
     <a href="39-computer-use-agents.html" class="prev">
-      <div class="label">← trước</div>
-      <div class="title">39 — Computer-use Agents</div>
+      <div class="label">← Trước</div>
+      <div class="title">39 — Computer-use &amp; Browser-use Agents</div>
     </a>
     <a href="41-distributed-agent-runtimes.html" class="next">
-      <div class="label">tiếp theo →</div>
+      <div class="label">Tiếp theo →</div>
       <div class="title">41 — Distributed Agent Runtimes</div>
     </a>
   </nav>

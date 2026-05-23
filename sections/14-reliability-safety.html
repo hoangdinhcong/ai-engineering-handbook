@@ -13,6 +13,7 @@
   <div class="crumbs"><a href="../index.html">Mục lục</a> › Phần 5 · <span>14 — Reliability &amp; Safety</span></div>
   <div class="nav-actions">
     <a href="13-observability.html">← Trước</a>
+    <a href="../index.html">Mục lục</a>
     <a href="15-security.html">Tiếp →</a>
   </div>
 </nav>
@@ -20,7 +21,7 @@
 <main class="page">
 
   <section class="hero">
-    <span class="eyebrow">Phần 5 · §14</span>
+    <div class="eyebrow-row"><span class="eyebrow">Phần 5 · §14</span><a class="hero-updated" href="../KNOWLEDGE_UPDATES.md" title="Lịch sử cập nhật kiến thức">↻ 2026-05-23</a></div>
     <h1>Reliability &amp; Safety</h1>
     <p class="lede">
       Model hallucinate, API timeout, output sai schema, content có hại — tất cả đều xảy ra trong production. Guardrails, retries, fallbacks và validation là lớp phòng thủ biến LLM demo thành sản phẩm đáng tin.
@@ -83,6 +84,10 @@ support bởi context?"</span></code></pre>
     <div class="card">
       <h4>Confidence calibration</h4>
       <p>Prompt model để nói rõ confidence level. Không hoàn hảo nhưng giúp user aware về uncertainty. Kết hợp với instruction "nếu không chắc, đừng trả lời".</p>
+    </div>
+    <div class="card">
+      <h4>Semantic Entropy (2025)</h4>
+      <p>Kỹ thuật phát hiện hallucination bằng cách đo entropy trong không gian ngữ nghĩa: sample nhiều lần cùng câu hỏi, cluster các response theo semantic meaning, nếu entropy cao (nhiều cluster khác biệt) → model không chắc → nguy cơ hallucination cao. Semantic Entropy Probes (SEP) chạy như lightweight classifier trên hidden states mà không cần multiple sampling.</p>
     </div>
   </div>
 
@@ -194,22 +199,34 @@ support bởi context?"</span></code></pre>
           <td>Khi cần strict JSON/schema output từ LLM</td>
         </tr>
         <tr>
-          <td><strong>NeMo Guardrails</strong></td>
-          <td>Open-source (NVIDIA)</td>
-          <td>Conversation flow control, Colang DSL, topical guardrails, input/output rails</td>
-          <td>Chatbot cần strict topic control</td>
+          <td><strong>Llama Guard 4</strong></td>
+          <td>Open-source LLM (Meta, 2025)</td>
+          <td>12B params, multimodal (text + image), unified safeguard, offline capable. Phần của bộ LlamaFirewall.</td>
+          <td>Content moderation không muốn dùng external API; pipeline xử lý ảnh + text</td>
         </tr>
         <tr>
-          <td><strong>Llama Guard</strong></td>
-          <td>Open-source LLM (Meta)</td>
-          <td>Fine-tuned classifier cho content safety, cả input và output, offline capable</td>
-          <td>Content moderation không muốn dùng external API</td>
+          <td><strong>LlamaFirewall</strong></td>
+          <td>Open-source framework (Meta, 5/2025)</td>
+          <td>Orchestrate toàn bộ guard suite: PromptGuard 2 (jailbreak), Agent Alignment Check (chain-of-thought audit), CodeShield (static analysis). Giảm attack success rate từ 17.6% xuống 1.7% trên AgentDojo.</td>
+          <td>Agentic AI systems cần chống prompt injection &amp; goal misalignment</td>
+        </tr>
+        <tr>
+          <td><strong>ShieldGemma 2</strong></td>
+          <td>Open-source LLM (Google, 4/2025)</td>
+          <td>4B params, chuyên moderation ảnh (Gemma 3 backbone), phân loại sexual/violence/dangerous content cho cả synthetic &amp; natural images. SOTA so với LlavaGuard, GPT-4o mini.</td>
+          <td>Image content moderation trong pipeline đa phương thức</td>
         </tr>
         <tr>
           <td><strong>OpenAI Moderation API</strong></td>
           <td>SaaS API</td>
-          <td>Free, nhanh, cover các category hate/self-harm/violence/sexual</td>
-          <td>Baseline content filtering đơn giản</td>
+          <td>Free, multimodal (text + image với omni-moderation-latest), 42% chính xác hơn trên multilingual so với phiên bản cũ; thêm category illicit/illicit_violent.</td>
+          <td>Baseline content filtering nhanh, đặc biệt khi đã dùng OpenAI stack</td>
+        </tr>
+        <tr>
+          <td><strong>NeMo Guardrails NIM</strong></td>
+          <td>Open-source + enterprise (NVIDIA)</td>
+          <td>v0.20+ có IORails (parallel rail execution), NIM microservices cho content-safety/topic-safety/jailbreak, reasoning-capable safety models. OpenAI-compatible API.</td>
+          <td>Enterprise chatbot cần strict topic control + low-latency (&lt;100ms với Fiddler integration)</td>
         </tr>
         <tr>
           <td><strong>Custom rules</strong></td>
@@ -584,6 +601,24 @@ Output JSON list của 10 variations."""</span></code></pre>
     (nên block, nên trả lời gracefully, v.v.). Chạy sau mỗi deployment để detect regression.
   </p>
 
+  <h3>MLCommons AILuminate (2025)</h3>
+  <p>
+    <strong>AILuminate v1.0</strong> là benchmark công nghiệp đầu tiên cho AI safety do MLCommons phát triển với sự tham gia của các công ty AI lớn. Dataset gồm hơn 24.000 test prompt trên <strong>12 hazard category</strong>: violent crimes, nonviolent crimes, sex crimes, child exploitation, indiscriminate weapons (CBRN), suicide/self-harm, IP, privacy, defamation, hate, sexual content, và specialized advice (y tế, pháp lý, tài chính). Đây là tiêu chuẩn đo lường độ kháng jailbreak có thể dùng để benchmark guardrail pipeline của bạn so với baseline công nghiệp.
+  </p>
+
+  <h3>AI Safety Frameworks từ frontier labs</h3>
+  <p>
+    Các nhà phát triển LLM lớn có framework riêng quy định điều kiện deploy:
+  </p>
+  <ul>
+    <li><strong>Anthropic RSP v3.0</strong> (hiệu lực 24/2/2026): Responsible Scaling Policy yêu cầu Frontier Safety Roadmap và Risk Report cho mỗi model. Phân biệt rõ safeguard Anthropic tự thực hiện vs. mitigation cần hợp tác đa bên. Bổ sung capability threshold mới cho CBRN.</li>
+    <li><strong>OpenAI Preparedness Framework</strong>: đánh giá rủi ro CBRN, cybersecurity, persuasion, model autonomy theo 4 mức Low/Medium/High/Critical trước khi release.</li>
+    <li><strong>Google Frontier Safety Framework</strong>: đánh giá "critical capability levels" và yêu cầu mitigation plan tương ứng.</li>
+  </ul>
+  <p>
+    Với engineering team, các framework này có hàm ý thực tế: model từ provider thường đã qua các eval này trước khi bạn nhận được API — nhưng application-layer guardrails vẫn là trách nhiệm của bạn.
+  </p>
+
   <div class="callout danger">
     <div class="icon">!</div>
     <div>
@@ -613,21 +648,21 @@ Output JSON list của 10 variations."""</span></code></pre>
   <ol>
     <li><strong>Hallucination:</strong> giảm bằng RAG + citation + fact-check pass; không loại bỏ hoàn toàn — output validation là bắt buộc với high-stakes app.</li>
     <li><strong>Guardrails = defense in depth:</strong> input check → LLM → output check. Không phụ thuộc vào một lớp duy nhất.</li>
-    <li><strong>Tools:</strong> Guardrails AI cho schema validation; NeMo cho conversation flow; Llama Guard / OpenAI Moderation cho content safety.</li>
+    <li><strong>Tools (2025-2026):</strong> Guardrails AI cho schema validation; NeMo Guardrails NIM cho conversation flow + enterprise; <strong>Llama Guard 4</strong> (multimodal, 12B) + <strong>LlamaFirewall</strong> cho agentic safety; <strong>ShieldGemma 2</strong> (4B) cho image moderation; OpenAI Moderation (omni-moderation-latest) cho baseline multimodal filtering.</li>
     <li><strong>Graceful degradation:</strong> thiết kế fallback path cho mọi failure mode — refusal, timeout, validation fail.</li>
     <li><strong>Retries:</strong> exponential backoff với full jitter, respect Retry-After header, không retry deterministic errors.</li>
     <li><strong>Circuit breaker:</strong> bắt buộc nếu primary LLM provider chiếm critical path — tránh cascade failure.</li>
     <li><strong>Output validation:</strong> strip markdown, parse JSON robustly, validate schema với Pydantic, run semantic check khi cần.</li>
-    <li><strong>Red-team:</strong> adversarial eval set chạy định kỳ — safety regression xảy ra ngay cả khi bạn không thay đổi gì.</li>
+    <li><strong>Red-team:</strong> adversarial eval set chạy định kỳ — dùng <strong>MLCommons AILuminate</strong> (12 hazard category, 24k+ prompts) làm baseline công nghiệp; safety regression xảy ra ngay cả khi bạn không thay đổi gì.</li>
+    <li><strong>Safety frameworks:</strong> Anthropic RSP v3.0 (2/2026), OpenAI Preparedness, Google Frontier Safety đều quy định điều kiện deploy frontier models — application-layer guardrails là trách nhiệm của developer, không phải provider.</li>
   </ol>
-
   <nav class="section-footer">
     <a href="13-observability.html" class="prev">
-      <div class="label">← trước</div>
+      <div class="label">← Trước</div>
       <div class="title">13 — Observability &amp; Evaluation in Production</div>
     </a>
     <a href="15-security.html" class="next">
-      <div class="label">tiếp theo →</div>
+      <div class="label">Tiếp theo →</div>
       <div class="title">15 — Security</div>
     </a>
   </nav>

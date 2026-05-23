@@ -13,6 +13,7 @@
   <div class="crumbs"><a href="../index.html">Mục lục</a> › Phần 7 · <span>19 — MLOps / LLMOps</span></div>
   <div class="nav-actions">
     <a href="18-code-generating-ai.html">← Trước</a>
+    <a href="../index.html">Mục lục</a>
     <a href="20-cost-finops.html">Tiếp →</a>
   </div>
 </nav>
@@ -20,7 +21,7 @@
 <main class="page">
 
   <section class="hero">
-    <span class="eyebrow">Phần 7 · §19</span>
+    <div class="eyebrow-row"><span class="eyebrow">Phần 7 · §19</span><a class="hero-updated" href="../KNOWLEDGE_UPDATES.md" title="Lịch sử cập nhật kiến thức">↻ 2026-05-23</a></div>
     <h1>MLOps / LLMOps</h1>
     <p class="lede">
       Từ CI/CD cho prompts đến canary deployment, từ experiment tracking đến rollback — vận hành
@@ -40,7 +41,7 @@
       <li><a href="#canary-deployment">19.6 Canary, shadow, A/B deployment</a></li>
       <li><a href="#rollback">19.7 Rollback strategies</a></li>
       <li><a href="#dataset-versioning">19.8 Dataset versioning</a></li>
-      <li><a href="#tooling">19.9 Tooling</a></li>
+      <li><a href="#tooling">19.9 Tooling: Eval, Observability &amp; LLM Gateway</a></li>
       <li><a href="#org-practices">19.10 Org practices</a></li>
       <li><a href="#tom-tat">Tóm tắt</a></li>
     </ul>
@@ -71,7 +72,7 @@
         <tr><td>Deployment unit</td><td>Model binary/container</td><td>Prompt version + model version + config</td></tr>
         <tr><td>Drift detection</td><td>Data drift, model drift</td><td>Output quality drift, latency drift, cost drift</td></tr>
         <tr><td>Rollback</td><td>Swap model version</td><td>Swap prompt version, model version, hoặc feature flag</td></tr>
-        <tr><td>Tooling trưởng thành</td><td>MLflow, Kubeflow, SageMaker</td><td>Braintrust, Langfuse, LangSmith (còn mới)</td></tr>
+        <tr><td>Tooling trưởng thành</td><td>MLflow, Kubeflow, SageMaker</td><td>Braintrust, Langfuse (acq. ClickHouse 2026), LangSmith — đang trưởng thành nhanh</td></tr>
       </tbody>
     </table>
   </div>
@@ -293,6 +294,7 @@ evals/
     <li>Chạy <strong>fast eval set</strong> nhỏ hơn trên PR; full eval chỉ chạy trước merge vào main</li>
     <li>Dùng <strong>caching</strong> cho responses giống nhau (same prompt + same input)</li>
     <li>Batch API (50% cheaper) cho eval pipeline không cần real-time</li>
+    <li><strong>GitHub <code>gh models eval</code></strong> (ra mắt 2025): lệnh CLI native chạy eval prompt trực tiếp trong GitHub Actions với built-in evaluators (string match, similarity, LLM-as-judge)</li>
   </ul>
 
   <h2 id="canary-deployment">19.6 Canary, Shadow, A/B Deployment</h2>
@@ -337,6 +339,7 @@ evals/
       </p>
       <p>Khác canary ở chỗ: A/B có mục đích <em>học</em> (variant nào tốt hơn?) còn
       canary có mục đích <em>an toàn</em> (rollout không gây sự cố).</p>
+      <p><strong>Lưu ý non-determinism</strong>: LLM tạo output xác suất — cùng input có thể cho kết quả khác nhau mỗi lần. Nghiên cứu 2024–2025 đo được độ biến động accuracy lên đến 15% giữa các lần chạy. Vì vậy A/B cho LLM cần chạy đủ lâu với sample size đủ lớn; dùng <em>average-over-N-runs</em> thay vì single-shot để so sánh.</p>
       <p class="label-sm" style="color:var(--text-mute)">Phù hợp khi: so sánh hai hướng thiết kế khác nhau, validate product hypothesis</p>
     </div>
   </div>
@@ -467,7 +470,19 @@ evals/
     </div>
   </div>
 
-  <h2 id="tooling">19.9 Tooling: Braintrust, Langfuse, LangSmith và các công cụ khác</h2>
+  <div class="callout note">
+    <div class="icon">≡</div>
+    <div>
+      <div class="title">RAGOps: Vận hành RAG index như production pipeline</div>
+      <p>
+        Năm 2025–2026, <strong>RAGOps</strong> nổi lên như một sub-discipline riêng: versioning vector index,
+        CI/CD quality gate cho retrieval pipeline, streaming re-indexing (giữ embedding tươi trong vài giây thay vì batch hàng giờ),
+        và schema drift detection khi metadata thay đổi. Treat vector index như production data pipeline — cần versioning, rebuild workflow, và monitoring riêng.
+      </p>
+    </div>
+  </div>
+
+  <h2 id="tooling">19.9 Tooling: Eval, Observability &amp; LLM Gateway</h2>
   <p>
     Ecosystem LLMOps tooling đang phát triển nhanh. Dưới đây là các công cụ chính:
   </p>
@@ -487,7 +502,7 @@ evals/
         <tr>
           <td><strong>Langfuse</strong></td>
           <td>Observability + eval</td>
-          <td>Open-source, self-hostable, tracing chi tiết, datasets, SDK cho nhiều ngôn ngữ</td>
+          <td>Open-source, self-hostable, tracing chi tiết, datasets, SDK cho nhiều ngôn ngữ; được ClickHouse mua lại tháng 1/2026 — tiếp tục phát triển độc lập</td>
           <td>Eval capabilities ít hơn Braintrust</td>
         </tr>
         <tr>
@@ -499,7 +514,7 @@ evals/
         <tr>
           <td><strong>PromptLayer</strong></td>
           <td>Prompt management</td>
-          <td>Prompt versioning, A/B testing built-in, non-technical friendly UI</td>
+          <td>Prompt versioning, A/B testing built-in, non-technical friendly UI; điểm đến migration chính từ Humanloop (đã đóng cửa tháng 9/2025)</td>
           <td>Ít eval capability hơn</td>
         </tr>
         <tr>
@@ -507,6 +522,24 @@ evals/
           <td>Observability + caching</td>
           <td>Proxy-based (zero code change), semantic caching, rate limiting, cost tracking</td>
           <td>Proxy thêm latency nhỏ</td>
+        </tr>
+        <tr>
+          <td><strong>LiteLLM</strong></td>
+          <td>LLM gateway (OSS)</td>
+          <td>Unified OpenAI-compatible API cho 100+ provider, self-host, load balancing, fallback, cost tracking</td>
+          <td>Cần tự vận hành; UI quản lý còn đang phát triển</td>
+        </tr>
+        <tr>
+          <td><strong>Portkey</strong></td>
+          <td>LLM gateway</td>
+          <td>Guardrails, PII redaction, prompt versioning, audit trail; open-source (Apache 2.0) từ tháng 3/2026</td>
+          <td>Managed tier tính phí; tính năng bảo mật cần cấu hình kỹ</td>
+        </tr>
+        <tr>
+          <td><strong>OpenRouter</strong></td>
+          <td>LLM gateway (marketplace)</td>
+          <td>300+ model từ 60+ provider qua một API, không cần tự host, phù hợp thử nghiệm nhanh</td>
+          <td>Markup 5% trên mọi request; vendor lock-in với OpenRouter</td>
         </tr>
         <tr>
           <td><strong>MLflow</strong></td>
@@ -533,7 +566,10 @@ evals/
     <li>Nếu ưu tiên <strong>self-host + open source</strong>: Langfuse</li>
     <li>Nếu cần <strong>observability với zero code change</strong>: Helicone</li>
     <li>Nếu đang dùng <strong>LangChain/LangGraph</strong>: LangSmith tích hợp tự nhiên nhất</li>
-    <li>Nếu cần <strong>prompt management cho non-engineers</strong>: PromptLayer</li>
+    <li>Nếu cần <strong>prompt management cho non-engineers</strong>: PromptLayer (Humanloop đã đóng cửa tháng 9/2025, migration guide có sẵn)</li>
+    <li>Nếu cần <strong>LLM gateway tự host</strong>: LiteLLM (OSS, hỗ trợ 100+ provider)</li>
+    <li>Nếu cần <strong>guardrails + audit trail ở gateway layer</strong>: Portkey (open-source từ tháng 3/2026)</li>
+    <li>Nếu cần <strong>thử nghiệm nhiều model nhanh</strong>: OpenRouter (300+ model, không cần self-host)</li>
   </ul>
 
   <h2 id="org-practices">19.10 Org Practices: Ai Owns Prompts?</h2>
@@ -598,17 +634,16 @@ evals/
     <li><strong>Prompt as code</strong>: version control, code review, automated testing là nền tảng.</li>
     <li><strong>Eval-driven CI</strong> là cột sống — chạy eval trên mỗi PR, gate merge trên score threshold.</li>
     <li><strong>Canary + feature flags</strong> cho phép deploy an toàn và rollback nhanh mà không cần redeploy code.</li>
-    <li><strong>Tooling ecosystem</strong> còn non: Braintrust, Langfuse, LangSmith đang cạnh tranh — chọn theo use case.</li>
+    <li><strong>Tooling ecosystem</strong> đang trưởng thành nhanh: Braintrust, Langfuse (acq. ClickHouse), LangSmith cạnh tranh trong eval/observability; LiteLLM và Portkey (OSS từ 3/2026) nổi lên ở lớp LLM gateway; Humanloop đã đóng cửa tháng 9/2025.</li>
     <li><strong>Ownership của prompts</strong> cần được define rõ ràng — shared model thường hiệu quả nhất cho teams trưởng thành.</li>
   </ol>
-
   <nav class="section-footer">
     <a href="18-code-generating-ai.html" class="prev">
-      <div class="label">← trước</div>
-      <div class="title">18 — Code-Generating AI</div>
+      <div class="label">← Trước</div>
+      <div class="title">18 — Code-generating AI Systems</div>
     </a>
     <a href="20-cost-finops.html" class="next">
-      <div class="label">tiếp theo →</div>
+      <div class="label">Tiếp theo →</div>
       <div class="title">20 — Cost &amp; FinOps cho AI</div>
     </a>
   </nav>

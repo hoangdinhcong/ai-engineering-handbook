@@ -13,6 +13,7 @@
   <div class="crumbs"><a href="../index.html">Mục lục</a> › Phần 9 · <span>28 — Multi-agent Orchestration (chuyên sâu)</span></div>
   <div class="nav-actions">
     <a href="27-agent-eval.html">← Trước</a>
+    <a href="../index.html">Mục lục</a>
     <a href="29-prompt-injection-deep.html">Tiếp →</a>
   </div>
 </nav>
@@ -20,7 +21,7 @@
 <main class="page">
 
   <section class="hero">
-    <span class="eyebrow">Phần 9 · §28</span>
+    <div class="eyebrow-row"><span class="eyebrow">Phần 9 · §28</span><a class="hero-updated" href="../KNOWLEDGE_UPDATES.md" title="Lịch sử cập nhật kiến thức">↻ 2026-05-23</a></div>
     <h1>Multi-agent Orchestration (chuyên sâu)</h1>
     <p class="lede">
       Từ hierarchical manager–worker đến Mixture-of-Agents, debate pattern, và blackboard — hiểu khi nào nhiều agent thực sự tốt hơn một agent mạnh, và cái giá phải trả về cost/latency.
@@ -42,6 +43,7 @@
       <li><a href="#conflict">28.9 Conflict Resolution &amp; Termination</a></li>
       <li><a href="#cost">28.10 Cost &amp; Latency Multiplication</a></li>
       <li><a href="#frameworks">28.11 Frameworks 2026</a></li>
+      <li><a href="#interop-protocols">28.11a A2A &amp; MCP — Interop Protocols</a></li>
       <li><a href="#antipatterns">28.12 Anti-patterns</a></li>
       <li><a href="#old-vs-new">28.13 Cách cũ vs Cách hiện tại</a></li>
       <li><a href="#tom-tat">Tóm tắt</a></li>
@@ -103,6 +105,21 @@
     Task bao gồm: phân tích security, kiểm tra performance, review business logic, viết test suggestions.
     Bốn concern này <em>độc lập nhau</em>, có thể chạy song song, và cần expertise/prompt khác nhau.
     Single agent cố handle cả 4 thường làm tốt nhất 2-3 trong khi bỏ sót 1-2.
+  </p>
+
+  <h3>Real benefit case: Deep Research (OpenAI, Gemini, Claude)</h3>
+  <p>
+    Các tính năng <strong>Deep Research</strong> của OpenAI, Gemini 2.5, và Claude đều là ví dụ thực tế của
+    multi-agent dạng hierarchical + parallel:
+  </p>
+  <ul>
+    <li><strong>Planner agent:</strong> Nhận câu hỏi phức tạp, decompose thành N sub-questions (5–20 queries)</li>
+    <li><strong>Parallel research agents:</strong> Mỗi sub-question được một worker xử lý độc lập (web search, fetch, extract)</li>
+    <li><strong>Synthesizer agent:</strong> Nhận toàn bộ kết quả, tạo báo cáo dài, có citations</li>
+  </ul>
+  <p>
+    Pattern này justify multi-agent vì: (1) sub-queries độc lập — parallelism thực sự; (2) toàn bộ context không fit single window;
+    (3) synthesis cần model mạnh hơn searcher. Đây là use case multi-agent rõ nhất năm 2025.
   </p>
 
   <!-- ═══════════════════════════════════════════════
@@ -895,7 +912,7 @@ result = await app.ainvoke({<span class="str">"messages"</span>: [(<span class="
   <!-- ═══════════════════════════════════════════════
        28.11 Frameworks 2026
   ════════════════════════════════════════════════ -->
-  <h2 id="frameworks">28.11 Frameworks 2026: AutoGen 0.4, CrewAI, LangGraph Multi-agent, Magentic-One, Swarm</h2>
+  <h2 id="frameworks">28.11 Frameworks 2026: AutoGen 0.4, CrewAI, LangGraph Multi-agent, Magentic-One, OpenAI Agents SDK, Letta</h2>
 
   <div class="table-wrap">
     <table>
@@ -911,10 +928,10 @@ result = await app.ainvoke({<span class="str">"messages"</span>: [(<span class="
       <tbody>
         <tr>
           <td><strong>AutoGen 0.4</strong><br><span class="tag blue">Microsoft</span></td>
-          <td>Conversational agents — agents giao tiếp qua dialogue</td>
-          <td>Flexible conversation topology; strong async support; AgentChat API đơn giản hơn 0.2</td>
-          <td>Conversation-first có thể overhead với task-based flows; community docs chưa hoàn thiện</td>
-          <td>Research, code generation, debate patterns</td>
+          <td>Event-driven, async agents — kiến trúc ghi lại từ đầu; 3 lớp: <code>autogen-core</code> / <code>autogen-agentchat</code> / <code>autogen-ext</code></td>
+          <td>Hoàn toàn async, event-driven; modular (chọn mức abstraction phù hợp); Magentic-One là app tách riêng trên cùng ecosystem</td>
+          <td>API thay đổi lớn so với 0.2 — migration không nhỏ; community docs vẫn đang hoàn thiện</td>
+          <td>Research, code generation, debate patterns; teams muốn kiểm soát sâu lớp core</td>
         </tr>
         <tr>
           <td><strong>CrewAI</strong><br><span class="tag blue">OSS</span></td>
@@ -926,23 +943,30 @@ result = await app.ainvoke({<span class="str">"messages"</span>: [(<span class="
         <tr>
           <td><strong>LangGraph Multi-agent</strong><br><span class="tag blue">LangChain</span></td>
           <td>Graph-based stateful workflows — nodes là agents, edges là transitions</td>
-          <td>Fine-grained state control; human-in-the-loop built-in; excellent observability via LangSmith; production-ready</td>
+          <td>LangGraph 1.0 (Oct 2025): stable API, cross-thread memory, retry middleware; supervisor-via-tools pattern khuyến nghị hơn supervisor library để kiểm soát context tốt hơn; LangSmith observability tích hợp</td>
           <td>Verbose graph definition; learning curve; tied to LangChain ecosystem</td>
           <td>Production systems needing reliability, audit, complex state</td>
         </tr>
         <tr>
           <td><strong>Magentic-One</strong><br><span class="tag blue">Microsoft Research</span></td>
-          <td>Generalist multi-agent system — orchestrator + specialist agents (WebSurfer, FileSurfer, Coder, ComputerTerminal)</td>
+          <td>Generalist multi-agent system — orchestrator + specialist agents (WebSurfer, FileSurfer, Coder, ComputerTerminal); chạy trên AutoGen 0.4</td>
           <td>Out-of-the-box computer use; good benchmark results; modular specialists</td>
           <td>Heavy infra requirements; không phải production-ready off-shelf; cost cao</td>
           <td>Computer use, web automation, research tasks</td>
         </tr>
         <tr>
-          <td><strong>Swarm</strong><br><span class="tag blue">OpenAI (experimental)</span></td>
-          <td>Lightweight handoffs — agents chuyển control qua function calls</td>
-          <td>Cực kỳ đơn giản; không có framework overhead; dễ understand; tốt để học</td>
-          <td>Experimental — không production-ready; thiếu persistence, observability, error handling</td>
-          <td>Learning, prototyping, simple handoff patterns</td>
+          <td><strong>OpenAI Agents SDK</strong><br><span class="tag blue">OpenAI</span></td>
+          <td>Handoff-based — agents chuyển control qua <code>handoff()</code>; thay thế Swarm từ tháng 3/2025 (v0.17.1, May 2026)</td>
+          <td>Production-ready; built-in tracing (OpenTelemetry export); guardrails (pre/post-tool callbacks); hỗ trợ Responses API với file search, web search, computer use; giữ mental model đơn giản của Swarm</td>
+          <td>Tied to OpenAI ecosystem; không phù hợp cho multi-provider setups</td>
+          <td>OpenAI-centric production apps; teams đã dùng Swarm muốn migrate lên production</td>
+        </tr>
+        <tr>
+          <td><strong>Letta</strong><br><span class="tag blue">OSS (MemGPT team)</span></td>
+          <td>Stateful agents với memory-as-service — MemGPT-style memory hierarchy (core/archival/recall); agents deploy qua REST API</td>
+          <td>Persistent, long-term agent memory; multi-agent qua shared memory blocks; git-backed memory và skills; phù hợp cho agents cần nhớ qua nhiều sessions</td>
+          <td>Nặng về infra (cần Letta server); phức tạp hơn frameworks stateless; ít phổ biến trong production hiện tại</td>
+          <td>Agents cần memory dài hạn; personal assistant; HR bots; use cases cần personalization qua thời gian</td>
         </tr>
       </tbody>
     </table>
@@ -951,13 +975,47 @@ result = await app.ainvoke({<span class="str">"messages"</span>: [(<span class="
   <h3>Lựa chọn framework 2026</h3>
   <div class="card">
     <ul style="margin-bottom:0">
-      <li><strong>Production với complex state &amp; observability cần:</strong> LangGraph</li>
+      <li><strong>Production với complex state &amp; observability cần:</strong> LangGraph 1.0</li>
       <li><strong>Business workflows với non-technical stakeholders:</strong> CrewAI</li>
-      <li><strong>Research &amp; conversational patterns:</strong> AutoGen 0.4</li>
-      <li><strong>Computer use / web automation:</strong> Magentic-One hoặc Claude computer-use API trực tiếp</li>
-      <li><strong>Học multi-agent concepts:</strong> Swarm (đọc code — dưới 1000 lines)</li>
+      <li><strong>Research &amp; conversational / event-driven patterns:</strong> AutoGen 0.4</li>
+      <li><strong>Computer use / web automation:</strong> Magentic-One (trên AutoGen 0.4) hoặc Claude computer-use API trực tiếp</li>
+      <li><strong>OpenAI-centric production, muốn đơn giản:</strong> OpenAI Agents SDK (migration từ Swarm)</li>
+      <li><strong>Agents cần memory dài hạn / stateful personalization:</strong> Letta</li>
       <li><strong>Maximum control, minimum magic:</strong> Build custom với asyncio + Pydantic messages</li>
     </ul>
+  </div>
+
+  <h3 id="interop-protocols">Interoperability Protocols: A2A &amp; MCP</h3>
+  <p>
+    Năm 2025 chứng kiến sự nổi lên của hai giao thức chuẩn hóa giao tiếp giữa agents từ các hệ thống khác nhau — giải quyết bài toán <em>vendor lock-in</em> của các framework độc lập:
+  </p>
+
+  <div class="grid-2">
+    <div class="card">
+      <h4 style="margin-top:0; color:var(--accent-2)">A2A — Agent-to-Agent Protocol</h4>
+      <p>
+        Google công bố tháng 4/2025 tại Google Cloud Next; trao cho Linux Foundation tháng 6/2025.
+        Tính đến Q2 2026: <strong>150+ tổ chức</strong>, triển khai production tại Microsoft, AWS, Salesforce, SAP, ServiceNow.
+      </p>
+      <ul style="font-size:14px; margin-bottom:0">
+        <li><strong>Giao thức:</strong> JSON-RPC 2.0 qua HTTP(S); 11 methods chuẩn (SendMessage, GetTask, SubscribeToTask…)</li>
+        <li><strong>Agent Cards:</strong> Agent tự mô tả capability để agent khác tự động discover</li>
+        <li><strong>Auth:</strong> API key, OAuth 2.0, OpenID Connect</li>
+        <li><strong>Use case:</strong> Agents từ các vendors khác nhau (LangGraph agent gọi AutoGen agent) giao tiếp được qua chuẩn A2A</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4 style="margin-top:0; color:var(--accent)">MCP — Model Context Protocol (inter-agent)</h4>
+      <p>
+        Anthropic ra mắt tháng 11/2024; ban đầu là chuẩn kết nối model ↔ tools, nhưng nhanh chóng được dùng cho inter-agent communication.
+        Azure AI Agent Service, Google Gemini, Vertex AI tích hợp MCP từ tháng 4–5/2025.
+      </p>
+      <ul style="font-size:14px; margin-bottom:0">
+        <li><strong>Giao thức:</strong> JSON-RPC 2.0; agent expose tools qua MCP server</li>
+        <li><strong>Pattern:</strong> Agent A expose tool "ask_expert_agent_B" qua MCP → Agent B như một tool với orchestrator</li>
+        <li><strong>A2A vs MCP:</strong> A2A = peer-to-peer agent coordination; MCP = model-to-tool (agent-as-tool). Thường dùng song song trong cùng hệ thống</li>
+      </ul>
+    </div>
   </div>
 
   <!-- ═══════════════════════════════════════════════
@@ -1259,21 +1317,26 @@ writer = Agent(
       <strong>Cách hiện tại:</strong> Specialized agents với focused system prompt + clear handoff protocols + typed messages, thay cho một monolithic agent cố handle tất cả.
     </li>
     <li>
-      <strong>Frameworks 2026:</strong> LangGraph (production), CrewAI (business workflows), AutoGen 0.4 (research/conversational), Magentic-One (computer use), Swarm (learning/prototyping).
+      <strong>Frameworks 2026:</strong> LangGraph 1.0 (production, stable API), CrewAI (business workflows), AutoGen 0.4 (event-driven/research, 3-lớp), Magentic-One (computer use, trên AutoGen 0.4), OpenAI Agents SDK (thay Swarm từ 3/2025, production-ready), Letta (stateful memory dài hạn).
+    </li>
+    <li>
+      <strong>Interop protocols:</strong> A2A (Google, tháng 4/2025, Linux Foundation) cho peer-to-peer agent discovery + task delegation qua JSON-RPC; MCP (Anthropic, 11/2024) cho agent-as-tool pattern. Cả hai cùng tồn tại và giải quyết bài toán vendor lock-in của multi-agent ecosystems.
+    </li>
+    <li>
+      <strong>Deep Research là multi-agent thực tế nhất:</strong> Planner → parallel searchers → synthesizer. Pattern này justify multi-agent vì parallelism thực sự + context overflow + model specialization rõ ràng.
     </li>
     <li>
       <strong>Anti-patterns cần tránh:</strong> agent proliferation, unclear boundaries, no termination, full context per hop, dùng multi-agent cho sequential tasks, không có observability.
     </li>
   </ol>
-
   <nav class="section-footer">
     <a href="27-agent-eval.html" class="prev">
-      <div class="label">← trước</div>
-      <div class="title">27 — Agent Evaluation</div>
+      <div class="label">← Trước</div>
+      <div class="title">27 — Agent Eval &amp; Benchmarking</div>
     </a>
     <a href="29-prompt-injection-deep.html" class="next">
-      <div class="label">tiếp theo →</div>
-      <div class="title">29 — Prompt Injection (chuyên sâu)</div>
+      <div class="label">Tiếp theo →</div>
+      <div class="title">29 — Prompt Injection Deep-dive</div>
     </a>
   </nav>
 

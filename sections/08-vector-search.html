@@ -12,7 +12,8 @@
   <div class="brand"><span class="dot"></span> AI Engineering</div>
   <div class="crumbs"><a href="../index.html">Mục lục</a> › Phần 3 · <span>08 — Vector Search &amp; Knowledge Stores</span></div>
   <div class="nav-actions">
-    <a href="07-data-pipeline.html">← 14</a>
+    <a href="07-data-pipeline.html">← Trước</a>
+    <a href="../index.html">Mục lục</a>
     <a href="09-rag.html">Tiếp →</a>
   </div>
 </nav>
@@ -20,7 +21,7 @@
 <main class="page">
 
   <section class="hero">
-    <span class="eyebrow">Phần 3 · §08</span>
+    <div class="eyebrow-row"><span class="eyebrow">Phần 3 · §08</span><a class="hero-updated" href="../KNOWLEDGE_UPDATES.md" title="Lịch sử cập nhật kiến thức">↻ 2026-05-23</a></div>
     <h1>Vector Search &amp; Knowledge Stores</h1>
     <p class="lede">
       Từ dot product đến HNSW, từ BM25 hybrid đến multitenancy — mọi thứ cần biết để xây dựng retrieval layer production-grade.
@@ -315,12 +316,15 @@
     Cross-encoder nhận (query, passage) pair và output relevance score. Khác embedding model (bi-encoder) — cross-encoder thấy cả hai cùng lúc nên capture interaction tốt hơn, nhưng không thể pre-compute passage embeddings → chỉ dùng cho reranking (top 20-100 candidates), không phải first-stage retrieval.
   </p>
   <p>
-    Popular models: <em>bge-reranker-v2-m3</em> (multilingual, open-source), <em>Cohere Rerank</em> (API), <em>Jina Reranker</em> (API + open-source).
+    Popular models: <em>bge-reranker-v2-m3</em> (multilingual, open-source), <em>Cohere Rerank 4</em> (API — phiên bản mới nhất 2025, thay thế Rerank 3.5), <em>Voyage rerank-2.5</em> (API — hỗ trợ instruction-following, context 32K tokens, ra mắt tháng 8/2025), <em>Jina Reranker</em> (API + open-source).
   </p>
 
-  <h3>ColBERT (late interaction)</h3>
+  <h3>ColBERT / ColPali (late interaction)</h3>
   <p>
     ColBERT là middle ground — pre-compute per-token embeddings cho passages (offline), tại query time chỉ cần compute query token embeddings rồi MaxSim. Nhanh hơn cross-encoder, chính xác hơn bi-encoder. Phù hợp khi cần chất lượng cao và latency &lt; 100ms.
+  </p>
+  <p>
+    <strong>ColPali</strong> (ICLR 2025) mở rộng ColBERT sang tài liệu dạng ảnh/PDF — dùng vision language model (PaliGemma-3B) để tạo multi-vector embeddings từ các patch của trang tài liệu. Cho phép retrieval trực tiếp từ page screenshot mà không cần OCR hay text extraction. LanceDB và Qdrant đã hỗ trợ native late interaction index cho ColBERT/ColPali.
   </p>
 
   <h3>LLM rerank</h3>
@@ -469,6 +473,14 @@
     Qdrant và Pinecone hỗ trợ sparse vectors natively. Thay thế BM25 tốt hơn trong hybrid setup, đặc biệt với technical/domain text. Trade-off: cần inference model để tạo sparse vectors (chậm hơn BM25), index lớn hơn dense.
   </p>
 
+  <h2 id="contextual-retrieval">15.9b Contextual Retrieval &amp; Late Chunking</h2>
+  <p>
+    <strong>Contextual Retrieval</strong> (Anthropic, tháng 9/2024) giải quyết vấn đề context loss khi chunk tài liệu: dùng LLM tạo một đoạn context ngắn cho mỗi chunk trước khi embed, giúp embedding "hiểu" chunk nằm ở đâu trong tài liệu gốc. Kết quả: giảm 49% retrieval failures khi kết hợp Contextual Embeddings + Contextual BM25; thêm reranking giảm thêm tới 67% lỗi.
+  </p>
+  <p>
+    <strong>Late Chunking</strong> (Jina AI, 2024) là kỹ thuật bổ sung — thay vì chunk trước rồi embed từng chunk độc lập, encode cả document với long-context embedding model, sau đó mới tách embeddings theo chunk boundary bằng mean pooling. Chunk embeddings thu được mang đầy đủ ngữ cảnh từ toàn bộ document. jina-embeddings-v3 hỗ trợ <code>late_chunking=True</code> qua API.
+  </p>
+
   <h2 id="sizing">15.10 Production sizing</h2>
 
   <h3>RAM estimation</h3>
@@ -480,10 +492,11 @@ raw_vectors   = n_vectors × dim × <span class="num">4</span>   <span class="cm
 graph_overhead = n_vectors × M × <span class="num">2</span> × <span class="num">8</span>  <span class="cm"># M=16 edges, 8 bytes per edge</span>
 total_ram     = (raw_vectors + graph_overhead) × <span class="num">1.2</span>  <span class="cm"># 20% overhead</span>
 
-<span class="cm"># Ví dụ: 1M vectors, dim=1536 (text-embedding-3-small)</span>
+<span class="cm"># Ví dụ: 1M vectors, dim=1536 (text-embedding-3-small / voyage-3)</span>
 raw_vectors    = <span class="num">1_000_000</span> × <span class="num">1536</span> × <span class="num">4</span> = <span class="num">6.14</span> GB
 graph_overhead = <span class="num">1_000_000</span> × <span class="num">16</span> × <span class="num">2</span> × <span class="num">8</span> = <span class="num">0.26</span> GB
-total_ram      ≈ <span class="num">7.7</span> GB  <span class="cm"># với SQ8 quantization → ~2.4 GB</span></code></pre>
+total_ram      ≈ <span class="num">7.7</span> GB  <span class="cm"># với SQ8 quantization → ~2.4 GB</span>
+<span class="cm"># pgvector halfvec (float16, 2x reduction) → ~3.9 GB cho cùng corpus</span></code></pre>
 
   <div class="table-wrap">
     <table>
@@ -550,20 +563,20 @@ results = client.<span class="fn">query_points</span>(
     <li><strong>Metric</strong>: cosine similarity (= dot product nếu normalized) cho text; L2 cho images. HNSW là default tốt cho hầu hết use cases.</li>
     <li><strong>Quantization</strong>: SQ8 cho 4x memory reduction với &lt;2% recall loss — bật ngay khi corpus &gt; 1M vectors.</li>
     <li><strong>Hybrid retrieval</strong>: BM25 + dense với RRF fusion cải thiện recall đáng kể, đặc biệt cho exact-match queries. SPLADE là bước tiến hơn BM25.</li>
-    <li><strong>Reranker</strong>: thêm khi first-stage precision thấp. Cross-encoder balance tốt giữa chất lượng và latency.</li>
-    <li><strong>Metadata filtering</strong>: dùng filtered HNSW (Qdrant/Weaviate) thay vì pre-filter đơn thuần để tránh recall drop.</li>
+    <li><strong>Reranker</strong>: thêm khi first-stage precision thấp. Cross-encoder balance tốt giữa chất lượng và latency. Cohere Rerank 4 (2025) và Voyage rerank-2.5 là lựa chọn API hàng đầu hiện tại.</li>
+    <li><strong>Metadata filtering</strong>: dùng filtered HNSW (Qdrant/Weaviate) thay vì pre-filter đơn thuần để tránh recall drop. pgvector 0.8 bổ sung iterative index scan giải quyết vấn đề tương tự.</li>
     <li><strong>Multitenancy</strong>: shared collection cho tenants nhỏ, per-tenant collection khi cần isolation mạnh.</li>
-    <li><strong>Sizing</strong>: RAM = n_vectors × dim × 4 bytes + graph overhead. SQ8 giảm 4x. DiskANN khi RAM là bottleneck.</li>
+    <li><strong>Sizing</strong>: RAM = n_vectors × dim × 4 bytes + graph overhead. SQ8 giảm 4x. DiskANN khi RAM là bottleneck. Turbopuffer và LanceDB dùng object storage (S3) làm primary store — giảm chi phí tới 95% so với in-memory DBs.</li>
+    <li><strong>Contextual Retrieval + Late Chunking</strong>: hai kỹ thuật tiền xử lý giúp embedding chất lượng hơn mà không đổi model.</li>
   </ol>
-
   <nav class="section-footer">
     <a href="07-data-pipeline.html" class="prev">
-      <div class="label">← trước</div>
+      <div class="label">← Trước</div>
       <div class="title">07 — Data Pipeline cho AI</div>
     </a>
     <a href="09-rag.html" class="next">
-      <div class="label">tiếp theo →</div>
-      <div class="title">09 — RAG</div>
+      <div class="label">Tiếp theo →</div>
+      <div class="title">09 — RAG — Retrieval-Augmented Generation</div>
     </a>
   </nav>
 

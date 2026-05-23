@@ -13,6 +13,7 @@
   <div class="crumbs"><a href="../index.html">Mục lục</a> › Phần 9 · <span>23 — Agent Design Patterns nâng cao</span></div>
   <div class="nav-actions">
     <a href="22-future-advanced.html">← Trước</a>
+    <a href="../index.html">Mục lục</a>
     <a href="24-agent-harness.html">Tiếp →</a>
   </div>
 </nav>
@@ -20,7 +21,7 @@
 <main class="page">
 
   <section class="hero">
-    <span class="eyebrow">Phần 9 · §23</span>
+    <div class="eyebrow-row"><span class="eyebrow">Phần 9 · §23</span><a class="hero-updated" href="../KNOWLEDGE_UPDATES.md" title="Lịch sử cập nhật kiến thức">↻ 2026-05-23</a></div>
     <h1>Agent Design Patterns nâng cao</h1>
     <p class="lede">
       Từ single-agent đơn giản đến swarm, Mixture-of-Agents, Critic-Actor và recursive agent-as-tool —
@@ -296,6 +297,51 @@ tools = [{
     <strong>parent làm gì với nhiều kết quả</strong>.
   </p>
 
+  <h3>Claude Code — Khai báo subagent bằng YAML frontmatter (2025)</h3>
+  <p>
+    Từ 2025, Claude Code hỗ trợ khai báo subagent dưới dạng file Markdown với YAML frontmatter,
+    lưu ở <code>.claude/agents/</code> (project scope) hoặc <code>~/.claude/agents/</code> (user scope).
+    Đây là cách <em>declarative</em> để định nghĩa specialist subagent — có thể commit vào version control
+    và cả team cùng dùng.
+  </p>
+  <pre><code><span class="cm"># .claude/agents/code-reviewer.md</span>
+---
+name: code-reviewer
+description: <span class="str">"Review PR diffs for correctness, style, and security issues"</span>
+model: claude-sonnet-4-6
+tools:
+  - Bash
+  - Read
+  - mcp__github__create_review_comment
+allowedDirectories:
+  - .
+---
+You are a strict code reviewer. Focus on:
+1. Logic correctness and edge cases
+2. Security: SQL injection, XSS, secret leaks
+3. Style consistency with the codebase
+
+Always return structured JSON: {issues: [...], summary: "..."}
+</code></pre>
+  <p>
+    Orchestrator có thể dispatch subagent này bằng <strong>Task tool</strong>:
+    <code>{"name": "code-reviewer", "prompt": "Review this diff: ..."}</code>.
+    Mỗi subagent chạy trong context window riêng biệt — hoàn toàn isolated.
+  </p>
+
+  <div class="callout tip">
+    <div class="icon">★</div>
+    <div>
+      <div class="title">Anthropic multi-agent research pattern (production)</div>
+      <p>
+        Hệ thống Research của Anthropic dùng chính pattern này: một <em>lead agent</em> (Opus) phân rã
+        query thành subtasks, spawn song song nhiều <em>research subagents</em> (Sonnet) — mỗi subagent
+        nhận objective, output format, và tool scope rõ ràng. Kết quả: multi-agent system vượt
+        single-agent Opus 4 tới 90% trên research eval nội bộ.
+      </p>
+    </div>
+  </div>
+
   <!-- Sub-agent context handoff SVG -->
   <svg class="diagram" viewBox="0 0 760 340" role="img" aria-label="Sub-agent context handoff flow">
     <defs>
@@ -438,9 +484,11 @@ category = cheap_llm.<span class="fn">generate</span>(
   ════════════════════════════════════════════════ -->
   <h2 id="swarm">23.5 Swarm Pattern — Handoff via Tool Calls</h2>
   <p>
-    <strong>Swarm</strong> (được Anthropic giới thiệu rộng rãi và OpenAI triển khai trong <em>openai-swarm</em> framework)
-    là pattern trong đó các agents chuyển giao control cho nhau thông qua một cơ chế đặc biệt:
+    <strong>Swarm</strong> là pattern trong đó các agents chuyển giao control cho nhau thông qua một cơ chế đặc biệt:
     <strong>handoff tool call</strong>. Không có orchestrator trung tâm — mỗi agent tự quyết định khi nào nó cần "bàn giao" cho agent khác.
+    OpenAI từng ra thư viện thực nghiệm <em>openai-swarm</em> để demo pattern này; từ 2025 pattern được
+    tích hợp trực tiếp vào <strong>OpenAI Agents SDK</strong> (thư viện swarm riêng không còn được duy trì).
+    Với Claude, pattern thực hiện qua <strong>Task tool</strong> của Claude Code hoặc handoff tool tự định nghĩa.
   </p>
 
   <h3>Cơ chế Handoff</h3>
@@ -516,7 +564,7 @@ billing_agent_tools = [
     <!-- Layer 1: Proposers -->
     <text x="380" y="82" text-anchor="middle" font-size="11" fill="#6f7c92">Layer 1 — Proposers (chạy song song)</text>
     <rect class="node-blue" x="50" y="90" width="130" height="56" rx="8"/>
-    <text x="115" y="112" text-anchor="middle" font-weight="600" font-size="12">Claude Opus</text>
+    <text x="115" y="112" text-anchor="middle" font-weight="600" font-size="12">Claude Opus 4.6</text>
     <text x="115" y="128" text-anchor="middle" class="label-sm">draft A</text>
 
     <rect class="node-blue" x="210" y="90" width="130" height="56" rx="8"/>
@@ -574,9 +622,12 @@ billing_agent_tools = [
   ════════════════════════════════════════════════ -->
   <h2 id="critic-actor">23.7 Critic-Actor Pattern — Generate → Critique → Revise</h2>
   <p>
-    <strong>Critic-Actor</strong> là vòng lặp phản hồi trong đó <em>Actor</em> generate output,
-    <em>Critic</em> evaluate theo rubric cụ thể, và Actor revise dựa trên feedback.
+    <strong>Critic-Actor</strong> (còn gọi là <strong>Evaluator-Optimizer</strong> trong nhiều tài liệu
+    production 2025-2026) là vòng lặp phản hồi trong đó <em>Actor/Generator</em> generate output,
+    <em>Critic/Evaluator</em> evaluate theo rubric cụ thể, và Actor revise dựa trên feedback.
     Có thể dùng một model cho cả hai vai trò (self-critique) hoặc hai model riêng biệt.
+    Thực tiễn khuyến nghị: Evaluator dùng <code>temperature=0.0</code> để deterministic và strict;
+    Generator dùng <code>temperature=0.7</code> để thử diverse approaches qua các iterations.
   </p>
 
   <!-- Critic-Actor loop SVG -->
@@ -730,6 +781,11 @@ orchestrator_tools = [
     <strong>Reflexive agent</strong> có khả năng nhìn lại kế hoạch của mình và thay đổi nó dựa trên
     kết quả quan sát. Khác với Critic-Actor (chỉ sửa output), reflexive agent sửa
     <em>plan / prompt / strategy</em> — tức là "meta-level" tự điều chỉnh.
+    Năm 2025, hai hướng nghiên cứu nổi bật:
+    <strong>LATS</strong> (Language Agent Tree Search — ICML 2024, production với LlamaIndex từ 2025):
+    kết hợp MCTS với ReAct, agent "explore" nhiều nhánh kế hoạch song song trước khi commit;
+    <strong>PreFlect</strong> (2025): chuyển từ <em>retrospective</em> (nhìn lại lỗi đã xảy ra) sang
+    <em>prospective reflection</em> (dự đoán điểm thất bại trước khi thực thi) kết hợp dynamic re-planning.
   </p>
 
   <h3>Hai mức độ self-modification</h3>
@@ -867,6 +923,13 @@ new_system_prompt = llm.<span class="fn">generate</span>(
           <td>$$$</td>
           <td>★★★★★</td>
         </tr>
+        <tr>
+          <td>Nghiên cứu sâu, cần hàng trăm nguồn, nhiều góc nhìn song song</td>
+          <td><span class="tag blue">Deep Research (Orchestrator + parallel subagents)</span></td>
+          <td>Lead agent phân rã query → subagents tìm song song → tổng hợp citation-backed; vượt trội single-agent ~90%</td>
+          <td>$$$$</td>
+          <td>★★★★☆</td>
+        </tr>
       </tbody>
     </table>
   </div>
@@ -912,7 +975,7 @@ step3 = llm.<span class="fn">call</span>(<span class="str">f"Format: {step2}"</s
 <span class="cm"># Không thể replan khi fail</span></code></pre>
         </div>
         <div class="card">
-          <div style="color:var(--accent-3);font-weight:600;margin-bottom:8px">Cách hiện tại (Claude 4.x / GPT-5 / Gemini 2)</div>
+          <div style="color:var(--accent-3);font-weight:600;margin-bottom:8px">Cách hiện tại (Claude Sonnet 4.6 / GPT-4o / Gemini 2)</div>
           <p>Agent tự điều khiển loop với tool calling — LLM quyết định tool nào cần, retry khi fail, adapt plan theo kết quả.</p>
           <pre style="margin:0;font-size:12px"><code>result = agent.<span class="fn">run</span>(
   task=<span class="str">"Analyze and format this doc"</span>,
@@ -1078,7 +1141,7 @@ tools = [
 <span class="kw">import</span> asyncio
 
 proposer_models = [
-    <span class="str">"claude-opus-4-5"</span>, <span class="str">"gpt-4o"</span>,
+    <span class="str">"claude-opus-4-6"</span>, <span class="str">"gpt-4o"</span>,
     <span class="str">"gemini-2.0-flash"</span>, <span class="str">"llama-3.3-70b"</span>,
 ]
 
@@ -1100,7 +1163,7 @@ Task: {task}
 Responses:
 {chr(10).join(f"Model {i+1}: {d}" for i, d in enumerate(drafts))}
 """</span>
-    <span class="kw">return await</span> <span class="fn">llm_call</span>(<span class="str">"claude-opus-4-5"</span>, aggregator_prompt)</code></pre>
+    <span class="kw">return await</span> <span class="fn">llm_call</span>(<span class="str">"claude-opus-4-6"</span>, aggregator_prompt)</code></pre>
     </div>
     <div class="tab-panel">
       <pre><code><span class="cm"># Critic-Actor pattern skeleton</span>
@@ -1175,7 +1238,8 @@ orchestrator_tools = [research_tool, write_report, send_notification]</code></pr
         <strong>⑥ MoA:</strong> N proposers chạy song song, aggregator tổng hợp — ensemble vượt trội từng model đơn, nhưng cost nhân N.<br>
         <strong>⑦ Critic-Actor:</strong> Generate → evaluate bằng rubric cụ thể → revise — cần max_iterations để tránh infinite loop.<br>
         <strong>⑧ Agent-as-Tool:</strong> Đóng gói agent như black box callable, cho phép orchestrators dùng mà không cần biết nội tại — cần depth guard bắt buộc.<br>
-        <strong>⑨ Reflexive:</strong> Agent tự sửa plan hoặc prompt dựa trên observation — mạnh nhất nhưng cần audit trail đầy đủ.
+        <strong>⑨ Reflexive:</strong> Agent tự sửa plan hoặc prompt dựa trên observation — mạnh nhất nhưng cần audit trail đầy đủ.<br>
+        <strong>⑩ Deep Research:</strong> Orchestrator (Opus) phân rã query → spawn nhiều subagents (Sonnet) tìm kiếm song song → tổng hợp citation-backed — pattern production của Anthropic Research và OpenAI o3-deep-research.
       </p>
     </div>
   </div>
@@ -1189,15 +1253,14 @@ orchestrator_tools = [research_tool, write_report, send_notification]</code></pr
     <li><strong>Agent-as-Tool và Reflexive</strong> là advanced patterns — chỉ khi simpler patterns đã proven không đủ.</li>
     <li>Mọi pattern đều cần: max_iterations, session timeout, cost cap, và observability tracing.</li>
   </ol>
-
   <nav class="section-footer">
     <a href="22-future-advanced.html" class="prev">
-      <div class="label">← trước</div>
-      <div class="title">22 — Tương lai &amp; nâng cao</div>
+      <div class="label">← Trước</div>
+      <div class="title">22 — Tương lai &amp; các chủ đề nâng cao</div>
     </a>
     <a href="24-agent-harness.html" class="next">
-      <div class="label">tiếp theo →</div>
-      <div class="title">24 — Agent Harness</div>
+      <div class="label">Tiếp theo →</div>
+      <div class="title">24 — Agent Harness là gì</div>
     </a>
   </nav>
 

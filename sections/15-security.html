@@ -13,6 +13,7 @@
   <div class="crumbs"><a href="../index.html">Mục lục</a> › Phần 5 · <span>15 — Security</span></div>
   <div class="nav-actions">
     <a href="14-reliability-safety.html">← Trước</a>
+    <a href="../index.html">Mục lục</a>
     <a href="16-designing-ai-products.html">Tiếp →</a>
   </div>
 </nav>
@@ -20,7 +21,7 @@
 <main class="page">
 
   <section class="hero">
-    <span class="eyebrow">Phần 5 · §15</span>
+    <div class="eyebrow-row"><span class="eyebrow">Phần 5 · §15</span><a class="hero-updated" href="../KNOWLEDGE_UPDATES.md" title="Lịch sử cập nhật kiến thức">↻ 2026-05-23</a></div>
     <h1>Security</h1>
     <p class="lede">
       LLM mở ra attack surface hoàn toàn mới: prompt injection, data leakage qua model, tool abuse trong agent, supply chain độc hại. OWASP LLM Top 10 là bản đồ — phần này là hướng dẫn từng bước để xây dựng hệ thống AI an toàn.
@@ -47,7 +48,17 @@
   <h2 id="owasp">13.1 OWASP LLM Top 10</h2>
   <p>
     OWASP (Open Web Application Security Project) đã publish danh sách 10 rủi ro bảo mật phổ biến nhất
-    cho ứng dụng LLM. Đây là framework chuẩn được industry chấp nhận rộng rãi.
+    cho ứng dụng LLM. Đây là framework chuẩn được industry chấp nhận rộng rãi. Phiên bản <strong>2025 (v2025.1)</strong>
+    có thay đổi đáng kể so với 2024: Sensitive Information Disclosure tăng từ #6 lên #2, Supply Chain mở rộng
+    bao gồm MCP servers và plugin registries, và ba mục mới hoàn toàn là System Prompt Leakage (LLM07),
+    Vector/Embedding Weaknesses (LLM08), và Misinformation (LLM09). "Model Theft" và "Overreliance" của 2024
+    không còn trong top 10.
+  </p>
+  <p>
+    Song song đó, tháng 12/2025 OWASP phát hành thêm <strong>Top 10 for Agentic Applications</strong>
+    (tiền thân là "Agentic AI Threats &amp; Mitigations v1.0" từ đầu 2025) — danh sách riêng cho hệ thống
+    agent tự trị, với các rủi ro như ASI01 Agent Goal Hijack, ASI02 Tool Misuse, ASI04 Agentic Supply Chain
+    (bao gồm MCP servers), và ASI07 Insecure Inter-Agent Communication.
   </p>
 
   <svg class="diagram" viewBox="0 0 760 490" role="img" aria-label="OWASP LLM Top 10">
@@ -56,76 +67,76 @@
         <polygon points="0 0, 10 3.5, 0 7" fill="#6f7c92"/>
       </marker>
     </defs>
-    <text x="380" y="26" text-anchor="middle" font-weight="700" font-size="15">OWASP LLM Top 10 — 2025</text>
+    <text x="380" y="26" text-anchor="middle" font-weight="700" font-size="15">OWASP LLM Top 10 — 2025 (v2025.1)</text>
 
     <rect fill="rgba(255,138,138,0.20)" stroke="#ff8a8a" stroke-width="2" x="30" y="42" width="700" height="38" rx="8"/>
     <rect fill="#ff8a8a" x="30" y="42" width="6" height="38" rx="4"/>
-    <text x="52" y="56" font-weight="700" font-size="13" fill="#ff8a8a">LLM01</text>
-    <text x="115" y="56" font-weight="600" font-size="13">Prompt Injection</text>
-    <text x="115" y="72" font-size="12" fill="#aab4c5">Attacker inject instructions vào input để override hành vi của model</text>
+    <text x="52" y="56" font-weight="700" font-size="13" fill="#ff8a8a">LLM01:2025</text>
+    <text x="140" y="56" font-weight="600" font-size="13">Prompt Injection</text>
+    <text x="140" y="72" font-size="12" fill="#aab4c5">Attacker inject instructions vào input để override hành vi của model; đứng #1 hai năm liên tiếp</text>
     <text x="698" y="66" text-anchor="end" font-size="11" font-weight="700" fill="#ff8a8a">CRITICAL</text>
 
-    <rect fill="rgba(255,184,107,0.15)" stroke="#ffb86b" stroke-width="1.5" x="30" y="88" width="700" height="38" rx="8"/>
-    <rect fill="#ffb86b" x="30" y="88" width="6" height="38" rx="4"/>
-    <text x="52" y="102" font-weight="700" font-size="13" fill="#ffb86b">LLM02</text>
-    <text x="115" y="102" font-weight="600" font-size="13">Insecure Output Handling</text>
-    <text x="115" y="118" font-size="12" fill="#aab4c5">LLM output không được sanitize → XSS, SSRF, code execution, SQL injection</text>
-    <text x="698" y="110" text-anchor="end" font-size="11" font-weight="700" fill="#ffb86b">HIGH</text>
+    <rect fill="rgba(255,138,138,0.20)" stroke="#ff8a8a" stroke-width="2" x="30" y="88" width="700" height="38" rx="8"/>
+    <rect fill="#ff8a8a" x="30" y="88" width="6" height="38" rx="4"/>
+    <text x="52" y="102" font-weight="700" font-size="13" fill="#ff8a8a">LLM02:2025</text>
+    <text x="140" y="102" font-weight="600" font-size="13">Sensitive Information Disclosure</text>
+    <text x="140" y="118" font-size="12" fill="#aab4c5">Model tiết lộ PII, system prompt, hoặc training data nhạy cảm (tăng từ #6 lên #2)</text>
+    <text x="698" y="110" text-anchor="end" font-size="11" font-weight="700" fill="#ff8a8a">CRITICAL</text>
 
     <rect fill="rgba(255,184,107,0.15)" stroke="#ffb86b" stroke-width="1.5" x="30" y="134" width="700" height="38" rx="8"/>
     <rect fill="#ffb86b" x="30" y="134" width="6" height="38" rx="4"/>
-    <text x="52" y="148" font-weight="700" font-size="13" fill="#ffb86b">LLM03</text>
-    <text x="115" y="148" font-weight="600" font-size="13">Training Data Poisoning</text>
-    <text x="115" y="164" font-size="12" fill="#aab4c5">Dữ liệu training bị nhiễm độc → model có backdoor hoặc bias có chủ ý</text>
+    <text x="52" y="148" font-weight="700" font-size="13" fill="#ffb86b">LLM03:2025</text>
+    <text x="140" y="148" font-weight="600" font-size="13">Supply Chain</text>
+    <text x="140" y="164" font-size="12" fill="#aab4c5">Malicious weights, poisoned datasets, compromised MCP servers, third-party plugins (tăng từ #5)</text>
     <text x="698" y="156" text-anchor="end" font-size="11" font-weight="700" fill="#ffb86b">HIGH</text>
 
-    <rect fill="rgba(124,196,255,0.12)" stroke="#7cc4ff" stroke-width="1.5" x="30" y="180" width="700" height="38" rx="8"/>
-    <rect fill="#7cc4ff" x="30" y="180" width="6" height="38" rx="4"/>
-    <text x="52" y="194" font-weight="700" font-size="13" fill="#7cc4ff">LLM04</text>
-    <text x="115" y="194" font-weight="600" font-size="13">Model Denial of Service</text>
-    <text x="115" y="210" font-size="12" fill="#aab4c5">Gửfi request tốn kém resource cực cao (long context) để exhaust hệ thống</text>
-    <text x="698" y="202" text-anchor="end" font-size="11" font-weight="700" fill="#7cc4ff">MEDIUM</text>
+    <rect fill="rgba(255,184,107,0.15)" stroke="#ffb86b" stroke-width="1.5" x="30" y="180" width="700" height="38" rx="8"/>
+    <rect fill="#ffb86b" x="30" y="180" width="6" height="38" rx="4"/>
+    <text x="52" y="194" font-weight="700" font-size="13" fill="#ffb86b">LLM04:2025</text>
+    <text x="140" y="194" font-weight="600" font-size="13">Data and Model Poisoning</text>
+    <text x="140" y="210" font-size="12" fill="#aab4c5">Dữ liệu training hoặc fine-tune bị nhiễm độc → backdoor hoặc bias có chủ ý (đổi từ Training Data Poisoning)</text>
+    <text x="698" y="202" text-anchor="end" font-size="11" font-weight="700" fill="#ffb86b">HIGH</text>
 
     <rect fill="rgba(255,184,107,0.15)" stroke="#ffb86b" stroke-width="1.5" x="30" y="226" width="700" height="38" rx="8"/>
     <rect fill="#ffb86b" x="30" y="226" width="6" height="38" rx="4"/>
-    <text x="52" y="240" font-weight="700" font-size="13" fill="#ffb86b">LLM05</text>
-    <text x="115" y="240" font-weight="600" font-size="13">Supply Chain Vulnerabilities</text>
-    <text x="115" y="256" font-size="12" fill="#aab4c5">Malicious model weights, compromised fine-tuning datasets, third-party plugins</text>
+    <text x="52" y="240" font-weight="700" font-size="13" fill="#ffb86b">LLM05:2025</text>
+    <text x="140" y="240" font-weight="600" font-size="13">Improper Output Handling</text>
+    <text x="140" y="256" font-size="12" fill="#aab4c5">LLM output không được sanitize → XSS, SSRF, code execution, SQL injection (xuống từ #2)</text>
     <text x="698" y="248" text-anchor="end" font-size="11" font-weight="700" fill="#ffb86b">HIGH</text>
 
     <rect fill="rgba(255,138,138,0.20)" stroke="#ff8a8a" stroke-width="2" x="30" y="272" width="700" height="38" rx="8"/>
     <rect fill="#ff8a8a" x="30" y="272" width="6" height="38" rx="4"/>
-    <text x="52" y="286" font-weight="700" font-size="13" fill="#ff8a8a">LLM06</text>
-    <text x="115" y="286" font-weight="600" font-size="13">Sensitive Information Disclosure</text>
-    <text x="115" y="302" font-size="12" fill="#aab4c5">Model tiết lộ PII từ training data, system prompt, hay context nhạy cảm</text>
+    <text x="52" y="286" font-weight="700" font-size="13" fill="#ff8a8a">LLM06:2025</text>
+    <text x="140" y="286" font-weight="600" font-size="13">Excessive Agency</text>
+    <text x="140" y="302" font-size="12" fill="#aab4c5">Agent được cấp quá nhiều quyền, thực hiện action không mong muốn hoặc nguy hiểm (xuống từ #8)</text>
     <text x="698" y="294" text-anchor="end" font-size="11" font-weight="700" fill="#ff8a8a">CRITICAL</text>
 
     <rect fill="rgba(255,184,107,0.15)" stroke="#ffb86b" stroke-width="1.5" x="30" y="318" width="700" height="38" rx="8"/>
     <rect fill="#ffb86b" x="30" y="318" width="6" height="38" rx="4"/>
-    <text x="52" y="332" font-weight="700" font-size="13" fill="#ffb86b">LLM07</text>
-    <text x="115" y="332" font-weight="600" font-size="13">Insecure Plugin Design</text>
-    <text x="115" y="348" font-size="12" fill="#aab4c5">Plugin/tool không validate input từ LLM → SSRF, path traversal, injection</text>
+    <text x="52" y="332" font-weight="700" font-size="13" fill="#ffb86b">LLM07:2025</text>
+    <text x="140" y="332" font-weight="600" font-size="13">System Prompt Leakage</text>
+    <text x="140" y="348" font-size="12" fill="#aab4c5">Tiết lộ nội dung system prompt, lộ business logic, persona, hay instructions nội bộ (mới trong 2025)</text>
     <text x="698" y="340" text-anchor="end" font-size="11" font-weight="700" fill="#ffb86b">HIGH</text>
 
-    <rect fill="rgba(255,138,138,0.20)" stroke="#ff8a8a" stroke-width="2" x="30" y="364" width="700" height="38" rx="8"/>
-    <rect fill="#ff8a8a" x="30" y="364" width="6" height="38" rx="4"/>
-    <text x="52" y="378" font-weight="700" font-size="13" fill="#ff8a8a">LLM08</text>
-    <text x="115" y="378" font-weight="600" font-size="13">Excessive Agency</text>
-    <text x="115" y="394" font-size="12" fill="#aab4c5">Agent được cấp quá nhiều quyền, thực hiện action không mong muốn hoặc nguy hiểm</text>
-    <text x="698" y="386" text-anchor="end" font-size="11" font-weight="700" fill="#ff8a8a">CRITICAL</text>
+    <rect fill="rgba(124,196,255,0.12)" stroke="#7cc4ff" stroke-width="1.5" x="30" y="364" width="700" height="38" rx="8"/>
+    <rect fill="#7cc4ff" x="30" y="364" width="6" height="38" rx="4"/>
+    <text x="52" y="378" font-weight="700" font-size="13" fill="#7cc4ff">LLM08:2025</text>
+    <text x="140" y="378" font-weight="600" font-size="13">Vector and Embedding Weaknesses</text>
+    <text x="140" y="394" font-size="12" fill="#aab4c5">Lỗ hổng trong vector store và embedding — cross-tenant leakage, context poisoning (mới trong 2025)</text>
+    <text x="698" y="386" text-anchor="end" font-size="11" font-weight="700" fill="#7cc4ff">MEDIUM</text>
 
     <rect fill="rgba(124,196,255,0.12)" stroke="#7cc4ff" stroke-width="1.5" x="30" y="410" width="700" height="38" rx="8"/>
     <rect fill="#7cc4ff" x="30" y="410" width="6" height="38" rx="4"/>
-    <text x="52" y="424" font-weight="700" font-size="13" fill="#7cc4ff">LLM09</text>
-    <text x="115" y="424" font-weight="600" font-size="13">Overreliance</text>
-    <text x="115" y="440" font-size="12" fill="#aab4c5">Tin tưởng mù quáng vào LLM output mà không có human oversight cho decision quan trọng</text>
+    <text x="52" y="424" font-weight="700" font-size="13" fill="#7cc4ff">LLM09:2025</text>
+    <text x="140" y="424" font-weight="600" font-size="13">Misinformation</text>
+    <text x="140" y="440" font-size="12" fill="#aab4c5">LLM tạo ra hoặc lan truyền thông tin sai lệch; thay thế "Overreliance" trong 2024 (mới trong 2025)</text>
     <text x="698" y="432" text-anchor="end" font-size="11" font-weight="700" fill="#7cc4ff">MEDIUM</text>
 
     <rect fill="rgba(255,184,107,0.15)" stroke="#ffb86b" stroke-width="1.5" x="30" y="456" width="700" height="38" rx="8"/>
     <rect fill="#ffb86b" x="30" y="456" width="6" height="38" rx="4"/>
-    <text x="52" y="470" font-weight="700" font-size="13" fill="#ffb86b">LLM10</text>
-    <text x="115" y="470" font-weight="600" font-size="13">Model Theft</text>
-    <text x="115" y="486" font-size="12" fill="#aab4c5">Adversary extract model weights/behavior qua API abuse, model inversion, exfiltration</text>
+    <text x="52" y="470" font-weight="700" font-size="13" fill="#ffb86b">LLM10:2025</text>
+    <text x="140" y="470" font-weight="600" font-size="13">Unbounded Consumption</text>
+    <text x="140" y="486" font-size="12" fill="#aab4c5">Resource exhaustion không kiểm soát qua long-context, recursive calls, token flooding (thay Model Theft)</text>
     <text x="698" y="478" text-anchor="end" font-size="11" font-weight="700" fill="#ffb86b">HIGH</text>
   </svg>
 
@@ -355,11 +366,25 @@ collection = qdrant_client.get_collection(
   ]
   <span class="kw">return</span> accessible  <span class="cm"># only pass accessible docs to LLM</span></code></pre>
 
-  <h2 id="tool-abuse">13.6 Tool Abuse trong Agent Systems</h2>
+  <h2 id="tool-abuse">13.6 Tool Abuse trong Agent Systems và MCP Security</h2>
   <p>
     Agent với tools có blast radius lớn hơn nhiều so với simple LLM call.
     Một injected instruction có thể khiến agent: xóa file, gửi email, gọi external API với malicious params.
   </p>
+  <p>
+    Với sự phổ biến của <strong>Model Context Protocol (MCP)</strong> từ 2025, attack surface mở rộng thêm.
+    CISA đã phát hành hướng dẫn chung (5/2025) cảnh báo MCP servers trở thành attack vector mới.
+    Ba rủi ro MCP đặc trưng cần biết:
+  </p>
+  <ul>
+    <li><strong>Tool Poisoning:</strong> MCP server nhúng malicious instructions vào tool description —
+      model đọc và thực thi mà user không hay. Tool definition có thể tự thay đổi sau khi install
+      ("Rug Pull: Silent Redefinition").</li>
+    <li><strong>MCP Supply Chain:</strong> MCP servers từ third-party registry có thể bị compromised;
+      một server tập trung credentials của nhiều service tạo single point of failure.</li>
+    <li><strong>Insecure Inter-Agent Communication (ASI07):</strong> Multi-agent system truyền message
+      không có authentication → agent này inject prompt vào agent kia.</li>
+  </ul>
 
   <h3>Nguyên tắc Least Privilege cho tools</h3>
   <pre><code><span class="cm"># BAD: Tool có full filesystem access</span>
@@ -498,7 +523,14 @@ tools = [{
     <li><strong>Compromised fine-tune datasets:</strong> dataset public bị poison, model fine-tune trên đó có behavior xấu</li>
     <li><strong>Dependency vulnerabilities:</strong> serving framework (vLLM, TGI) có CVE chưa patch</li>
     <li><strong>Pickle exploit:</strong> malicious .bin/.pt file có thể execute code khi load</li>
+    <li><strong>MCP server supply chain (LLM03:2025 / ASI04):</strong> MCP servers từ public registry có thể bị trojanized; sau khi install, server có thể "rug pull" — tự thay đổi tool description để inject malicious instructions vào model context</li>
+    <li><strong>Plugin registry poisoning:</strong> typosquatting trên npm/PyPI cho AI SDK packages; model registry (HuggingFace) có model tên tương tự model phổ biến nhưng chứa backdoor</li>
   </ul>
+  <p class="note-inline">
+    <strong>MITRE ATLAS (v5.1, 11/2025):</strong> framework này đã mở rộng lên 16 tactics, 84 techniques
+    bao gồm các kỹ thuật mới cho AI agents: AI Agent Context Poisoning, Credential Harvesting via AI Tools,
+    và Data Exfiltration via AI Tools — phối hợp với Zenity Labs (10/2025).
+  </p>
 
   <pre><code><span class="cm"># 1. Verify model hash trước khi load</span>
 <span class="kw">import</span> hashlib
@@ -534,22 +566,23 @@ tools = [{
 
   <h2 id="tom-tat">Tóm tắt</h2>
   <ol>
-    <li><strong>OWASP LLM Top 10:</strong> Prompt Injection, Insecure Output, Sensitive Disclosure, Excessive Agency là 4 CRITICAL — giải quyết trước.</li>
+    <li><strong>OWASP LLM Top 10 v2025:</strong> danh sách đã thay đổi đáng kể — Sensitive Disclosure lên #2, Supply Chain lên #3, ba mục mới: System Prompt Leakage, Vector/Embedding Weaknesses, Misinformation. Prompt Injection vẫn #1.</li>
+    <li><strong>Agentic AI:</strong> OWASP Top 10 for Agentic Applications (12/2025) bổ sung lớp threat riêng: ASI01 Goal Hijack, ASI02 Tool Misuse, ASI04 Agentic Supply Chain (gồm MCP), ASI07 Inter-Agent Communication.</li>
+    <li><strong>MCP security:</strong> tool poisoning, silent redefinition, MCP server supply chain là attack vector mới — verify MCP servers như verify code dependency.</li>
     <li><strong>Prompt injection:</strong> không có silver bullet. Defense in depth: structural separation + classifier + output validation + sandbox.</li>
     <li><strong>Data leakage:</strong> system prompt không phải secret — đừng để credentials ở đó. RAG phải enforce tenant isolation ở cả filter và collection level.</li>
     <li><strong>Tool abuse:</strong> least-privilege là luật, không phải suggestion. Human approval cho mọi destructive operation. Dry-run trước execute.</li>
     <li><strong>Secrets:</strong> tool-side resolution — agent gọi tool, tool fetch secret, agent nhận result — không bao giờ secret trong prompt.</li>
     <li><strong>Audit logging:</strong> immutable, đầy đủ event categories, retention theo compliance requirement.</li>
-    <li><strong>Supply chain:</strong> verify hash, dùng safetensors, pin version, sandboxed execution.</li>
+    <li><strong>Supply chain:</strong> verify hash, dùng safetensors, pin version, sandboxed execution; MCP registry cần review như npm package.</li>
   </ol>
-
   <nav class="section-footer">
     <a href="14-reliability-safety.html" class="prev">
-      <div class="label">← trước</div>
+      <div class="label">← Trước</div>
       <div class="title">14 — Reliability &amp; Safety</div>
     </a>
     <a href="16-designing-ai-products.html" class="next">
-      <div class="label">tiếp theo →</div>
+      <div class="label">Tiếp theo →</div>
       <div class="title">16 — Designing AI Products (UX)</div>
     </a>
   </nav>

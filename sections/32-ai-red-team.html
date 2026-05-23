@@ -13,6 +13,7 @@
   <div class="crumbs"><a href="../index.html">Mục lục</a> › Phần 10 · <span>32 — AI Red-teaming</span></div>
   <div class="nav-actions">
     <a href="31-sandboxing.html">← Trước</a>
+    <a href="../index.html">Mục lục</a>
     <a href="33-privacy.html">Tiếp →</a>
   </div>
 </nav>
@@ -20,7 +21,7 @@
 <main class="page">
 
   <section class="hero">
-    <span class="eyebrow">Phần 10 · §32</span>
+    <div class="eyebrow-row"><span class="eyebrow">Phần 10 · §32</span><a class="hero-updated" href="../KNOWLEDGE_UPDATES.md" title="Lịch sử cập nhật kiến thức">↻ 2026-05-23</a></div>
     <h1>AI Red-teaming</h1>
     <p class="lede">
       Red-teaming AI không chỉ là pen test truyền thống — đó là quy trình đối nghịch có hệ thống bao phủ
@@ -343,6 +344,21 @@ categories = [
     optimization đến LLM-driven adversarial generation. Đây là các phương pháp nền tảng cần biết.
   </p>
 
+  <div class="callout note">
+    <div class="icon">≡</div>
+    <div>
+      <div class="title">Many-shot Jailbreaking (Anthropic, 2024)</div>
+      <p>
+        Anthropic công bố kỹ thuật <strong>many-shot jailbreaking</strong>: nhúng hàng chục đến hàng trăm cặp Q&amp;A
+        "fake-harmful" vào đầu context window trước khi hỏi request nguy hiểm thực sự.
+        Model bị "nudged" bởi in-context examples — hiệu quả tăng theo số shots (power-law).
+        Kỹ thuật này đặc biệt nguy hiểm với context window lớn (128k+) và là một trong số ít
+        attack vượt được Constitutional Classifiers++ trong các thử nghiệm red-team năm 2025.
+        <strong>Mitigation:</strong> Constitutional Classifiers scan toàn bộ context, không chỉ turn cuối.
+      </p>
+    </div>
+  </div>
+
   <h3>GCG — Greedy Coordinate Gradient</h3>
   <p>
     Được giới thiệu bởi Zou et al. (2023), <strong>GCG</strong> tối ưu hóa một suffix token
@@ -439,7 +455,7 @@ conversation = [
   <!-- ─── 32.6 ─── -->
   <h2 id="tools">32.6 Công cụ Red-team</h2>
   <p>
-    Ecosystem công cụ red-team AI đang phát triển nhanh. Năm 2026, đây là bộ tứ được dùng rộng rãi nhất:
+    Ecosystem công cụ red-team AI đang phát triển nhanh. Năm 2026, đây là bộ công cụ được dùng rộng rãi nhất:
   </p>
 
   <div class="table-wrap">
@@ -449,28 +465,36 @@ conversation = [
       </thead>
       <tbody>
         <tr>
-          <td><strong>PyRIT</strong></td>
+          <td><strong>PyRIT</strong> <span style="font-weight:400;font-size:0.85em">(v0.11, Feb 2026)</span></td>
           <td>Microsoft Azure</td>
-          <td>Enterprise red-team framework đa mục đích; orchestrate multi-turn attacks, score responses</td>
+          <td>Enterprise red-team framework đa mục đích; orchestrate multi-turn attacks, score responses; tích hợp Azure AI Foundry</td>
           <td>Python</td>
           <td>Cao (orchestrator + scorer + dataset)</td>
-          <td>Có (multi-turn, tool-call scenarios)</td>
+          <td>Có (multi-turn, tool-call, XPIA scenarios)</td>
         </tr>
         <tr>
-          <td><strong>garak</strong></td>
+          <td><strong>garak</strong> <span style="font-weight:400;font-size:0.85em">(v0.14.1, Apr 2026)</span></td>
           <td>NVIDIA</td>
-          <td>Vulnerability scanner — "nmap cho LLM"; 100+ probe categories, CI-friendly</td>
+          <td>Vulnerability scanner — "nmap cho LLM"; 37+ probe modules, CI-friendly; có <em>agent breaker</em> probe cho tool-equipped models</td>
           <td>Python</td>
           <td>Rất cao (scan toàn bộ tự động)</td>
-          <td>Hạn chế (stateless probes chủ yếu)</td>
+          <td>Có (agent breaker probe, Q2 2025+)</td>
         </tr>
         <tr>
-          <td><strong>promptfoo red-team</strong></td>
-          <td>promptfoo</td>
-          <td>Tích hợp sẵn trong eval pipeline; red-team như một eval step; YAML config</td>
+          <td><strong>promptfoo red-team</strong> <span style="font-weight:400;font-size:0.85em">(acq. OpenAI, Mar 2026)</span></td>
+          <td>promptfoo → OpenAI</td>
+          <td>Tích hợp sẵn trong eval pipeline; red-team như một eval step; YAML config; preset <code>owasp:agentic</code> cho OWASP Top 10 AI Agents; Hydra multi-turn + Meta Agent adaptive attack</td>
           <td>TypeScript/JS</td>
           <td>Cao (CI plugin, PR comments)</td>
-          <td>Có (agent target support)</td>
+          <td>Có (agent target, tool-call flows)</td>
+        </tr>
+        <tr>
+          <td><strong>Azure AI Red Teaming Agent</strong> <span style="font-weight:400;font-size:0.85em">(Preview, 2025)</span></td>
+          <td>Microsoft Foundry</td>
+          <td>PyRIT tích hợp sẵn trong Azure AI Foundry; automated adversarial probing qua AI Evaluation SDK; seed prompt datasets theo risk category</td>
+          <td>Python (SDK)</td>
+          <td>Rất cao (managed service)</td>
+          <td>Có (agentic risk evaluation)</td>
         </tr>
         <tr>
           <td><strong>llm-attacks</strong></td>
@@ -561,9 +585,12 @@ redteam:
     - prompt-injection <span class="cm"># injection attacks</span>
     - competitors      <span class="cm"># mention competitor brands</span>
     - politics         <span class="cm"># controversial political content</span>
+    - owasp:agentic    <span class="cm"># OWASP Top 10 for AI Agents (2025+)</span>
   strategies:
     - jailbreak:tree   <span class="cm"># TAP-style tree attack</span>
     - crescendo        <span class="cm"># multi-turn escalation</span>
+    - goat             <span class="cm"># Hydra: adaptive multi-turn với persistent memory</span>
+    - multilingual     <span class="cm"># language-switch bypass</span>
 
 <span class="cm"># Run: npx promptfoo redteam run</span>
 <span class="cm"># Report: npx promptfoo redteam report</span></code></pre>
@@ -759,6 +786,23 @@ jobs:
     stateless LLM call. Ba kịch bản nguy hiểm nhất:
   </p>
 
+  <div class="callout note">
+    <div class="icon">≡</div>
+    <div>
+      <div class="title">MITRE ATLAS v5.1 — 14 kỹ thuật agent mới (Oct 2025)</div>
+      <p>
+        MITRE ATLAS (Adversarial Threat Landscape for AI Systems) ra bản v5.1 (November 2025) với
+        <strong>14 kỹ thuật và sub-technique mới</strong> tập trung vào agent và GenAI, được đóng góp bởi
+        Zenity Labs. Các kỹ thuật nổi bật: <em>AI Agent Context Poisoning</em> (manipulate context window
+        để điều khiển hành vi agent), <em>Exfiltration via Agent Tool Invocation</em> (dùng tool access
+        của agent để exfiltrate data), và <em>Memory Manipulation</em> (persist injected behavior qua
+        long-term memory). Framework hiện có 16 tactics, 84 techniques, 42 case studies thực tế và đã
+        chuyển sang chu kỳ release hàng tháng. Dùng ATLAS taxonomy để map attack scenarios cho agent
+        red-team của bạn: <a href="https://atlas.mitre.org/" target="_blank" rel="noopener">atlas.mitre.org</a>.
+      </p>
+    </div>
+  </div>
+
   <h3>Tool Abuse Scenarios</h3>
   <p>
     Attacker cố khiến agent dùng tool sai mục đích hoặc với params nguy hiểm.
@@ -867,8 +911,42 @@ user_msg_2 = "What's the pricing for your enterprise plan?"
   <p>
     Với AI Engineer dùng third-party API: không thể apply CAI trực tiếp,
     nhưng có thể học từ principles của nó để design better system prompts và guardrails.
-    Thay vì "jangan lakukan X, Y, Z", define hành vi mong muốn tích cực: "Khi gặp request có thể gây hại, hãy..."
+    Thay vì "không được làm X, Y, Z", define hành vi mong muốn tích cực: "Khi gặp request có thể gây hại, hãy..."
   </p>
+
+  <h3>Constitutional Classifiers — Defense Layer mới của Anthropic (2025–2026)</h3>
+  <p>
+    Tháng 2/2025, Anthropic công bố <strong>Constitutional Classifiers</strong>: input và output
+    classifier được train trên synthetic data để chặn jailbreak nhắm vào CBRN (vũ khí hoá học, sinh học,
+    phóng xạ, hạt nhân). Không chỉ là system-prompt rule — đây là một lớp classifier độc lập chạy
+    song song với Claude, scan toàn bộ context window bao gồm nhiều-shot examples.
+  </p>
+  <p>
+    Để validate, Anthropic tổ chức <strong>jailbreak bounty công khai</strong> (HackerOne, Feb 2025):
+    339 người tham gia, 3.000+ giờ tấn công, $55.000 tiền thưởng được trao. Kết quả: không ai tìm được
+    universal jailbreak trong 2 tháng đầu với hệ thống đầy đủ.
+  </p>
+  <p>
+    Tháng 1/2026, Anthropic ra <strong>Constitutional Classifiers++</strong> cải tiến đáng kể:
+  </p>
+  <ul>
+    <li>Compute overhead giảm từ 24% → <strong>1%</strong> so với không có classifier</li>
+    <li>False refusal rate giảm 87% (ít over-refusal hơn rõ rệt)</li>
+    <li>Sau 1.700 giờ red-team internal, vẫn chưa tìm được universal jailbreak</li>
+  </ul>
+  <div class="callout tip">
+    <div class="icon">★</div>
+    <div>
+      <div class="title">Bài học cho AI Engineer</div>
+      <p>
+        Constitutional Classifiers là ví dụ điển hình về <em>defense-in-depth</em>:
+        không chỉ dựa vào model training, không chỉ dựa vào system prompt, mà thêm lớp classifier
+        độc lập. Nếu bạn xây hệ thống high-stakes (y tế, tài chính, CBRN-adjacent),
+        áp dụng tư duy tương tự: thêm một LLM-as-judge hoặc classifier chạy song song
+        với production model, không cùng family.
+      </p>
+    </div>
+  </div>
 
   <!-- ─── 32.11 ─── -->
   <h2 id="disclosure">32.11 Disclosure &amp; Reporting</h2>
@@ -1001,7 +1079,7 @@ SEVERITY_MATRIX = {
         <tr>
           <td><strong>Tooling</strong></td>
           <td>Ad-hoc scripts, Burp Suite adapt</td>
-          <td>Dedicated: PyRIT, garak, promptfoo, llm-attacks</td>
+          <td>Dedicated: PyRIT v0.11 + Azure AI Foundry Agent, garak v0.14 (agent breaker), promptfoo (OpenAI), llm-attacks</td>
         </tr>
         <tr>
           <td><strong>Reporting</strong></td>
@@ -1038,6 +1116,40 @@ SEVERITY_MATRIX = {
         bring knife to gunfight.
       </p>
     </div>
+  </div>
+
+  <h3>Frontier Safety Frameworks của các lab lớn</h3>
+  <p>
+    Ba lab AI lớn đều có framework công khai mô tả cách họ red-team model trước khi deploy.
+    Đây là tài liệu tham chiếu quan trọng khi xây dựng red-team process ở application layer:
+  </p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Lab</th><th>Framework</th><th>Phiên bản mới nhất</th><th>Điểm nổi bật</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>OpenAI</strong></td>
+          <td>Preparedness Framework</td>
+          <td>v2 — 15 tháng 4, 2025</td>
+          <td>Đánh giá CBRN, Cyber, Autonomy với ngưỡng "severe harm" (&gt;1.000 thương vong hoặc &gt;$100B thiệt hại). Đánh giá model trước khi deploy nếu đạt <em>Medium</em> capability threshold.</td>
+        </tr>
+        <tr>
+          <td><strong>Google DeepMind</strong></td>
+          <td>Frontier Safety Framework</td>
+          <td>v3 — 2026</td>
+          <td>Định nghĩa <em>Critical Capability Levels (CCLs)</em> trên CBRN, Cyber, ML R&amp;D, Manipulation. Gemini 3 Pro đã chạm <em>alert threshold</em> cho CBRN CCL nhưng chưa chạm CCL chính. Red-team bao gồm uplift studies + contextual simulation.</td>
+        </tr>
+        <tr>
+          <td><strong>Anthropic</strong></td>
+          <td>Responsible Scaling Policy + Constitutional Classifiers</td>
+          <td>Constitutional Classifiers++ — Jan 2026</td>
+          <td>ASL (AI Safety Level) framework. Constitutional Classifiers++ chạy song song với Claude, overhead 1%, false refusal giảm 87%. Jailbreak bounty công khai qua HackerOne.</td>
+        </tr>
+      </tbody>
+    </table>
   </div>
 
   <!-- Jailbreak Taxonomy SVG -->
@@ -1139,8 +1251,9 @@ SEVERITY_MATRIX = {
       PAIR và TAP (LLM-driven) cho phép generate hàng nghìn jailbreak variants tự động.
     </li>
     <li>
-      <strong>Toolchain 2026:</strong> PyRIT cho enterprise orchestration, garak cho vulnerability scanning,
-      promptfoo cho CI integration. Chọn dựa trên use case, không cần dùng cả ba cùng lúc.
+      <strong>Toolchain 2026:</strong> PyRIT v0.11 + Azure AI Foundry Agent cho enterprise orchestration,
+      garak v0.14 (agent breaker probes) cho vulnerability scanning, promptfoo (nay thuộc OpenAI, vẫn open-source MIT)
+      cho CI integration. Chọn dựa trên use case, không cần dùng cả ba cùng lúc.
     </li>
     <li>
       <strong>CI gate là bắt buộc:</strong> chạy adversarial test set trên mỗi PR, block nếu ASR tăng.
@@ -1155,23 +1268,33 @@ SEVERITY_MATRIX = {
       memory persistence attack — cần red-team scenario riêng, không chỉ dùng stateless probe.
     </li>
     <li>
-      <strong>Constitutional AI</strong> là defense tốt nhất ở training time,
-      nhưng với API-only model, layer guardrail + structural prompt separation vẫn là pragmatic approach.
+      <strong>Constitutional AI + Constitutional Classifiers:</strong> CAI là defense tốt nhất ở training time.
+      Anthropic ra Constitutional Classifiers++ (Jan 2026) — overhead 1%, false refusal giảm 87%, validated qua
+      1.700 giờ red-team. Với API-only model: thêm independent classifier hoặc LLM-as-judge chạy song song là
+      pragmatic approach tương đương.
+    </li>
+    <li>
+      <strong>MITRE ATLAS v5.1</strong> (Nov 2025) bổ sung 14 kỹ thuật agent-specific (context poisoning, tool
+      exfiltration, memory manipulation). Dùng ATLAS taxonomy để map attack scenarios cho agent red-team.
+    </li>
+    <li>
+      <strong>Frontier Safety Frameworks</strong> của OpenAI (Preparedness v2, Apr 2025), Google DeepMind (FSF v3,
+      2026) và Anthropic (RSP + CC++) đều yêu cầu red-team CBRN + cyber + autonomy trước khi deploy frontier model.
+      Học từ frameworks này để thiết kế red-team riêng ở application layer.
     </li>
     <li>
       <strong>2026: cách cũ (one-time audit) đã lỗi thời.</strong> Adversary dùng PAIR/TAP để scale attacks.
       Response phải là continuous red-team — automated, integrated CI, purple team culture.
     </li>
   </ol>
-
   <nav class="section-footer">
     <a href="31-sandboxing.html" class="prev">
-      <div class="label">← trước</div>
-      <div class="title">31 — Sandboxing</div>
+      <div class="label">← Trước</div>
+      <div class="title">31 — Sandboxing &amp; Isolation cho AI Agents</div>
     </a>
     <a href="33-privacy.html" class="next">
-      <div class="label">tiếp theo →</div>
-      <div class="title">33 — Privacy</div>
+      <div class="label">Tiếp theo →</div>
+      <div class="title">33 — Privacy &amp; Data Protection cho AI</div>
     </a>
   </nav>
 

@@ -14,13 +14,14 @@
   <div class="nav-actions">
     <a href="21-team-process.html">← Trước</a>
     <a href="../index.html">Mục lục</a>
+    <a href="23-agent-design-patterns.html">Tiếp →</a>
   </div>
 </nav>
 
 <main class="page">
 
   <section class="hero">
-    <span class="eyebrow">Phần 8 · §22</span>
+    <div class="eyebrow-row"><span class="eyebrow">Phần 8 · §22</span><a class="hero-updated" href="../KNOWLEDGE_UPDATES.md" title="Lịch sử cập nhật kiến thức">↻ 2026-05-23</a></div>
     <h1>Tương lai &amp; các chủ đề nâng cao</h1>
     <p class="lede">
       Reasoning models, long context, on-device AI, autonomous agents, open problems — cái gì
@@ -40,6 +41,7 @@
       <li><a href="#eval-open-problems">22.5 Open problems trong evaluation</a></li>
       <li><a href="#reasoning-tools">22.6 Reasoning + tools convergence</a></li>
       <li><a href="#science-models">22.7 Foundation models for science</a></li>
+      <li><a href="#diffusion-world-models">22.7b Diffusion LLMs &amp; World Models</a></li>
       <li><a href="#multi-agent">22.8 Multi-agent ecosystems</a></li>
       <li><a href="#cost-hardware">22.9 Cost trends, hardware roadmap</a></li>
       <li><a href="#what-to-learn">22.10 What to learn next</a></li>
@@ -57,9 +59,9 @@
 
   <h3>Các models tiêu biểu</h3>
   <ul>
-    <li><strong>OpenAI o-series</strong> (o1, o3, o4-mini): Dùng extended internal reasoning, mạnh về toán học, coding, logic phức tạp</li>
-    <li><strong>Anthropic Claude extended thinking</strong>: Cho phép visible thinking budget, reasoning có thể inspect</li>
-    <li><strong>DeepSeek-R1</strong>: Open-source reasoning model từ DeepSeek, hiệu quả cost cao</li>
+    <li><strong>OpenAI o-series</strong> (o1 → o3 → o4-mini): Ra mắt o3 và o4-mini đầu 2025 — o3 đạt state-of-the-art trên Codeforces, SWE-bench, MMMU; o4-mini tối ưu cho cost thấp</li>
+    <li><strong>Anthropic Claude extended thinking</strong>: Cho phép visible thinking budget, reasoning có thể inspect; tích hợp vào Claude 3.7 và Claude 4</li>
+    <li><strong>DeepSeek-R1</strong>: Open-source reasoning model từ DeepSeek, chứng minh inference-time scaling: tạo 10–100× tokens mỗi query so với standard model</li>
     <li><strong>Google Gemini reasoning</strong>: Thinking mode trong Gemini 2.x series</li>
   </ul>
 
@@ -73,6 +75,7 @@
     <li>Cùng model có thể cho quality khác nhau tùy lượng thinking budget</li>
     <li>Tradeoff: thinking time/cost vs accuracy</li>
     <li>Một số tasks (coding, math) benefit rất nhiều; creative tasks benefit ít hơn</li>
+    <li><strong>Quy mô thực tế (2025):</strong> OpenAI chi ~$2.3 tỷ cho inference trong năm 2024 — gấp 15× chi phí train GPT-4; các nhà phân tích dự báo inference sẽ vượt training 118× về nhu cầu compute vào 2026</li>
   </ul>
 
   <svg class="diagram" viewBox="0 0 760 220" role="img" aria-label="Reasoning vs non-reasoning model time distribution">
@@ -309,6 +312,36 @@
     <li><strong>Audit trail</strong>: Log mọi action agent thực hiện, có thể review sau</li>
   </ul>
 
+  <h3>Computer use — agents điều khiển UI thực</h3>
+  <p>
+    Một frontier quan trọng là agents có thể điều khiển trực tiếp giao diện đồ họa (GUI) thay vì chỉ gọi API:
+  </p>
+  <ul>
+    <li><strong>Claude Computer Use</strong> (Anthropic, tháng 10/2024): Click, gõ, screenshot — thực hiện tasks trên desktop/browser thực</li>
+    <li><strong>Operator → ChatGPT agent mode</strong> (OpenAI, tháng 1/2025): Tích hợp vào ChatGPT tháng 7/2025, đạt 87% thành công trên các trang JavaScript phức tạp</li>
+    <li><strong>Project Mariner</strong> (Google, tháng 12/2024): Điều hướng Chrome dựa trên Gemini 2.0</li>
+    <li><strong>Amazon Nova Act</strong> (tháng 12/2025): Agent tự động hóa trình duyệt web</li>
+  </ul>
+
+  <h3>Responsible Scaling Policy (RSP) v3.0</h3>
+  <p>
+    Anthropic phát hành <strong>RSP v3.0 (tháng 2/2026)</strong> — phiên bản quan trọng nhất từ trước đến nay:
+  </p>
+  <ul>
+    <li>Giới thiệu <em>Frontier Safety Roadmaps</em>: kế hoạch công khai cho Security, Alignment, Safeguards, Policy</li>
+    <li>Định kỳ <em>Risk Reports</em> (3–6 tháng/lần) với external expert review</li>
+    <li>ASL-3 safeguards cho mối đe dọa hóa học/sinh học đã được triển khai thành công tháng 5/2025</li>
+    <li>Tách biệt rõ: mitigation Anthropic làm unilaterally và roadmap cần hợp tác toàn ngành</li>
+  </ul>
+
+  <h3>Model Spec — Hiến pháp mới của Claude (tháng 1/2026)</h3>
+  <p>
+    Anthropic công bố <strong>Constitutional AI framework</strong> được cập nhật sâu: thay vì list quy tắc, hiến pháp mới
+    <em>giải thích lý do đằng sau</em> mỗi nguyên tắc. Mục tiêu: Claude có đủ hiểu biết để tự suy luận trong
+    tình huống không có rule nào định sẵn. Phát hành dưới CC0, Anthropic là hãng AI lớn đầu tiên chính thức
+    thừa nhận khả năng model có <em>moral status</em> nhất định.
+  </p>
+
   <h3>Capability vs alignment tension</h3>
   <p>
     Khi models ngày càng capable, câu hỏi về alignment trở nên quan trọng hơn:
@@ -350,8 +383,9 @@
   <ul>
     <li>Dynamic benchmarks: test cases được generate fresh mỗi lần evaluation</li>
     <li>Multi-metric holistic evaluation thay vì single score</li>
-    <li>Real-world task benchmarks (SWE-bench, WebArena) thay vì academic tests</li>
+    <li>Real-world task benchmarks (SWE-bench, WebArena, OSWorld) thay vì academic tests — o3/o4-mini đạt ~58% trên WebArena, ~38% trên OSWorld tính đến đầu 2026</li>
     <li>Human + AI hybrid evaluation panels</li>
+    <li><strong>FrontierMath, ARC-AGI-2</strong>: benchmarks mới được thiết kế để kháng contamination và benchmark saturation từ các models frontier</li>
   </ul>
 
   <h2 id="reasoning-tools">22.6 Reasoning + Tools Convergence</h2>
@@ -391,9 +425,50 @@
     <li><strong>Materials</strong>: GNoME (Google DeepMind, discovery of 2.2M stable crystal structures)</li>
   </ul>
 
+  <h3>AI Scientist — tự động hóa nghiên cứu khoa học</h3>
+  <p>
+    <strong>AI Scientist</strong> (Sakana AI, 2024–2025) là hệ thống tự động hóa toàn bộ quy trình nghiên cứu:
+    đề xuất ý tưởng, viết code, chạy thí nghiệm, phân tích dữ liệu, viết paper, và tự peer-review.
+    Một milestone quan trọng: paper AI-generated đầu tiên được chấp nhận tại workshop ICLR 2025,
+    đạt điểm cao hơn 55% bài nộp của con người. Phiên bản <strong>AI Scientist-v2</strong> (tháng 4/2025) bổ sung
+    agentic tree search cho scientific discovery. Đây là tín hiệu sớm của <em>self-improving AI</em> trong nghiên cứu.
+  </p>
+
   <p>
     Điều thú vị cho AI Engineer: nhiều trong số này có API public hoặc open weights, có thể
     integrate vào applications theo cách tương tự LLM API.
+  </p>
+
+  <h2 id="diffusion-world-models">22.7b Diffusion LLMs &amp; World Models</h2>
+  <p>
+    Hai frontier mới nổi mạnh từ 2025 đang mở rộng đáng kể định nghĩa "mô hình ngôn ngữ":
+  </p>
+
+  <h3>Diffusion Language Models (dLLM)</h3>
+  <p>
+    Thay vì sinh token theo thứ tự trái-phải (autoregressive), <strong>diffusion LLMs</strong> bắt đầu từ
+    nhiễu và dần "khử nhiễu" để sinh toàn bộ chuỗi song song. Ưu điểm chính:
+  </p>
+  <ul>
+    <li>Throughput rất cao: <strong>Mercury</strong> (Inception Labs, 2025) đạt >1.100 tokens/giây trên H100 — nhanh hơn 10× so với models autoregressive cùng chất lượng</li>
+    <li>Cho phép <em>bidirectional context</em> — token ở giữa có thể attend cả trái lẫn phải</li>
+    <li>Các models mã nguồn mở: DiffuCoder, Seed-Diffusion; closed-source: Mercury, Gemini-Diffusion</li>
+    <li>Hạn chế hiện tại: hệ sinh thái còn non trẻ, chưa có equivalents của KV-cache hay speculative decoding</li>
+  </ul>
+
+  <h3>World Models — từ video generation đến mô phỏng</h3>
+  <p>
+    <strong>World models</strong> không chỉ sinh video mà mô phỏng vật lý và môi trường tương tác:
+  </p>
+  <ul>
+    <li><strong>Genie 2</strong> (Google DeepMind, tháng 12/2024): Sinh môi trường 3D tương tác từ ảnh đơn</li>
+    <li><strong>Genie 3</strong> (tháng 8/2025): World model đầu tiên cho phép tương tác real-time, độ phân giải và consistency cao hơn đáng kể</li>
+    <li><strong>Veo 3</strong> (Google, tháng 5/2025): Model đầu tiên sinh video + âm thanh/thoại đồng thời trong một pipeline; độ phân giải 4K với mô phỏng vật lý thực</li>
+    <li><strong>Sora 2</strong> (OpenAI, tháng 9/2025): Sinh video dài với âm thanh đồng bộ, storytelling nhất quán</li>
+  </ul>
+  <p>
+    Implication cho AI Engineers: world models đang converge với robotics và simulation — training agent
+    trong môi trường do AI sinh ra (synthetic data loop) là một trong những hướng mở rộng khả năng nhất.
   </p>
 
   <h2 id="multi-agent">22.8 Multi-Agent Ecosystems</h2>
@@ -613,22 +688,24 @@
 
   <h2 id="tom-tat">Tóm tắt</h2>
   <ol>
-    <li><strong>Reasoning models</strong> scale inference-time compute — mạnh hơn cho multi-step logic, tốn hơn về cost và latency. Dùng khi cần, không phải mọi nơi.</li>
+    <li><strong>Reasoning models</strong> (o3, o4-mini, DeepSeek-R1, Claude extended thinking) scale inference-time compute — mạnh hơn cho multi-step logic, tốn hơn về cost và latency. Inference đang vượt training về nhu cầu compute.</li>
     <li><strong>Long context</strong> giải quyết nhiều RAG use cases đơn giản, nhưng lost-in-the-middle và cost vẫn là thách thức.</li>
     <li><strong>On-device AI</strong> mở ra use cases về privacy và offline — NPU trên modern chips làm on-device practical hơn.</li>
-    <li><strong>Autonomous agents</strong> là frontier đang nóng nhất — sandbox, oversight, và irreversibility awareness là critical.</li>
-    <li><strong>Eval vẫn là open problem</strong>: benchmark saturation, contamination, Goodhart's Law — field đang tích cực work on this.</li>
+    <li><strong>Autonomous agents + computer use</strong> là frontier đang nóng nhất — Claude Computer Use, Operator, Project Mariner đều ra mắt 2024–2025. Sandbox, oversight, và irreversibility awareness là critical.</li>
+    <li><strong>Safety frameworks đang trưởng thành</strong>: Anthropic RSP v3.0 (2/2026), Model Spec/hiến pháp mới (1/2026) — ngành đang xây institutional infrastructure cho frontier AI.</li>
+    <li><strong>Diffusion LLMs &amp; World Models</strong>: Mercury đạt 1.100+ tokens/giây; Genie 3 và Veo 3 mở ra thế hệ mô phỏng tương tác — hai frontier bổ sung cho paradigm autoregressive truyền thống.</li>
+    <li><strong>AI Scientist</strong>: nghiên cứu khoa học tự động hóa từ đầu đến cuối — milestone paper chấp nhận tại ICLR 2025 đánh dấu bước đầu của self-improving AI.</li>
+    <li><strong>Eval vẫn là open problem</strong>: benchmark saturation, contamination, Goodhart's Law — FrontierMath và ARC-AGI-2 là các nỗ lực mới nhất.</li>
     <li><strong>Cost sẽ tiếp tục giảm</strong> — design cho flexibility, đừng hardcode assumptions về cost level hiện tại.</li>
     <li><strong>Mindset quan trọng nhất</strong>: ship → measure → iterate. Healthy skepticism. Embrace uncertainty. Human + AI collaboration.</li>
   </ol>
-
   <nav class="section-footer">
     <a href="21-team-process.html" class="prev">
-      <div class="label">← trước</div>
+      <div class="label">← Trước</div>
       <div class="title">21 — Team &amp; Process</div>
     </a>
     <a href="23-agent-design-patterns.html" class="next">
-      <div class="label">tiếp theo →</div>
+      <div class="label">Tiếp theo →</div>
       <div class="title">23 — Agent Design Patterns nâng cao</div>
     </a>
   </nav>

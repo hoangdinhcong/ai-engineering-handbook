@@ -13,6 +13,7 @@
   <div class="crumbs"><a href="../index.html">Mục lục</a> › Phần 9 · <span>24 — Agent Harness là gì</span></div>
   <div class="nav-actions">
     <a href="23-agent-design-patterns.html">← Trước</a>
+    <a href="../index.html">Mục lục</a>
     <a href="25-agent-memory.html">Tiếp →</a>
   </div>
 </nav>
@@ -20,7 +21,7 @@
 <main class="page">
 
   <section class="hero">
-    <span class="eyebrow">Phần 9 · §24</span>
+    <div class="eyebrow-row"><span class="eyebrow">Phần 9 · §24</span><a class="hero-updated" href="../KNOWLEDGE_UPDATES.md" title="Lịch sử cập nhật kiến thức">↻ 2026-05-23</a></div>
     <h1>Agent Harness là gì</h1>
     <p class="lede">
       Runtime hosting vòng lặp agent — model layer, tool layer, sandbox, permission system, observability, hooks, và state management. Từ Claude Code đến Devin, harness là thứ biến LLM thành AI assistant thực sự.
@@ -200,10 +201,17 @@
   <!-- ═══════════════════════════════════════════════
        24.3 Claude Code
   ════════════════════════════════════════════════ -->
-  <h2 id="claude-code">24.3 Case study: Claude Code</h2>
+  <h2 id="claude-code">24.3 Case study: Claude Code &amp; Anthropic Agent SDK</h2>
   <p>
     Claude Code (Anthropic, 2025) là harness mạnh nhất hiện tại cho software engineering. Nó chạy
     như CLI trong terminal và cung cấp cho Claude một bộ tools đầy đủ để làm việc với codebase thực.
+    Tháng 9/2025, Anthropic tách harness loop thành <strong>Claude Agent SDK</strong> (thay thế "Claude Code SDK") —
+    một thư viện Python/TS cung cấp agentic loop, built-in tools, subagent spawning, và MCP integration
+    độc lập với Claude Code CLI.
+    Tháng 4/2026, Anthropic ra mắt <strong>Claude Managed Agents</strong> public beta: toàn bộ harness
+    (agent loop + tool execution + sandbox container + state persistence) được đóng gói thành REST API
+    (<code>/v1/agents</code>, <code>/v1/environments</code>, <code>/v1/sessions</code>), tính phí
+    $0.08/session-hour cho compute — lựa chọn cho teams không muốn tự xây harness.
   </p>
 
   <h3>Bộ tools tích hợp sẵn</h3>
@@ -267,9 +275,11 @@ subtasks = [
   <div class="callout tip">
     <div class="icon">★</div>
     <div>
-      <div class="title">Hooks trong Claude Code</div>
+      <div class="title">Hooks trong Claude Code — 12 hook points (2026)</div>
       <p>
-        Settings <code>hooks</code> cho phép định nghĩa shell commands chạy <em>trước</em> (<code>PreToolUse</code>), <em>sau</em> (<code>PostToolUse</code>), hoặc khi agent <em>dừng</em> (<code>Stop</code>). Ví dụ: tự động notify Slack khi agent hoàn thành task dài, hoặc validate file không chứa secrets trước khi commit.
+        Settings <code>hooks</code> cho phép định nghĩa shell commands chạy tại 12 lifecycle events:
+        <code>SessionStart</code>, <code>UserPromptSubmit</code>, <code>PreToolUse</code>, <code>PostToolUse</code>, <code>Stop</code>, và các events mới như subagent dispatch.
+        Ví dụ: chạy lint trước khi commit, block edits vào generated files, require issue ID trong branch names, security scan sau khi thay đổi dependencies.
       </p>
     </div>
   </div>
@@ -281,13 +291,16 @@ subtasks = [
   <p>
     Codex CLI (OpenAI, 2025) là harness CLI cho OpenAI models. Điểm khác biệt chính so với Claude Code là
     thiết kế sandbox bậc thang rõ ràng và kiến trúc app-server tách biệt.
+    Tháng 4/2026, cùng với GPT-5.5, OpenAI ship thêm <strong>subagents, hooks, remote cloud tasks, MCP, auto-review, và image input</strong> vào Codex CLI.
   </p>
 
-  <h3>Kiến trúc app-server</h3>
+  <h3>Kiến trúc app-server (2026: một server cho mọi surface)</h3>
   <p>
     Codex CLI chia thành hai process: <strong>App</strong> (xử lý UX, render terminal, stream output)
     và <strong>Server</strong> (chạy agent loop, quản lý tools, sandbox). Tách biệt này giúp server
     có thể chạy trong môi trường restricted mà không ảnh hưởng đến UX layer.
+    Kể từ đầu 2026, App Server là single JSON-RPC API dùng chung cho CLI, VS Code extension,
+    web app, macOS desktop app, và tích hợp JetBrains/Xcode — mọi surface dùng cùng một harness loop.
   </p>
 
   <h3>Ba sandbox modes</h3>
@@ -339,6 +352,8 @@ subtasks = [
     Cursor và Windsurf là editor-integrated harnesses — chạy bên trong IDE thay vì CLI.
     Điều này cho phép tích hợp sâu với Language Server Protocol (LSP), symbol lookup,
     và multi-file context mà CLI harness khó đạt được.
+    Tháng 4/2026, Cursor ra mắt <strong>Cursor 3</strong> với interface agent-first:
+    chạy nhiều agents song song trên nhiều repos và environments — local, git worktrees, cloud, remote SSH.
   </p>
 
   <h3>Ưu điểm editor-integrated</h3>
@@ -356,6 +371,7 @@ subtasks = [
   <ul>
     <li><strong>Chat mode:</strong> Single-turn Q&amp;A, agent không tự apply changes — user phải manually accept từng suggestion.</li>
     <li><strong>Agent mode (Composer):</strong> Multi-step loop, agent tự đọc files, áp dụng edits, chạy terminal commands, lặp lại cho đến khi task hoàn thành hoặc user dừng.</li>
+    <li><strong>Cloud agents (Cursor 3):</strong> Agent chạy trong cloud VM với browser tích hợp — agent có thể build app, launch, và tương tác với UI (click buttons, fill forms, verify rendering). Lệnh <code>/worktree</code> tạo git worktree riêng cho mỗi task; <code>/best-of-n</code> chạy cùng task song song trên nhiều models để so sánh kết quả.</li>
   </ul>
 
   <div class="callout note">
@@ -442,9 +458,12 @@ subtasks = [
 
   <h3>OpenHands (All-Hands AI)</h3>
   <p>
-    OpenHands là open-source alternative. Kiến trúc modular với <em>Runtime</em> (container execution),
-    <em>AgentHub</em> (many agent types), và <em>EventStream</em> (tracing mọi action).
-    Đặc biệt dễ extend vì mọi thứ đều là events.
+    OpenHands là open-source alternative. Tháng 11/2025, OpenHands ra mắt <strong>V1 SDK</strong>
+    với re-architecture hoàn toàn: thay AgentController + Runtime bằng mô hình gọn hơn gồm
+    stateless <em>Agent</em> (emit Actions), <em>Conversation</em> (vòng lặp + EventLog bất biến),
+    và <em>Workspace</em> (thực thi Actions, trả Observations). Tháng 5/2026, OpenHands bổ sung
+    sub-agent delegation qua <code>TaskToolSet</code> — agents có thể spawn specialized sub-agents
+    để xử lý các phần của task phức tạp.
   </p>
 
   <div class="callout warn">
@@ -774,7 +793,7 @@ TOOLS = [{
     <line class="arrow" x1="463" y1="228" x2="489" y2="228" marker-end="url(#arrowmcp)"/>
   </svg>
 
-  <h3>Hai transport modes</h3>
+  <h3>Hai transport modes (cập nhật 2026)</h3>
   <div class="grid-2">
     <div class="card">
       <div class="title" style="color:var(--accent-3);font-weight:600;margin-bottom:8px">stdio (local)</div>
@@ -785,11 +804,12 @@ TOOLS = [{
       </p>
     </div>
     <div class="card">
-      <div class="title" style="color:var(--accent-2);font-weight:600;margin-bottom:8px">HTTP + SSE (remote)</div>
+      <div class="title" style="color:var(--accent-2);font-weight:600;margin-bottom:8px">Streamable HTTP (remote)</div>
       <p>
-        Server chạy như HTTP service. Client POST để send requests, nhận responses qua
-        Server-Sent Events stream. Tốt cho remote services (Linear, Slack, databases).
-        Hỗ trợ auth headers. Có thể shared giữa nhiều harness instances.
+        Tên chính thức 2026 là <strong>Streamable HTTP</strong> (trước đây: HTTP + SSE).
+        Server chạy như HTTP service, stateless ở protocol layer — không cần sticky sessions hay shared session store.
+        Tốt cho remote services (Linear, Slack, databases). Hỗ trợ auth headers.
+        MCP 2026 RC bổ sung Tasks extension và authorization hardening (OAuth 2.0 / OIDC).
       </p>
     </div>
   </div>
@@ -898,20 +918,20 @@ TOOLS = [{
           <td>3-level tiered</td>
           <td>Allowlist + mode</td>
           <td>✓ native</td>
-          <td>Limited</td>
-          <td>Không</td>
-          <td>exec cmd</td>
+          <td>✓ (Apr 2026)</td>
+          <td>✓ (Apr 2026)</td>
+          <td>Cloud tasks</td>
           <td>✓</td>
         </tr>
         <tr>
-          <td><strong>Cursor</strong></td>
+          <td><strong>Cursor 3</strong></td>
           <td><span class="tag blue">IDE</span></td>
-          <td>Không</td>
+          <td>Cloud VM + browser</td>
           <td>Ask-mode</td>
           <td>✓</td>
           <td>Không</td>
-          <td>Không</td>
-          <td>Partial</td>
+          <td>✓ parallel</td>
+          <td>✓ cloud</td>
           <td>Không</td>
         </tr>
         <tr>
@@ -965,9 +985,20 @@ TOOLS = [{
           <td>Configurable</td>
           <td>✓</td>
           <td>✓ events</td>
-          <td>✓</td>
+          <td>✓ (TaskToolSet)</td>
           <td>✓✓</td>
           <td>✓</td>
+        </tr>
+        <tr>
+          <td><strong>Managed Agents</strong></td>
+          <td><span class="tag green">API</span></td>
+          <td>Managed container</td>
+          <td>API-scoped</td>
+          <td>✓</td>
+          <td>Không</td>
+          <td>Không</td>
+          <td>✓✓</td>
+          <td>Không</td>
         </tr>
       </tbody>
     </table>
@@ -1023,24 +1054,23 @@ TOOLS = [{
   <ol>
     <li><strong>Harness ≠ model, ≠ framework.</strong> Harness là runtime sản phẩm chạy được: loop + tools + sandbox + permissions + hooks + state. Model là engine; harness là xe.</li>
     <li><strong>7 layer anatomy:</strong> Shell/UX → State → Hooks → Permissions → Sandbox + Observability → Tools → Model. Mỗi layer giải quyết một concern độc lập.</li>
-    <li><strong>Claude Code</strong> là harness CLI mạnh nhất hiện tại: CLAUDE.md/MEMORY.md, subagent pattern, full hooks system, MCP native, fine-grained permission allowlist.</li>
-    <li><strong>Codex CLI</strong> nổi bật với 3-tier sandbox modes tiered rõ ràng (read-only / workspace-write / danger-full-access) và kiến trúc app-server tách biệt.</li>
-    <li><strong>Editor harnesses</strong> (Cursor, Windsurf) bù đắp bằng LSP-awareness và multi-file context mà CLI không có, nhưng sandbox yếu hơn.</li>
-    <li><strong>Cloud harnesses</strong> (Devin, OpenHands) cho long-running autonomous tasks với per-session containers và browser tools — phù hợp cho async workflows.</li>
+    <li><strong>Claude Code + Anthropic Agent SDK</strong> là harness CLI mạnh nhất hiện tại: CLAUDE.md/MEMORY.md, subagent pattern, 12 hook points, MCP native, fine-grained permission allowlist. Agent SDK (Sep 2025) tách harness loop thành thư viện độc lập; Claude Managed Agents (Apr 2026) cung cấp toàn bộ harness như REST API ($0.08/session-hour).</li>
+    <li><strong>Codex CLI</strong> nổi bật với 3-tier sandbox modes tiered rõ ràng và App Server dùng chung cho CLI, IDE extensions, macOS app, web app. Từ tháng 4/2026 có thêm subagents, hooks, cloud tasks và MCP.</li>
+    <li><strong>Editor harnesses</strong> — Cursor 3 (Apr 2026) bổ sung cloud agents chạy song song trong VM với browser, /worktree và /best-of-n commands. Windsurf duy trì Cascade architecture với persistent codebase awareness.</li>
+    <li><strong>Cloud harnesses</strong> (Devin, OpenHands V1 2025) cho long-running autonomous tasks với per-session containers và browser tools — phù hợp cho async workflows. OpenHands V1 re-architecture: stateless Agent + immutable EventLog + Workspace.</li>
     <li><strong>Permission models</strong> có 4 trường phái: ask-every-call (safe nhưng chậm), allowlist (balanced), sandbox-based (best isolation), role-based (enterprise). Production cần ít nhất allowlist + sandbox.</li>
-    <li><strong>MCP</strong> là universal extension layer: một server protocol cho mọi external tools. Giúp harness khác nhau share tools ecosystem chung. Security implication: mỗi MCP server là attack surface mới.</li>
+    <li><strong>MCP</strong> là universal extension layer: một server protocol cho mọi external tools. Giúp harness khác nhau share tools ecosystem chung. 2026 RC: stateless protocol core (không cần sticky sessions), Tasks extension, Streamable HTTP transport (thay HTTP+SSE cũ), authorization hardening theo OAuth 2.0/OIDC. Security implication: mỗi MCP server là attack surface mới.</li>
     <li><strong>Custom harness minimal</strong> chỉ cần ~30 dòng Python: LLM call → parse tool_use → execute tool → append result → loop. Phần còn lại (sandbox, hooks, permission) là production concerns thêm vào sau.</li>
     <li><strong>Cách cũ → Cách hiện tại:</strong> stateless single-call glue code → persistent stateful loop với sandbox, hooks, structured observability, và MCP extensions.</li>
   </ol>
-
   <nav class="section-footer">
     <a href="23-agent-design-patterns.html" class="prev">
-      <div class="label">← trước</div>
-      <div class="title">23 — Agent Design Patterns</div>
+      <div class="label">← Trước</div>
+      <div class="title">23 — Agent Design Patterns nâng cao</div>
     </a>
     <a href="25-agent-memory.html" class="next">
-      <div class="label">tiếp theo →</div>
-      <div class="title">25 — Agent Memory</div>
+      <div class="label">Tiếp theo →</div>
+      <div class="title">25 — Agent Memory Architectures</div>
     </a>
   </nav>
 

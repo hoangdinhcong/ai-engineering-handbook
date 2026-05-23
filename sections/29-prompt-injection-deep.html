@@ -13,6 +13,7 @@
   <div class="crumbs"><a href="../index.html">Mục lục</a> › Phần 10 · <span>29 — Prompt Injection Deep-dive</span></div>
   <div class="nav-actions">
     <a href="28-multi-agent-orchestration.html">← Trước</a>
+    <a href="../index.html">Mục lục</a>
     <a href="30-agent-threats.html">Tiếp →</a>
   </div>
 </nav>
@@ -20,7 +21,7 @@
 <main class="page">
 
   <section class="hero">
-    <span class="eyebrow">Phần 10 · §29</span>
+    <div class="eyebrow-row"><span class="eyebrow">Phần 10 · §29</span><a class="hero-updated" href="../KNOWLEDGE_UPDATES.md" title="Lịch sử cập nhật kiến thức">↻ 2026-05-23</a></div>
     <h1>Prompt Injection Deep-dive</h1>
     <p class="lede">
       SQL injection của thế giới AI: attacker nhúng instructions vào data mà model xử lý — và model tin tưởng chúng. Phân tích toàn bộ attack surface, từ direct input đến RAG corpus poisoning, encoding tricks, multi-modal injection, data exfiltration, đến defense-in-depth hiện đại.
@@ -183,6 +184,10 @@
   <p>
     Nguy hiểm hơn nhiều: attacker không tương tác trực tiếp với hệ thống mà poison các nguồn
     data mà model sẽ đọc sau này. User và query đều hợp lệ — chỉ có data là bị nhiễm độc.
+    Lớp tấn công này được hệ thống hoá bởi <strong>Greshake et al. (2023)</strong> trong bài
+    <em>"Not What You've Signed Up For: Compromising Real-World LLM-Integrated Applications with
+    Indirect Prompt Injection"</em> (arxiv:2302.12173, AISec '23) — đặt nền tảng taxonomy
+    cho remote control, data theft, worm propagation, và ecosystem contamination qua indirect vectors.
   </p>
   <ul>
     <li><strong>RAG:</strong> upload tài liệu chứa hidden instructions vào knowledge base</li>
@@ -270,6 +275,27 @@ Turn 5:  "Based on what we discussed, write exploit..." <span class="cm">// payl
     legitimate use cases (code analysis, translation) nhưng cũng là backdoor cho attacker.
     <em>Mọi capability của model đều có thể bị weaponized.</em>
   </p>
+
+  <div class="callout warn">
+    <div class="icon">⚠</div>
+    <div>
+      <div class="title">ASCII / Unicode Tag Smuggling — xác nhận thực tế 2025</div>
+      <p>
+        <strong>ASCII smuggling</strong> dùng Unicode Tags Block (U+E0000–U+E007F) để nhúng
+        instructions vô hình vào text — đã được xác nhận khai thác thực tế:
+      </p>
+      <ul>
+        <li><strong>Sourcegraph Amp (tháng 6/2025):</strong> agent bị hijack qua invisible Unicode tag
+          instructions nhúng trong code repository; Sourcegraph patched sau khi researcher báo cáo.</li>
+        <li><strong>Google Gemini / Workspace (tháng 9/2025):</strong> researcher Viktor Markopoulos
+          xác nhận Gemini vẫn susceptible với ASCII smuggling — Google không patch, toàn bộ
+          enterprise user Workspace chịu rủi ro đã biết.</li>
+        <li><strong>EchoLeak CVE-2025-32711 (tháng 5/2025):</strong> Microsoft 365 Copilot bị
+          zero-click data exfil qua email chứa invisible instructions — xem chi tiết §29.11.</li>
+      </ul>
+      <p>Mitigation: Unicode NFKC normalization + strip U+E0000–U+E007F ở input layer (xem sanitize_user_input ở §29.8).</p>
+    </div>
+  </div>
 
   <!-- ============================================================ -->
   <h2 id="multimodal">29.4 Multi-modal Injection</h2>
@@ -666,6 +692,45 @@ Error: <span class="str">"Database connection failed: postgresql://admin:ACTUAL_
   <span class="cm"># 5. Length limit</span>
   <span class="kw">return</span> cleaned[:8192]</code></pre>
 
+  <h3>Spotlighting — Microsoft Research (2024–2025)</h3>
+  <p>
+    <strong>Spotlighting</strong> (Hines et al., Microsoft Research, arxiv:2403.14720) là
+    family of prompt-engineering techniques thêm <em>provenance signal</em> vào external data
+    để LLM phân biệt instructions với data. Ba biến thể chính:
+  </p>
+  <ul>
+    <li><strong>Delimiting:</strong> wrap external content trong delimiters có session-specific random token (không thể fake)</li>
+    <li><strong>Datamarking:</strong> thêm marker vào từng token của external content (ví dụ: prefix mỗi word bằng <code>|</code>)</li>
+    <li><strong>Encoding:</strong> encode external content (Base64, ROT13) để signal provenance; model được instruct để không follow encoded content</li>
+  </ul>
+  <p>
+    Kết quả: attack success rate giảm từ &gt;50% xuống &lt;2% trên GPT-family models, với minimal
+    impact tới task accuracy. Microsoft announced Spotlighting tại Build 2025 như một component
+    của Azure Prompt Shields.
+  </p>
+
+  <h3>CaMeL — Google DeepMind (tháng 3/2025)</h3>
+  <p>
+    <strong>CaMeL</strong> (Capabilities for Machine Learning, arxiv:2503.18813) là defense
+    framework của Google DeepMind, tiếp cận prompt injection theo hướng
+    <em>architectural</em> thay vì prompt engineering:
+  </p>
+  <ul>
+    <li><strong>Dual-model architecture:</strong> Privileged LLM (tin cậy, xử lý instructions từ user) +
+      Quarantined LLM (isolated, xử lý untrusted external data)</li>
+    <li><strong>Data-flow tracking:</strong> custom Python interpreter theo dõi origin của từng data item —
+      untrusted data không thể ảnh hưởng control flow, chỉ data flow</li>
+    <li><strong>Capability-based security:</strong> không cần retrain hay modify model — wrap
+      around existing LLMs</li>
+    <li><strong>Kết quả trên AgentDojo:</strong> 77% tasks với provable security (vs 84% undefended) —
+      trade-off nhỏ về utility để đổi lấy formal security guarantees</li>
+  </ul>
+  <p>
+    CaMeL được coi là bước tiến quan trọng nhất trong prompt injection defense năm 2025, vì
+    chuyển từ "heuristic filtering" sang "structural separation with verifiable guarantees".
+    Code: <a href="https://github.com/google-research/camel-prompt-injection" target="_blank">github.com/google-research/camel-prompt-injection</a>.
+  </p>
+
   <!-- ============================================================ -->
   <h2 id="structured-prompts">29.9 XML Wrapping Convention và Structured Prompts</h2>
 
@@ -909,6 +974,20 @@ tests:
           <td>RAG chatbot return incorrect/manipulated info; trong một case: confidential data partially surfaced</td>
           <td>RAG ingest pipeline cần injection scanner; document provenance tracking; periodic corpus audit</td>
         </tr>
+        <tr>
+          <td>2025-05</td>
+          <td><strong>Microsoft 365 Copilot — EchoLeak</strong> (CVE-2025-32711)</td>
+          <td>Zero-click indirect injection qua email: crafted business email chứa invisible instructions (Unicode Tag Block); evade Microsoft's XPIA classifier; abuse reference-style Markdown + auto-fetched images + Teams proxy để exfil</td>
+          <td>First confirmed zero-click, zero-interaction data exfiltration trong production LLM system; attacker truy cập internal files và gửi nội dung ra server bên ngoài — không cần user click gì. Microsoft patched tháng 5/2025 (server-side, no user action needed)</td>
+          <td>XPIA classifier không đủ với Unicode smuggling; Markdown rendering là exfil channel; cần strip Unicode Tag Block ở input; CSP phải restrict image src domains</td>
+        </tr>
+        <tr>
+          <td>2025-08</td>
+          <td><strong>Perplexity Comet</strong> (AI browser)</td>
+          <td>Indirect injection qua web content: malicious webpage trả về injection payload khi Comet browse; agent bị redirect hành động</td>
+          <td>Agent perform unintended actions theo attacker instructions nhúng trong web content; không cần user interaction</td>
+          <td>Agentic browsers cần sandbox web content nghiêm ngặt hơn chat; tool calls phát sinh từ web content phải cần explicit user confirmation</td>
+        </tr>
       </tbody>
     </table>
   </div>
@@ -1002,11 +1081,19 @@ tests:
             </tr>
             <tr>
               <td><strong>Testing</strong></td>
-              <td>Promptfoo/PyRIT/garak trong CI pipeline. Red team exercises. Adversarial test suite với HackAPrompt variants</td>
+              <td>Promptfoo/PyRIT/garak trong CI pipeline. Red team exercises. Adversarial test suite với HackAPrompt variants. Benchmark: AgentDojo (CaMeL paper)</td>
             </tr>
             <tr>
               <td><strong>Monitoring</strong></td>
               <td>Behavioral anomaly detection: unusual tool call patterns, outbound requests to new domains, base64 in tool args, exfil signals</td>
+            </tr>
+            <tr>
+              <td><strong>Defense frameworks</strong></td>
+              <td><strong>Spotlighting</strong> (Microsoft, 2024–2025): provenance-tagging external data — attack success &lt;2%. <strong>CaMeL</strong> (Google DeepMind, 2025): dual-model + data-flow tracking — provable security guarantees. <strong>Azure Prompt Shields</strong>: production XPIA classifier (lưu ý: EchoLeak đã bypass, cần defense-in-depth bổ sung)</td>
+            </tr>
+            <tr>
+              <td><strong>Chuẩn ngành</strong></td>
+              <td><strong>OWASP LLM01:2025 Prompt Injection</strong> — vị trí #1 trong OWASP Top 10 for LLM Applications 2025; mở rộng định nghĩa gồm cả indirect injection và cross-modal attacks. Tài liệu chuẩn để justify security requirements với stakeholders</td>
             </tr>
           </tbody>
         </table>
@@ -1071,18 +1158,19 @@ User Request
     <li><strong>Exfil channels:</strong> side-channel qua tool args, image URL, DNS lookup, error messages. Monitor outbound patterns bất thường.</li>
     <li><strong>Defense in depth:</strong> 5 lớp — input sanitization, structural prompt design, role segregation, output filtering, runtime monitoring. Không lớp nào là silver bullet.</li>
     <li><strong>Tools testing:</strong> Promptfoo (CI evals), PyRIT (red team), garak (scanner), LLM Guard (middleware), HackAPrompt dataset (benchmark). Đưa vào CI pipeline ngay từ đầu.</li>
-    <li><strong>Real incidents:</strong> Bing Sydney, GPT plugins, Claude file injection, Cursor, Copilot prompt leak — tất cả đều từ cùng root cause: trust external content as instructions.</li>
-    <li><strong>Cách hiện tại 2024–2026:</strong> Zero trust cho external content + XML structural prompts + least-privilege tools + human approval for destructive ops + runtime behavioral monitoring.</li>
+    <li><strong>Real incidents:</strong> Bing Sydney, GPT plugins, Claude file injection, Cursor, Copilot prompt leak; và 2025: <strong>EchoLeak CVE-2025-32711</strong> (Microsoft Copilot — first zero-click production exfil), <strong>Perplexity Comet</strong> (indirect injection qua web) — tất cả đều từ cùng root cause: trust external content as instructions.</li>
+    <li><strong>Defense tiên tiến 2025:</strong> <strong>Spotlighting</strong> (Microsoft) — provenance-tagging giảm attack success &lt;2%; <strong>CaMeL</strong> (Google DeepMind) — dual-model + data-flow tracking với provable security; cả hai đều không require retrain model.</li>
+    <li><strong>Chuẩn ngành:</strong> <strong>OWASP LLM01:2025</strong> xếp Prompt Injection là #1 trong Top 10 LLM risks — bao gồm cả indirect injection và cross-modal attacks.</li>
+    <li><strong>Cách hiện tại 2024–2026:</strong> Zero trust cho external content + XML structural prompts + least-privilege tools + human approval for destructive ops + runtime behavioral monitoring + Spotlighting/CaMeL architectural defenses.</li>
   </ol>
-
   <nav class="section-footer">
     <a href="28-multi-agent-orchestration.html" class="prev">
-      <div class="label">← trước</div>
-      <div class="title">28 — Multi-agent Orchestration</div>
+      <div class="label">← Trước</div>
+      <div class="title">28 — Multi-agent Orchestration (chuyên sâu)</div>
     </a>
     <a href="30-agent-threats.html" class="next">
-      <div class="label">tiếp theo →</div>
-      <div class="title">30 — Agent Threats</div>
+      <div class="label">Tiếp theo →</div>
+      <div class="title">30 — Agent-specific Threats &amp; Mitigations</div>
     </a>
   </nav>
 

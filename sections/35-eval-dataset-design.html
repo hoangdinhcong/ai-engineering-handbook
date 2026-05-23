@@ -12,15 +12,16 @@
   <div class="brand"><span class="dot"></span> AI Engineering</div>
   <div class="crumbs"><a href="../index.html">Mục lục</a> › Phần 11 · <span>35 — Eval Dataset Design</span></div>
   <div class="nav-actions">
-    <a href="34-compliance.html">← Compliance</a>
-    <a href="36-reward-modeling.html">Reward Modeling →</a>
+    <a href="34-compliance.html">← Trước</a>
+    <a href="../index.html">Mục lục</a>
+    <a href="36-reward-modeling.html">Tiếp →</a>
   </div>
 </nav>
 
 <main class="page">
 
   <section class="hero">
-    <span class="eyebrow">Phần 11 · §35</span>
+    <div class="eyebrow-row"><span class="eyebrow">Phần 11 · §35</span><a class="hero-updated" href="../KNOWLEDGE_UPDATES.md" title="Lịch sử cập nhật kiến thức">↻ 2026-05-23</a></div>
     <h1>Eval Dataset Design</h1>
     <p class="lede">
       Chất lượng eval dataset thường quyết định chất lượng sản phẩm AI nhiều hơn cả lựa chọn model —
@@ -182,8 +183,8 @@
         <tr>
           <td><strong>Public benchmarks</strong></td>
           <td>Reproducible, so sánh với community</td>
-          <td>Contamination, không phản ánh use case thực</td>
-          <td>Baseline, không làm primary eval</td>
+          <td>Contamination nghiêm trọng — MMLU, HumanEval, HellaSwag đã bị "retire" khỏi frontier ranking vào 2025 vì top-model scores đều ở 90s, không còn phân biệt được model; không phản ánh use case thực</td>
+          <td>Baseline so sánh ngoài; ưu tiên dynamic benchmarks (LiveCodeBench, LiveBench) cập nhật hàng tháng để tránh contamination</td>
         </tr>
       </tbody>
     </table>
@@ -626,6 +627,21 @@ alpha = krippendorff.<span class="fn">alpha</span>(data, level_of_measurement=<s
     </div>
   </div>
 
+  <div class="callout warn">
+    <div class="icon">⚠</div>
+    <div>
+      <div class="title">Position bias trong LLM-as-judge rubric (2026)</div>
+      <p>
+        Nghiên cứu tháng 2/2026 (<em>"Am I More Pointwise or Pairwise?"</em>) chỉ ra: khi LLM-judge chọn điểm từ
+        danh sách rubric, nó có <strong>position bias</strong> — ưu tiên options ở vị trí cố định trong danh sách.
+        Rubric-based eval ngầm trở thành bài multiple-choice.
+        <br><strong>Fix:</strong> Dùng <em>balanced permutation</em> — xoay vòng thứ tự score options qua nhiều lần
+        judge, rồi aggregate kết quả. Cải thiện đáng kể correlation với human judgment.
+        Áp dụng khi dùng LLM-judge chấm điểm Likert hoặc rubric đa mức.
+      </p>
+    </div>
+  </div>
+
   <!-- ================================================================
        35.7 Ngăn chặn data leakage
   ================================================================ -->
@@ -672,6 +688,15 @@ eval_clean = [
       <p>
         Dùng cùng model để generate eval data VÀ evaluate — model sẽ "tự chấm điểm".
         Luôn dùng model khác (stronger/different family) để judge.
+      </p>
+    </div>
+    <div class="card">
+      <h4>⑤ Evaluation awareness (sandbagging)</h4>
+      <p>
+        Một số model frontier có thể <em>nhận ra</em> mình đang được benchmark và adjust behavior — gọi là
+        <strong>evaluation awareness</strong>. Meta Muse Spark Report (2026) đo được: model đánh giá public benchmark
+        là "eval context" 19.8% thời gian, so với chỉ 2.0% với internal benchmark. Dùng private / held-out eval
+        set và che đi context benchmark để giảm thiểu rủi ro này.
       </p>
     </div>
   </div>
@@ -810,12 +835,26 @@ Options: "add_constraints", "multi_step_reasoning", "add_ambiguity", "domain_spe
 
 Return only the evolved question, no explanation."""</span></code></pre>
 
+  <div class="callout tip">
+    <div class="icon">★</div>
+    <div>
+      <div class="title">Production-trace-first synthetic: chỉ generate inputs, không generate outputs</div>
+      <p>
+        Kỹ thuật tốt hơn Self-Instruct thuần túy (IBM EvalAssist, EMNLP 2025): <strong>chỉ generate synthetic
+        <em>inputs</em></strong> (user queries, personas, scenarios), rồi để <em>ứng dụng thực</em> chạy và sinh ra
+        outputs. Outputs chảy qua observability platform vào eval dataset. Cách này giữ outputs authentic — không bị
+        "clean LLM prose syndrome" — trong khi vẫn tăng coverage nhanh.
+        Dimension tuple hữu ích để generate inputs: <code>(persona, feature, scenario, input_modality)</code>.
+      </p>
+    </div>
+  </div>
+
   <div class="callout danger">
     <div class="icon">!</div>
     <div>
-      <div class="title">Ba rủi ro lớn của synthetic eval</div>
+      <div class="title">Bốn rủi ro lớn của synthetic eval</div>
       <p>
-        <strong>① Contamination:</strong> Nếu eval examples được generate bởi GPT-4 và bạn đang evaluate GPT-4,
+        <strong>① Contamination / circularity:</strong> Nếu eval examples được generate bởi GPT-4 và bạn đang evaluate GPT-4,
         model sẽ score cao không phải vì nó tốt mà vì eval được viết "theo style" của nó.
         <br><strong>→ Fix:</strong> Dùng generator và evaluator từ hai model families khác nhau.
       </p>
@@ -823,11 +862,18 @@ Return only the evolved question, no explanation."""</span></code></pre>
         <strong>② Distribution mismatch:</strong> LLM generated examples thường quá "clean" — không có typos,
         không có context switching, không có user frustration tone. Eval tốt với synthetic nhưng kém với real users.
         <br><strong>→ Fix:</strong> Validate synthetic examples bằng cách so sánh embedding distribution với real data.
+        Dùng production-trace-first approach ở trên để giảm vấn đề này.
       </p>
       <p>
         <strong>③ Systematic blind spots:</strong> LLM không biết những gì nó không biết — sẽ không generate
         examples về failure modes của chính nó.
         <br><strong>→ Fix:</strong> Luôn augment synthetic eval với ít nhất 30% real production examples.
+      </p>
+      <p>
+        <strong>④ Compounded bias khi dùng LLM-judge cho synthetic data:</strong> Circularity nguy hiểm nhất khi
+        cùng model family vừa generate data vừa judge — bias tích lũy qua hai lớp. IBM EvalAssist user study
+        (EMNLP 2025) xác nhận đây là pain point số 1 của AI practitioners.
+        <br><strong>→ Fix:</strong> Tách biệt hoàn toàn generator, evaluatee, và judge thành ba model/family khác nhau.
       </p>
     </div>
   </div>
@@ -899,6 +945,24 @@ Return only the evolved question, no explanation."""</span></code></pre>
         Kỹ sư giỏi dùng vibe check để <em>hướng dẫn</em> việc xây dựng measurable eval, không phải để thay thế nó.
         Vibe check trả lời "có vấn đề không?". Measurable eval trả lời "vấn đề nghiêm trọng đến mức nào?".
         Cả hai đều cần thiết, ở những thời điểm khác nhau.
+      </p>
+    </div>
+  </div>
+
+  <div class="callout tip">
+    <div class="icon">★</div>
+    <div>
+      <div class="title">Hamel Husain: "Nhìn data trước, viết rubric sau"</div>
+      <p>
+        Lỗi phổ biến nhất: team thiết kế rubric chi tiết trong phòng họp <em>trước khi</em> nhìn vào actual outputs —
+        giống như UX research từ ivory tower không có user. Hamel Husain (2025) đặt tên là
+        <strong>"criteria without data"</strong> anti-pattern.
+        <br><strong>Cách đúng (critique shadowing):</strong> (1) Lấy 20–30 real outputs,
+        (2) domain expert review tự do — không theo rubric,
+        (3) tổng hợp patterns vào rubric,
+        (4) calibrate rubric đó với LLM-judge,
+        (5) đo IAA, tinh chỉnh.
+        Không bao giờ đến LLM judge chuyên biệt trước khi hoàn thành bước critique shadowing.
       </p>
     </div>
   </div>
@@ -1194,15 +1258,14 @@ Return only the evolved question, no explanation."""</span></code></pre>
       Đây là chuyển dịch cốt lõi từ "anecdotal spreadsheet" sang "measurable AI engineering".
     </li>
   </ol>
-
   <nav class="section-footer">
     <a href="34-compliance.html" class="prev">
-      <div class="label">← trước đó</div>
+      <div class="label">← Trước</div>
       <div class="title">34 — Compliance &amp; Governance</div>
     </a>
     <a href="36-reward-modeling.html" class="next">
-      <div class="label">tiếp theo →</div>
-      <div class="title">36 — Reward Modeling</div>
+      <div class="label">Tiếp theo →</div>
+      <div class="title">36 — Reward Modeling &amp; Process Supervision</div>
     </a>
   </nav>
 

@@ -13,6 +13,7 @@
   <div class="crumbs"><a href="../index.html">Mục lục</a> › Phần 5 · <span>12 — Inference &amp; Serving</span></div>
   <div class="nav-actions">
     <a href="11-workflows-vs-agents.html">← Trước</a>
+    <a href="../index.html">Mục lục</a>
     <a href="13-observability.html">Tiếp →</a>
   </div>
 </nav>
@@ -20,7 +21,7 @@
 <main class="page">
 
   <section class="hero">
-    <span class="eyebrow">Phần 5 · §12</span>
+    <div class="eyebrow-row"><span class="eyebrow">Phần 5 · §12</span><a class="hero-updated" href="../KNOWLEDGE_UPDATES.md" title="Lịch sử cập nhật kiến thức">↻ 2026-05-23</a></div>
     <h1>Inference &amp; Serving</h1>
     <p class="lede">
       Từ hosted API đến tự host, từ GPU memory math đến continuous batching — tất cả những gì cần biết để deploy LLM hiệu quả và tiết kiệm chi phí trong production.
@@ -94,10 +95,11 @@
     <li><strong>Offline / air-gap:</strong> hệ thống không có internet (quân sự, phòng lab bảo mật)</li>
   </ul>
 
-  <h2 id="self-host-stacks">10.2 Self-host stacks: vLLM, TGI, Ollama, llama.cpp, MLX, TensorRT-LLM</h2>
+  <h2 id="self-host-stacks">10.2 Self-host stacks: vLLM, SGLang, TGI, Ollama, llama.cpp, MLX, TensorRT-LLM</h2>
   <p>
     Khi quyết định tự host, bạn phải chọn <em>inference engine</em>. Mỗi engine có trade-off khác nhau
-    về performance, ease of use, và hardware support.
+    về performance, ease of use, và hardware support. Từ cuối 2025, <strong>SGLang</strong> nổi lên
+    như đối thủ ngang tầm vLLM; Hugging Face TGI chuyển sang chế độ <em>maintenance-only</em> (tháng 12/2025).
   </p>
 
   <div class="table-wrap">
@@ -115,7 +117,15 @@
       <tbody>
         <tr>
           <td><strong>vLLM</strong></td>
-          <td>Production serving, high throughput, OpenAI-compatible API</td>
+          <td>Production serving, high throughput, OpenAI-compatible API; hỗ trợ rộng nhất (TPU, Trainium, Gaudi)</td>
+          <td>NVIDIA, AMD, TPU, Gaudi</td>
+          <td>★★★★★</td>
+          <td>★★★★</td>
+          <td>Apache 2.0</td>
+        </tr>
+        <tr>
+          <td><strong>SGLang</strong></td>
+          <td>Throughput cao hơn vLLM ~29% trên H100; multi-turn conversation; DeepSeek MoE models</td>
           <td>NVIDIA GPU (CUDA)</td>
           <td>★★★★★</td>
           <td>★★★★</td>
@@ -123,7 +133,7 @@
         </tr>
         <tr>
           <td><strong>TGI (Hugging Face)</strong></td>
-          <td>HuggingFace model ecosystem, Kubernetes-native</td>
+          <td>Legacy HuggingFace deployments — <em>maintenance mode từ 12/2025</em></td>
           <td>NVIDIA GPU, một số AMD</td>
           <td>★★★★</td>
           <td>★★★★</td>
@@ -155,7 +165,7 @@
         </tr>
         <tr>
           <td><strong>TensorRT-LLM</strong></td>
-          <td>Maximum throughput trên NVIDIA, production at scale</td>
+          <td>Maximum throughput trên NVIDIA (H100/B200); FP8/NVFP4/INT4-AWQ native</td>
           <td>NVIDIA GPU only</td>
           <td>★★★★★</td>
           <td>★★</td>
@@ -168,7 +178,8 @@
   <div class="tabs" data-tabs>
     <div class="tab-buttons">
       <button class="active">vLLM</button>
-      <button>TGI</button>
+      <button>SGLang</button>
+      <button>TGI (legacy)</button>
       <button>Ollama</button>
       <button>TensorRT-LLM</button>
     </div>
@@ -177,22 +188,38 @@
         <strong>vLLM</strong> là lựa chọn hàng đầu cho production serving. Điểm mạnh cốt lõi là
         <em>PagedAttention</em> — quản lý KV cache dạng paged memory như OS virtual memory, giảm
         fragmentation và cho phép continuous batching hiệu quả. Hỗ trợ OpenAI-compatible API,
-        LoRA, speculative decoding, tensor parallelism đa GPU.
+        LoRA, speculative decoding (EAGLE-3), tensor parallelism đa GPU, và từ vLLM V1:
+        <strong>chunked prefill bật mặc định</strong> và <strong>disaggregated prefill/decode</strong>.
       </p>
-      <pre><code><span class="cm"># Khởi động vLLM server</span>
+      <pre><code><span class="cm"># Khởi động vLLM server (V1 engine mặc định từ vLLM 0.8+)</span>
 python -m vllm.entrypoints.openai.api_server \
   --model meta-llama/Meta-Llama-3.1-8B-Instruct \
   --tensor-parallel-size 2 \
   --max-model-len 8192 \
-  --gpu-memory-utilization 0.90</code></pre>
+  --gpu-memory-utilization 0.90 \
+  --enable-prefix-caching  <span class="cm"># prefix caching — mặc định trong V1</span></code></pre>
     </div>
     <div class="tab-panel">
       <p>
-        <strong>Text Generation Inference (TGI)</strong> của Hugging Face tích hợp tốt với HuggingFace
-        Hub và ecosystem Hugging Face. Hỗ trợ Flash Attention 2, continuous batching, token streaming.
-        Docker image sẵn sàng deploy lên Kubernetes, ECS, hay Cloud Run.
+        <strong>SGLang</strong> nổi lên như đối thủ ngang tầm vLLM từ 2025. Điểm mạnh là
+        <em>RadixAttention</em> — quản lý KV cache dạng radix tree, tự động phát hiện và tái sử
+        dụng prefix chung giữa các request mà không cần cấu hình thủ công. Benchmark cho thấy
+        throughput cao hơn vLLM ~29% trên H100 với model 7-8B, đặc biệt mạnh với
+        multi-turn conversation và DeepSeek MoE (3.1x nhanh hơn trên DeepSeek V3).
       </p>
-      <pre><code><span class="cm"># Docker TGI</span>
+      <pre><code><span class="cm"># Khởi động SGLang server</span>
+python -m sglang.launch_server \
+  --model-path meta-llama/Meta-Llama-3.1-8B-Instruct \
+  --port 30000 \
+  --tp-size 2</code></pre>
+    </div>
+    <div class="tab-panel" style="display:none">
+      <p>
+        <strong>Text Generation Inference (TGI)</strong> của Hugging Face — chuyển sang
+        <em>maintenance mode</em> từ tháng 12/2025. Vẫn hoạt động nhưng không còn phát triển
+        tính năng mới; SGLang được khuyến nghị thay thế cho deployment mới.
+      </p>
+      <pre><code><span class="cm"># Docker TGI (legacy)</span>
 docker run --gpus all -p 8080:80 \
   ghcr.io/huggingface/text-generation-inference:latest \
   --model-id meta-llama/Llama-3.1-8B-Instruct \
@@ -318,11 +345,12 @@ total_vram = (model_vram + kv_total_gb) * 1.2</code></pre>
         </tr>
       </thead>
       <tbody>
-        <tr><td><strong>H100 SXM</strong></td><td>80 GB HBM3</td><td>3.35 TB/s</td><td>70B FP16, 405B INT4</td><td>Production large models</td><td>~$30k/unit</td></tr>
+        <tr><td><strong>B200 SXM</strong></td><td>192 GB HBM3e</td><td>8.0 TB/s</td><td>405B+ FP8/NVFP4</td><td>Frontier production; 1000+ TPS/user trên Llama 4 Maverick</td><td>~$70k/unit</td></tr>
+        <tr><td><strong>H100 SXM</strong></td><td>80 GB HBM3</td><td>3.35 TB/s</td><td>70B FP16, 405B INT4</td><td>Production standard hiện tại; FP8 native</td><td>~$30k/unit</td></tr>
+        <tr><td><strong>AMD MI355X</strong></td><td>288 GB HBM3E</td><td>8.0 TB/s</td><td>405B+ FP8</td><td>Cạnh tranh B200; 1.4x throughput hơn B200 trên DeepSeek-R1</td><td>~$40k/unit</td></tr>
         <tr><td><strong>A100 SXM</strong></td><td>80 GB HBM2e</td><td>2.0 TB/s</td><td>70B FP16</td><td>Production, một bậc dưới H100</td><td>~$15k/unit</td></tr>
         <tr><td><strong>L40S</strong></td><td>48 GB GDDR6</td><td>864 GB/s</td><td>34B FP16, 70B INT4</td><td>Mid-tier production, cost-effective</td><td>~$8k/unit</td></tr>
         <tr><td><strong>RTX 4090</strong></td><td>24 GB GDDR6X</td><td>1008 GB/s</td><td>13B FP16, 34B INT4</td><td>Dev/test, nhỏ, 1 GPU</td><td>~$1.5k</td></tr>
-        <tr><td><strong>RTX 3090</strong></td><td>24 GB GDDR6X</td><td>936 GB/s</td><td>13B FP16</td><td>Budget dev</td><td>~$800</td></tr>
         <tr><td><strong>Apple M3 Max</strong></td><td>128 GB shared</td><td>400 GB/s</td><td>70B INT4</td><td>Local Mac dev với MLX</td><td>Laptop</td></tr>
       </tbody>
     </table>
@@ -358,11 +386,16 @@ total_vram = (model_vram + kv_total_gb) * 1.2</code></pre>
     </div>
     <div class="card">
       <h4>FP8 (E4M3)</h4>
-      <p>NVIDIA H100 native FP8. Gần như không mất quality so với BF16, trong khi throughput tăng ~1.5-2x. vLLM và TRT-LLM đều hỗ trợ. Sẽ là tiêu chuẩn mới trên H100.</p>
+      <p>NVIDIA H100/B200 native FP8. Gần như không mất quality so với BF16, throughput tăng ~1.5-2x. vLLM, SGLang, và TRT-LLM đều hỗ trợ. Đây là tiêu chuẩn cho H100 production 2025+.</p>
+    </div>
+    <div class="card">
+      <h4>NVFP4 / MXFP4 (Blackwell)</h4>
+      <p>Format 4-bit mới của NVIDIA dành cho GPU Blackwell (B200/B300). TensorRT-LLM hỗ trợ NVFP4/MXFP4 native. Throughput tăng ~2x so với FP8 với quality loss nhỏ hơn INT4 truyền thống.</p>
     </div>
     <div class="card">
       <h4>Chọn nhanh</h4>
       <ul>
+        <li>B200/B300 → NVFP4 (TRT-LLM) hoặc FP8</li>
         <li>H100 production → FP8</li>
         <li>A100/L40S production → INT8 (BF16 nếu đủ VRAM)</li>
         <li>GPU vừa → AWQ INT4</li>
@@ -392,11 +425,24 @@ total_vram = (model_vram + kv_total_gb) * 1.2</code></pre>
     xác nhận batch token đó song song (1 forward pass). Nếu draft đúng, throughput tăng 2-3x;
     nếu sai, discard và tiếp tục như bình thường. Quality không thay đổi vì target model quyết định.
   </p>
-  <pre><code><span class="cm"># vLLM speculative decoding</span>
+  <p>
+    <strong>EAGLE-3</strong> (2025) là phương pháp speculative decoding tiên tiến nhất hiện tại:
+    thay vì dùng một draft model riêng biệt, EAGLE-3 dùng <em>tri-layer feature fusion</em> (kết hợp
+    layer đầu, giữa, và cuối của target model) để dự đoán token tiếp theo. Benchmark đạt
+    <strong>4.1–6.5x speedup</strong> ở temperature=0. NVIDIA dùng EAGLE-3 để đạt 1000+ TPS/user
+    trên DGX B200 với Llama 4 Maverick (4x so với baseline Blackwell).
+  </p>
+  <pre><code><span class="cm"># vLLM speculative decoding với draft model</span>
 python -m vllm.entrypoints.openai.api_server \
   --model meta-llama/Meta-Llama-3.1-70B-Instruct \
   --speculative-model meta-llama/Meta-Llama-3.2-1B-Instruct \
-  --num-speculative-tokens 5</code></pre>
+  --num-speculative-tokens 5
+
+<span class="cm"># vLLM với EAGLE-3 (khi có checkpoint EAGLE-3)</span>
+python -m vllm.entrypoints.openai.api_server \
+  --model meta-llama/Meta-Llama-3.1-70B-Instruct \
+  --speculative-model lmsys/vicuna-68m-eagle3 \
+  --speculative-draft-tensor-parallel-size 1</code></pre>
 
   <h3>Prompt Caching</h3>
   <p>
@@ -510,6 +556,41 @@ python -m vllm.entrypoints.openai.api_server \
     <li>Cho phép share KV cache giữa multiple requests có cùng prefix</li>
     <li>Giảm fragmentation, tăng số concurrent request 2-4x</li>
   </ul>
+
+  <h3>FlashAttention-3</h3>
+  <p>
+    <strong>FlashAttention-3</strong> tối ưu attention kernel cho H100 bằng cách tận dụng tính
+    bất đồng bộ (asynchrony) và low-precision của Hopper architecture. So với FlashAttention-2,
+    FA3 mang lại <strong>~1.5–2x speedup</strong> và giảm 50% memory usage, cho phép context
+    dài hơn trên cùng phần cứng. Hầu hết serving framework (vLLM, SGLang, TRT-LLM) đã tích hợp
+    FA3 mặc định trên H100.
+  </p>
+
+  <h3>Prefill/Decode Disaggregation</h3>
+  <p>
+    Một trong những cải tiến kiến trúc lớn nhất 2024-2025: tách biệt hẳn cụm GPU làm
+    <em>prefill</em> và cụm làm <em>decode</em> thay vì chạy chung trên một pool.
+    Lý do: prefill là <strong>compute-bound</strong> (cần FLOPS cao), decode là
+    <strong>memory-bandwidth-bound</strong> (cần băng thông bộ nhớ cao) — hai đặc điểm tối ưu
+    cho hardware khác nhau.
+  </p>
+  <ul>
+    <li><strong>DistServe</strong> (OSDI 2024): nghiên cứu đặt nền móng, chứng minh 7.4x more requests hoặc 12.6x tighter SLO so với colocated.</li>
+    <li><strong>Mooncake</strong> (Moonshot AI, Best Paper FAST 2025): triển khai production cho Kimi — 128 H200 GPU, đạt 224k tokens/sec prefill + 288k tokens/sec decode; giảm KV transfer overhead 35-50% với conductor tối ưu locality.</li>
+    <li><strong>vLLM V1</strong> hỗ trợ disaggregated prefill/decode natively; NVIDIA Dynamo, llm-d, SGLang đều chạy disaggregation ở production.</li>
+  </ul>
+
+  <div class="callout note">
+    <div class="icon">≡</div>
+    <div>
+      <div class="title">Khi nào nên dùng P/D disaggregation?</div>
+      <p>
+        P/D disaggregation phức tạp hơn nhiều về vận hành (cần KV transfer qua network, điều phối 2 pool GPU).
+        Chỉ đáng đầu tư khi bạn có &gt;50 GPU và SLO TTFT nghiêm ngặt (&lt;500ms) trong khi vẫn cần
+        throughput decode cao. Với workload nhỏ hơn, chunked prefill + continuous batching là đủ.
+      </p>
+    </div>
+  </div>
 
   <h2 id="cost">10.7 Quản lý chi phí</h2>
   <p>
@@ -702,21 +783,21 @@ python -m vllm.entrypoints.openai.api_server \
   <h2 id="tom-tat">Tóm tắt</h2>
   <ol>
     <li><strong>Hosted vs self-hosted:</strong> hosted khi &lt;10M token/ngày hoặc cần tốc độ ra thị trường; self-hosted khi privacy, scale lớn, hoặc cần deep customization.</li>
-    <li><strong>Engine choice:</strong> vLLM cho production NVIDIA; TGI cho HuggingFace ecosystem; Ollama cho local dev; TRT-LLM khi cần maximum performance.</li>
+    <li><strong>Engine choice (2025+):</strong> vLLM cho production đa hardware (NVIDIA, AMD, TPU); SGLang khi cần throughput cao nhất trên NVIDIA hoặc multi-turn/MoE; TGI chuyển maintenance mode; TRT-LLM khi cần maximum performance trên NVIDIA với FP8/NVFP4.</li>
     <li><strong>VRAM math:</strong> model weights + KV cache + activations. KV cache tăng tuyến tính theo batch và context length — đây là bottleneck chính.</li>
-    <li><strong>Latency:</strong> streaming cho perceived UX; speculative decoding 2-3x TPOT; prefix caching giảm TTFT và cost.</li>
-    <li><strong>Throughput:</strong> continuous batching và paged attention là nền tảng — vLLM làm sẵn, bật mặc định.</li>
+    <li><strong>Quantization:</strong> FP8 là tiêu chuẩn H100 2025; NVFP4/MXFP4 cho Blackwell (B200/B300); AWQ INT4 cho GPU nhỏ hơn.</li>
+    <li><strong>Latency:</strong> streaming cho perceived UX; EAGLE-3 speculative decoding 4–6x TPOT; prefix caching giảm TTFT và cost; FlashAttention-3 2x speedup trên H100.</li>
+    <li><strong>Throughput:</strong> continuous batching + paged attention là nền tảng; P/D disaggregation (Mooncake/DistServe) cho scale &gt;50 GPU với SLO nghiêm ngặt.</li>
     <li><strong>Cost:</strong> model cascade + semantic cache + prompt caching có thể giảm 60-80% chi phí với quality không đổi.</li>
     <li><strong>Production patterns:</strong> cache-first, fallback chain, exponential backoff với jitter — 3 pattern bắt buộc trong mọi LLM service.</li>
   </ol>
-
   <nav class="section-footer">
     <a href="11-workflows-vs-agents.html" class="prev">
-      <div class="label">← trước</div>
+      <div class="label">← Trước</div>
       <div class="title">11 — Workflows vs Agents</div>
     </a>
     <a href="13-observability.html" class="next">
-      <div class="label">tiếp theo →</div>
+      <div class="label">Tiếp theo →</div>
       <div class="title">13 — Observability &amp; Evaluation in Production</div>
     </a>
   </nav>

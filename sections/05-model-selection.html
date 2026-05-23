@@ -12,15 +12,16 @@
   <div class="brand"><span class="dot"></span> AI Engineering</div>
   <div class="crumbs"><a href="../index.html">Mục lục</a> › Phần 2 · <span>05 — Model Selection &amp; Evaluation</span></div>
   <div class="nav-actions">
-    <a href="04-prompt-engineering.html">← Prompt Engineering</a>
-    <a href="06-fine-tuning.html">Fine-tuning →</a>
+    <a href="04-prompt-engineering.html">← Trước</a>
+    <a href="../index.html">Mục lục</a>
+    <a href="06-fine-tuning.html">Tiếp →</a>
   </div>
 </nav>
 
 <main class="page">
 
   <section class="hero">
-    <span class="eyebrow">Phần 2 · §05</span>
+    <div class="eyebrow-row"><span class="eyebrow">Phần 2 · §05</span><a class="hero-updated" href="../KNOWLEDGE_UPDATES.md" title="Lịch sử cập nhật kiến thức">↻ 2026-05-23</a></div>
     <h1>Model Selection &amp; Evaluation</h1>
     <p class="lede">
       Làm thế nào chọn đúng model cho use case của bạn — và quan trọng hơn, làm thế nào
@@ -82,13 +83,13 @@
 
     <!-- Center labels for trade-offs -->
     <text x="220" y="170" text-anchor="middle" font-size="12" fill="#6f7c92">Budget-conscious</text>
-    <text x="220" y="185" text-anchor="middle" font-size="11" fill="#6f7c92">Gemini Flash, Haiku</text>
+    <text x="220" y="185" text-anchor="middle" font-size="11" fill="#6f7c92">Gemini 2.5 Flash, Haiku 4.5</text>
 
     <text x="545" y="170" text-anchor="middle" font-size="12" fill="#6f7c92">Low-latency quality</text>
-    <text x="545" y="185" text-anchor="middle" font-size="11" fill="#6f7c92">Claude Haiku, GPT-4o-mini</text>
+    <text x="545" y="185" text-anchor="middle" font-size="11" fill="#6f7c92">GPT-4o-mini, o4-mini</text>
 
     <text x="380" y="250" text-anchor="middle" font-size="12" fill="#6f7c92">Max quality</text>
-    <text x="380" y="265" text-anchor="middle" font-size="11" fill="#6f7c92">Claude Opus, GPT-4o, o3</text>
+    <text x="380" y="265" text-anchor="middle" font-size="11" fill="#6f7c92">Claude Opus 4.7, GPT-5, o3</text>
 
     <!-- Sweet spot -->
     <circle cx="380" cy="200" r="14" fill="rgba(211,164,255,0.3)" stroke="#d3a4ff" stroke-width="2"/>
@@ -115,6 +116,146 @@
     </div>
   </div>
 
+  <h3>Model tiers & pricing tham khảo (tháng 5/2026)</h3>
+  <p>Ba tiers chính với pricing per million tokens (input / output):</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Tier</th>
+          <th>Model</th>
+          <th>Input / Output ($/1M)</th>
+          <th>Phù hợp cho</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td rowspan="3"><strong>Frontier</strong><br><em>(max quality)</em></td>
+          <td>Claude Opus 4.7</td>
+          <td>$5 / $25</td>
+          <td>Complex reasoning, agentic tasks</td>
+        </tr>
+        <tr>
+          <td>GPT-4.1</td>
+          <td>$2 / $8</td>
+          <td>Balanced quality &amp; cost, coding</td>
+        </tr>
+        <tr>
+          <td>Gemini 2.5 Pro</td>
+          <td>$1.25 / $10</td>
+          <td>Long context (1M tokens), multimodal</td>
+        </tr>
+        <tr>
+          <td rowspan="3"><strong>Balanced</strong><br><em>(mid-tier)</em></td>
+          <td>Claude Sonnet 4.6</td>
+          <td>$3 / $15</td>
+          <td>Production workloads, good default</td>
+        </tr>
+        <tr>
+          <td>GPT-4o</td>
+          <td>$2.50 / $10</td>
+          <td>Vision + multimodal tasks</td>
+        </tr>
+        <tr>
+          <td>Gemini 2.5 Flash</td>
+          <td>$0.30 / $2.50</td>
+          <td>High throughput, thinking built-in</td>
+        </tr>
+        <tr>
+          <td rowspan="3"><strong>Fast/Cheap</strong><br><em>(high volume)</em></td>
+          <td>Claude Haiku 4.5</td>
+          <td>$1 / $5</td>
+          <td>Classification, extraction, routing</td>
+        </tr>
+        <tr>
+          <td>GPT-4o-mini</td>
+          <td>$0.15 / $0.60</td>
+          <td>Simple tasks, very high volume</td>
+        </tr>
+        <tr>
+          <td>o4-mini</td>
+          <td>$0.15 / $0.60</td>
+          <td>STEM, code — reasoning tại chi phí thấp</td>
+        </tr>
+        <tr>
+          <td rowspan="2"><strong>Open-weights</strong><br><em>(self-host)</em></td>
+          <td>DeepSeek V4-Pro (1.6T/49B active)</td>
+          <td>~$0.04–$0.10 / $0.10–$0.30 (self-host)</td>
+          <td>Long-context reasoning, agentic, MIT license</td>
+        </tr>
+        <tr>
+          <td>Qwen 3 235B-A22B (MoE)</td>
+          <td>~$0.04–$0.10 / $0.10–$0.30 (self-host)</td>
+          <td>Math, GPQA (77.2%), Apache 2.0 license</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout note">
+    <div class="icon">≡</div>
+    <div>
+      <div class="title">Tối ưu cost với Batch API &amp; Caching</div>
+      <p>
+        <strong>Batch API</strong> giảm 50% chi phí (Anthropic, OpenAI) với 24h processing — phù hợp offline workloads.
+        <strong>Prompt caching</strong> giảm đến 90% chi phí cho input tokens lặp lại (system prompt dài, few-shot examples).
+      </p>
+    </div>
+  </div>
+
+  <h3>Reasoning models vs Standard models</h3>
+  <p>
+    Một lựa chọn quan trọng trong 2025–2026: dùng <strong>reasoning model</strong> (o3, o4-mini, Claude extended thinking,
+    Gemini 2.5 Flash thinking) hay standard model?
+  </p>
+
+  <div class="grid-2">
+    <div class="card">
+      <h4>Nên dùng reasoning model khi</h4>
+      <ul>
+        <li>Multi-step math hoặc logic phức tạp</li>
+        <li>Scientific/PhD-level reasoning (GPQA-style)</li>
+        <li>Code debugging nhiều bước</li>
+        <li>Agentic tasks cần planning dài</li>
+        <li>Task mà standard model thường sai ở bước trung gian</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>Không cần reasoning model khi</h4>
+      <ul>
+        <li>Summarization, extraction, classification đơn giản</li>
+        <li>Latency &lt; 2s là yêu cầu</li>
+        <li>RAG Q&amp;A với context đầy đủ</li>
+        <li>Creative writing, translation</li>
+        <li>Chi phí thinking tokens quá cao so với độ khó task</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="callout tip">
+    <div class="icon">★</div>
+    <div>
+      <div class="title">o4-mini: reasoning rẻ, chất lượng cao</div>
+      <p>
+        o4-mini ($0.15/$0.60 per 1M tokens) đạt chất lượng tương đương o3 cho STEM và code, với chi phí thấp hơn đáng kể.
+        Là lựa chọn mặc định nếu cần reasoning tại scale. Dùng o3 khi cần ceiling cao nhất cho open-ended analysis.
+      </p>
+    </div>
+  </div>
+
+  <h3>Open-weights vs Closed models</h3>
+  <p>
+    Năm 2025–2026, khoảng cách giữa open-weights và closed models đã thu hẹp đáng kể:
+  </p>
+  <ul>
+    <li><strong>DeepSeek V4-Pro</strong> (MoE 1.6T/49B active, MIT license): flagship cho coding và agentic tasks. DeepSeek V3.2 Speciale đạt gold-medal tại IMO/IOI 2025.</li>
+    <li><strong>Qwen 3 235B-A22B</strong> (MoE, Apache 2.0): dẫn đầu open-weights về GPQA Diamond (77.2%) và toán học.</li>
+    <li><strong>Llama 4 Maverick</strong> (400B/17B active): MMLU 85.5%, context window 10M tokens.</li>
+    <li>Lý do chọn open-weights: <strong>data privacy</strong> (không gửi data ra ngoài), <strong>cost control</strong> ở scale lớn, <strong>fine-tuning</strong> toàn bộ weights, không bị vendor lock-in.</li>
+    <li>Lý do ở lại closed: <strong>managed infrastructure</strong>, updates liên tục, safety alignment mạnh hơn, hỗ trợ multimodal tốt hơn.</li>
+  </ul>
+
   <!-- ================================================================
        5.2 Benchmark công khai
   ================================================================ -->
@@ -135,43 +276,49 @@
           <td><strong>MMLU</strong></td>
           <td>Knowledge breadth (57 subjects)</td>
           <td>Multiple choice</td>
-          <td>Nhiều câu đã xuất hiện trong training data</td>
+          <td>Nhiều câu đã xuất hiện trong training data; top models ~88–90%</td>
         </tr>
         <tr>
-          <td><strong>HumanEval</strong></td>
-          <td>Code generation Python</td>
-          <td>Pass@k (unit tests)</td>
-          <td>Chỉ Python, real-world code khác nhiều</td>
-        </tr>
-        <tr>
-          <td><strong>GPQA</strong></td>
-          <td>Expert-level reasoning (PhD)</td>
+          <td><strong>GPQA Diamond</strong></td>
+          <td>Expert-level reasoning (PhD, 198 câu khó nhất)</td>
           <td>Multiple choice</td>
-          <td>Narrow domain, không đại diện cho nhiều use case</td>
+          <td>PhD experts đạt ~65%; frontier models (Claude Sonnet 5: 96.2%, Opus 4.7: 94.2%) đã vượt human</td>
         </tr>
         <tr>
-          <td><strong>MATH</strong></td>
-          <td>Mathematical problem solving</td>
+          <td><strong>MATH / AIME</strong></td>
+          <td>Mathematical problem solving (competition)</td>
           <td>Open-ended</td>
-          <td>Competition math, khác toán ứng dụng thực tế</td>
+          <td>Grok 3 / o3-mini ~93% AIME; khác toán ứng dụng thực tế</td>
         </tr>
         <tr>
-          <td><strong>SWE-bench</strong></td>
-          <td>Real GitHub issue resolution</td>
+          <td><strong>SWE-bench Verified</strong></td>
+          <td>Real GitHub issue resolution (500 tasks human-validated)</td>
           <td>Code patches</td>
-          <td>Chỉ đo resolution rate, không đo code quality</td>
+          <td>Đáng tin hơn SWE-bench gốc; top 2026: Claude Mythos Preview 93.9%, Opus 4.7 87.6%; trung bình 83 models: 63.4%</td>
         </tr>
         <tr>
-          <td><strong>MT-Bench</strong></td>
-          <td>Multi-turn conversation quality</td>
-          <td>LLM-judged 1–10</td>
-          <td>Judge model có thể có bias</td>
+          <td><strong>Humanity's Last Exam (HLE)</strong></td>
+          <td>Multi-domain expert reasoning (PhD+, 3,000+ câu)</td>
+          <td>Mixed</td>
+          <td>Ra mắt 1/2025; human experts ~90% trong field; Gemini 3 Deep Think đạt 48.4% (2/2026)</td>
+        </tr>
+        <tr>
+          <td><strong>ARC-AGI-2</strong></td>
+          <td>Fluid intelligence, abstract visual reasoning</td>
+          <td>Grid patterns</td>
+          <td>Human avg 66%; GPT-5.5 dẫn đầu 85% (5/2026); grand prize threshold &gt;85%</td>
+        </tr>
+        <tr>
+          <td><strong>HumanEval / SWE-bench</strong></td>
+          <td>Code generation Python; GitHub issues</td>
+          <td>Pass@k (unit tests)</td>
+          <td>HumanEval bão hòa (~95%+); ưu tiên SWE-bench Verified cho coding eval</td>
         </tr>
         <tr>
           <td><strong>LMSYS Chatbot Arena</strong></td>
           <td>Human preference (ELO)</td>
           <td>Pairwise human vote</td>
-          <td>Self-selected users, không representative</td>
+          <td>Self-selected users, không representative; tốt cho general preference signal</td>
         </tr>
       </tbody>
     </table>
@@ -601,7 +748,7 @@ prompts:
 
 providers:
   - openai:gpt-4o-mini
-  - anthropic:claude-haiku-3-5
+  - anthropic:claude-haiku-4-5
 
 tests:
   - vars:
@@ -657,28 +804,96 @@ tests:
     </table>
   </div>
 
+  <h3>Model Routing</h3>
+  <p>
+    <strong>Model routing</strong> là việc tự động chọn model tốt nhất (về cost, latency, quality) cho từng request.
+    Ở scale lớn, không phải request nào cũng cần frontier model — routing đúng có thể giảm 50–80% chi phí inference.
+  </p>
+
+  <div class="grid-2">
+    <div class="card">
+      <h4>OpenRouter</h4>
+      <p><span class="tag">Hosted</span> <span class="tag blue">Model Marketplace</span></p>
+      <ul>
+        <li>1 API key cho 300+ models (OpenAI-compatible API)</li>
+        <li>Automatic fallback khi provider down</li>
+        <li>So sánh giá real-time giữa providers</li>
+        <li>Phù hợp: prototyping nhanh, access nhiều models</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>Portkey</h4>
+      <p><span class="tag">Hosted</span> <span class="tag green">Production Gateway</span></p>
+      <ul>
+        <li>Load balancing, fallbacks, retries tự động</li>
+        <li>Observability: traces, logs, budget alerts</li>
+        <li>Guardrails và governance cho enterprise</li>
+        <li>Phù hợp: production với yêu cầu reliability cao</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="grid-2">
+    <div class="card">
+      <h4>LiteLLM</h4>
+      <p><span class="tag">Open-source</span> <span class="tag">Self-host</span></p>
+      <ul>
+        <li>OpenAI-compatible proxy cho 100+ LLMs</li>
+        <li>Self-hosted — không vendor lock-in</li>
+        <li>Cost tracking, caching, rate limiting</li>
+        <li>Phù hợp: enterprise với data privacy requirements</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>Martian</h4>
+      <p><span class="tag">Hosted</span> <span class="tag blue">Intelligent Routing</span></p>
+      <ul>
+        <li>Routing model tự động phân tích prompt → chọn model tốt nhất</li>
+        <li>Giữ quality cao, giảm chi phí từ việc dùng expensive models cho easy tasks</li>
+        <li>Phù hợp: workloads với độ khó task rất khác nhau</li>
+      </ul>
+    </div>
+  </div>
+
+  <pre><code><span class="cm"># LiteLLM — one interface cho nhiều providers</span>
+<span class="kw">import</span> litellm
+
+<span class="cm"># Route đến model phù hợp theo task complexity</span>
+<span class="kw">def</span> <span class="fn">smart_complete</span>(prompt: str, complexity: str) -> str:
+    model_map = {
+        <span class="str">"simple"</span>:  <span class="str">"gpt-4o-mini"</span>,       <span class="cm"># $0.15/1M input</span>
+        <span class="str">"medium"</span>:  <span class="str">"claude-sonnet-4-6"</span>, <span class="cm"># $3/1M input</span>
+        <span class="str">"complex"</span>: <span class="str">"claude-opus-4-7"</span>,  <span class="cm"># $5/1M input</span>
+    }
+    response = litellm.<span class="fn">completion</span>(
+        model=model_map[complexity],
+        messages=[{<span class="str">"role"</span>: <span class="str">"user"</span>, <span class="str">"content"</span>: prompt}]
+    )
+    <span class="kw">return</span> response.choices[<span class="num">0</span>].message.content</code></pre>
+
   <!-- ================================================================
        Tóm tắt
   ================================================================ -->
   <h2 id="tom-tat">Tóm tắt</h2>
   <ol>
-    <li><strong>Không có model tốt nhất</strong> — chọn dựa trên cost/latency/quality trade-off của use case cụ thể.</li>
-    <li><strong>Public benchmarks</strong> là điểm tham khảo, không phải sự thật cuối cùng — contamination và distribution mismatch là vấn đề thực.</li>
+    <li><strong>Không có model tốt nhất</strong> — chọn dựa trên cost/latency/quality trade-off của use case cụ thể. Ba tiers: frontier (Opus 4.7, GPT-4.1, Gemini 2.5 Pro), balanced (Sonnet 4.6, GPT-4o, Gemini 2.5 Flash), fast/cheap (Haiku 4.5, GPT-4o-mini, o4-mini).</li>
+    <li><strong>Reasoning models</strong> (o3, o4-mini, Claude extended thinking) cho multi-step math/logic/code; standard models cho summarization, extraction, RAG Q&amp;A. o4-mini là lựa chọn mặc định khi cần reasoning tại scale.</li>
+    <li><strong>Open-weights</strong> (DeepSeek V4, Qwen 3, Llama 4) đã bắt kịp closed models trên nhiều benchmarks — xem xét khi cần data privacy, cost control ở scale lớn, hoặc fine-tuning toàn bộ weights.</li>
+    <li><strong>Public benchmarks</strong> là điểm tham khảo, không phải sự thật cuối cùng. Ưu tiên: SWE-bench Verified cho coding, GPQA Diamond cho reasoning, HLE và ARC-AGI-2 cho frontier comparison.</li>
     <li><strong>Custom eval trên real data</strong> là investment quan trọng nhất — build ngay từ đầu, không phải sau khi có vấn đề.</li>
     <li><strong>LLM-as-Judge</strong> scalable nhưng cần calibrate với human eval và biết các bias của nó.</li>
     <li><strong>Human eval</strong> không thể bỏ qua cho safety-critical applications và cultural nuance.</li>
     <li><strong>A/B test trong production</strong> để validate business metrics thực sự, không chỉ quality metrics.</li>
-    <li><strong>RAG và Agent eval</strong> cần thêm dimensions (faithfulness, trajectory quality) — sẽ cover chi tiết ở sections sau.</li>
+    <li><strong>Model routing</strong> (OpenRouter, Portkey, LiteLLM, Martian) giúp tự động chọn model tối ưu theo cost/quality — quan trọng khi scale lên production.</li>
     <li><strong>Tooling:</strong> Braintrust hoặc Langfuse cho eval + observability; Promptfoo cho CI/CD integration.</li>
   </ol>
-
   <nav class="section-footer">
     <a href="04-prompt-engineering.html" class="prev">
-      <div class="label">← trước đó</div>
+      <div class="label">← Trước</div>
       <div class="title">04 — Prompt Engineering</div>
     </a>
     <a href="06-fine-tuning.html" class="next">
-      <div class="label">tiếp theo →</div>
+      <div class="label">Tiếp theo →</div>
       <div class="title">06 — Fine-tuning &amp; Customization</div>
     </a>
   </nav>

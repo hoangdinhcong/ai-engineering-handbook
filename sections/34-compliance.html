@@ -13,6 +13,7 @@
   <div class="crumbs"><a href="../index.html">Mục lục</a> › Phần 10 · <span>34 — Compliance &amp; Governance</span></div>
   <div class="nav-actions">
     <a href="33-privacy.html">← Trước</a>
+    <a href="../index.html">Mục lục</a>
     <a href="35-eval-dataset-design.html">Tiếp →</a>
   </div>
 </nav>
@@ -20,7 +21,7 @@
 <main class="page">
 
   <section class="hero">
-    <span class="eyebrow">Phần 10 · §34</span>
+    <div class="eyebrow-row"><span class="eyebrow">Phần 10 · §34</span><a class="hero-updated" href="../KNOWLEDGE_UPDATES.md" title="Lịch sử cập nhật kiến thức">↻ 2026-05-23</a></div>
     <h1>Compliance &amp; Governance</h1>
     <p class="lede">
       Từ EU AI Act đến NIST AI RMF, từ model cards đến audit trails —
@@ -94,9 +95,13 @@
     <div>
       <div class="title">Bức tranh toàn cầu năm 2026</div>
       <p>
-        EU AI Act đang trong giai đoạn áp dụng, California đã có nhiều luật về AI, Trung Quốc
-        có quy định về generative AI và thuật toán gợi ý, Singapore có Model AI Governance Framework.
-        Không còn "vùng trắng" pháp lý cho AI ở các thị trường lớn.
+        EU AI Act đang áp dụng theo từng giai đoạn (GPAI từ Aug 2025, High-Risk dời sang Dec 2027).
+        Tại Mỹ, chính quyền Trump đẩy "innovation-first" và đang kiện các tiểu bang có luật AI
+        riêng — California SB 53 đã có hiệu lực (Jan 2026), Colorado đang tranh chấp pháp lý.
+        Singapore ra Model AI Governance Framework cho GenAI (2024) và SGDG (Sept 2025).
+        Anh không có AI Bill toàn diện đến 2026 — tiếp cận qua sandbox và regulatory pilots.
+        Không còn "vùng trắng" ở các thị trường lớn, nhưng bức tranh luật pháp đang biến động
+        nhanh hơn bao giờ hết.
       </p>
     </div>
   </div>
@@ -116,31 +121,31 @@
     <text x="125" y="82" text-anchor="middle" class="label-sm">Risk-based approach</text>
     <text x="125" y="96" text-anchor="middle" class="label-sm">GPAI obligations</text>
     <text x="125" y="110" text-anchor="middle" class="label-sm">Phạt tới €35M / 7% doanh thu</text>
-    <text x="125" y="128" text-anchor="middle" class="label-sm" style="fill:#ffb86b">Áp dụng: 2025-02 → 2027-08</text>
+    <text x="125" y="128" text-anchor="middle" class="label-sm" style="fill:#ffb86b">Áp dụng: 2025-02 → 2027-12 → 2028-08</text>
 
     <!-- US Federal -->
     <rect class="node-blue" x="270" y="20" width="210" height="120" rx="10"/>
     <text x="375" y="44" text-anchor="middle" font-weight="700" font-size="14">🇺🇸 Liên bang Mỹ</text>
-    <text x="375" y="64" text-anchor="middle" font-size="12">EO 14110 (Biden) + follow-ups</text>
-    <text x="375" y="82" text-anchor="middle" class="label-sm">NIST AI RMF 1.0</text>
+    <text x="375" y="64" text-anchor="middle" font-size="12">EO 14179 (Trump) + AI Action Plan</text>
+    <text x="375" y="82" text-anchor="middle" class="label-sm">NIST AI RMF 1.0 + AI 600-1 (GenAI)</text>
     <text x="375" y="96" text-anchor="middle" class="label-sm">Sector-specific (HIPAA, GLBA…)</text>
-    <text x="375" y="110" text-anchor="middle" class="label-sm">NIST AI 600-1 (GPAI)</text>
-    <text x="375" y="128" text-anchor="middle" class="label-sm" style="fill:#7cc4ff">Voluntary frameworks + mandates</text>
+    <text x="375" y="110" text-anchor="middle" class="label-sm">EO Dec 2025: preempt state AI laws</text>
+    <text x="375" y="128" text-anchor="middle" class="label-sm" style="fill:#7cc4ff">Innovation-first; voluntary frameworks</text>
 
     <!-- US States -->
     <rect class="node-green" x="520" y="20" width="220" height="120" rx="10"/>
     <text x="630" y="44" text-anchor="middle" font-weight="700" font-size="14">🏛 Tiểu bang Mỹ</text>
-    <text x="630" y="64" text-anchor="middle" font-size="12">California AB 1008, SB 1047</text>
-    <text x="630" y="82" text-anchor="middle" class="label-sm">Colorado AI Act (2026)</text>
-    <text x="630" y="96" text-anchor="middle" class="label-sm">Texas, Illinois, NY đang soạn</text>
-    <text x="630" y="110" text-anchor="middle" class="label-sm">Patchwork of state laws</text>
-    <text x="630" y="128" text-anchor="middle" class="label-sm" style="fill:#b4e07a">Rủi ro: 50 bộ luật khác nhau</text>
+    <text x="630" y="64" text-anchor="middle" font-size="12">CA: AB 1008, SB 53 ✅ (Jan 2026)</text>
+    <text x="630" y="82" text-anchor="middle" class="label-sm">Colorado SB 24-205 ⚠ tranh chấp</text>
+    <text x="630" y="96" text-anchor="middle" class="label-sm">TX EO Dec 2025: DOJ kiện state laws</text>
+    <text x="630" y="110" text-anchor="middle" class="label-sm">Patchwork + federal preemption battle</text>
+    <text x="630" y="128" text-anchor="middle" class="label-sm" style="fill:#b4e07a">Rủi ro: 50 bộ luật + liên bang xung đột</text>
 
     <!-- Asia -->
     <rect class="node-bg" x="20" y="175" width="210" height="120" rx="10"/>
     <text x="125" y="199" text-anchor="middle" font-weight="700" font-size="14">🌏 Châu Á</text>
     <text x="125" y="219" text-anchor="middle" font-size="12">Trung Quốc: Gen AI Measures</text>
-    <text x="125" y="237" text-anchor="middle" class="label-sm">Singapore: Model AI Gov Framework</text>
+    <text x="125" y="237" text-anchor="middle" class="label-sm">Singapore: Model AI Gov v2 + GenAI</text>
     <text x="125" y="251" text-anchor="middle" class="label-sm">Nhật: Soft law approach</text>
     <text x="125" y="265" text-anchor="middle" class="label-sm">Việt Nam: đang nghiên cứu</text>
     <text x="125" y="283" text-anchor="middle" class="label-sm" style="fill:#aab4c5">Fragmented, evolving</text>
@@ -226,8 +231,14 @@
     <li>Báo cáo serious incidents cho cơ quan có thẩm quyền EU</li>
     <li>Duy trì cybersecurity protections phù hợp</li>
   </ul>
+  <p>
+    Kể từ Aug 2, 2025, GPAI obligations chính thức có hiệu lực và AI Office EU đã hoạt động.
+    EU Commission phát hành <em>Guidelines for Providers of GPAI Models</em> (tháng 7/2025) làm
+    tài liệu hướng dẫn thực thi. Thẩm quyền phạt providers GPAI của Commission bắt đầu từ
+    <strong>Aug 2, 2026</strong>.
+  </p>
 
-  <h3>Timeline áp dụng 2025–2027</h3>
+  <h3>Timeline áp dụng 2025–2028 (cập nhật theo Digital AI Omnibus)</h3>
   <div class="table-wrap">
     <table>
       <thead>
@@ -235,11 +246,26 @@
       </thead>
       <tbody>
         <tr><td><strong>Feb 2025</strong></td><td>Cấm Unacceptable Risk AI systems có hiệu lực</td></tr>
-        <tr><td><strong>Aug 2025</strong></td><td>GPAI obligations áp dụng; AI literacy training bắt buộc</td></tr>
-        <tr><td><strong>Aug 2026</strong></td><td>High-Risk AI systems (Annex I — safety components) phải comply</td></tr>
-        <tr><td><strong>Aug 2027</strong></td><td>High-Risk AI systems (Annex III — các lĩnh vực khác) phải comply</td></tr>
+        <tr><td><strong>Aug 2025</strong></td><td>GPAI obligations áp dụng; AI Office chính thức hoạt động; AI literacy training bắt buộc</td></tr>
+        <tr><td><strong>Aug 2026</strong></td><td>Thẩm quyền phạt GPAI providers của EU Commission có hiệu lực (phạt tới €35M / 7%)</td></tr>
+        <tr><td><strong>Dec 2027</strong></td><td><strong>[Sửa đổi]</strong> High-Risk AI systems stand-alone (Annex III) — deadline dời từ Aug 2026 → Dec 2, 2027 theo Digital AI Omnibus (thỏa thuận May 2026)</td></tr>
+        <tr><td><strong>Aug 2028</strong></td><td><strong>[Sửa đổi]</strong> High-Risk AI embedded trong sản phẩm (Annex I — safety components) — dời từ Aug 2026 → Aug 2, 2028</td></tr>
+        <tr><td><strong>Aug 2027</strong></td><td>Providers GPAI models ra trước Aug 2025 phải comply</td></tr>
       </tbody>
     </table>
+  </div>
+
+  <div class="callout note">
+    <div class="icon">≡</div>
+    <div>
+      <div class="title">Digital AI Omnibus — thay đổi lớn tháng 5/2026</div>
+      <p>
+        Ngày 7/5/2026, EP và Hội đồng EU đạt thỏa thuận tạm thời (Digital AI Omnibus) dời deadline
+        High-Risk AI từ <strong>Aug 2, 2026 → Dec 2, 2027</strong> (stand-alone) và <strong>Aug 2, 2028</strong>
+        (embedded trong sản phẩm). Văn bản chính thức dự kiến được công bố trước Aug 2, 2026.
+        GPAI penalty enforcement bắt đầu Aug 2026 như kế hoạch — chỉ High-Risk deadline bị dời.
+      </p>
+    </div>
   </div>
 
   <h3>Mức phạt</h3>
@@ -351,6 +377,13 @@
         "current profile" (thực trạng) và "target profile" (mục tiêu) để có roadmap cụ thể.
         Đây là công cụ communication tốt với leadership.
       </p>
+      <p style="margin-top:8px">
+        Nếu đang xây dựng sản phẩm GenAI: download thêm <strong>NIST AI 600-1</strong>
+        (Generative AI Profile, phát hành July 26, 2024) — companion document liệt kê 12 rủi ro
+        đặc thù của GenAI (hallucination, data privacy, CSAM, v.v.) và 200+ actions mitigating cụ
+        thể. Bắt buộc tham khảo nếu deploy LLM-based products. Lưu ý: America's AI Action Plan
+        (July 2025) đã chỉ đạo NIST sửa RMF — theo dõi phiên bản cập nhật trên <code>airc.nist.gov</code>.
+      </p>
     </div>
   </div>
 
@@ -408,26 +441,28 @@
   <!-- ─────────────────────────────────────────── 34.5 ─── -->
   <h2 id="us-regs">34.5 Luật Mỹ: Executive Orders và State Laws</h2>
 
-  <h3>Executive Order 14110 (Biden, Oct 2023)</h3>
+  <h3>Executive Orders liên bang Mỹ: từ Biden đến Trump (2023–2025)</h3>
   <p>
-    EO 14110 "Safe, Secure, and Trustworthy AI" là văn bản toàn diện nhất của chính quyền liên
-    bang Mỹ về AI. Các điểm quan trọng với AI engineers:
+    EO 14110 (Biden, Oct 2023) "Safe, Secure, and Trustworthy AI" là văn bản toàn diện nhất trước đó —
+    yêu cầu frontier model providers báo cáo safety tests, NIST phát triển guidelines cho GenAI
+    (dẫn đến NIST AI 600-1 tháng 7/2024), và watermarking cho AI-generated content.
   </p>
-  <ul>
-    <li>Yêu cầu providers của frontier AI models báo cáo safety test results cho chính phủ</li>
-    <li>NIST phải phát triển thêm guidelines cho generative AI</li>
-    <li>Agencies phải inventory AI use trong chính phủ và đánh giá rủi ro</li>
-    <li>Watermarking/labeling cho AI-generated content (được khuyến khích)</li>
-  </ul>
 
   <div class="callout warn">
     <div class="icon">!</div>
     <div>
-      <div class="title">Chính sách thay đổi theo chính quyền</div>
+      <div class="title">Chuỗi EOs của chính quyền Trump 2025</div>
       <p>
-        Chính quyền Trump (2025) đã revoke EO 14110 và thay thế bằng EO 14179 với hướng tiếp cận
-        "innovation-first". Các quy định ở cấp liên bang Mỹ rất nhạy cảm với chính trị — theo dõi
-        liên tục. Trong khi đó, luật cấp tiểu bang ổn định hơn.
+        Chính quyền Trump đã ban hành hàng loạt thay đổi căn bản chính sách AI liên bang:<br>
+        — <strong>EO 14179</strong> (Jan 23, 2025): Revoke EO 14110, hướng "innovation-first", yêu
+        cầu xây dựng AI Action Plan.<br>
+        — <strong>America's AI Action Plan</strong> (July 23, 2025): Chỉ đạo NIST sửa lại AI RMF
+        — loại bỏ references đến misinformation, DEI, climate change. Ưu tiên: national competitiveness
+        và đổi mới sáng tạo.<br>
+        — <strong>EO "Ensuring a National Policy Framework for AI"</strong> (Dec 11, 2025): Tấn
+        công trực tiếp vào state AI laws — thành lập DOJ AI Litigation Task Force để kiện tiểu bang
+        có luật AI "conflict with national policy"; FTC và FCC có thể ban hành federal standards
+        preempting state rules. Lưu ý: EO này không tự overrule state laws — chỉ courts mới làm được.
       </p>
     </div>
   </div>
@@ -447,22 +482,22 @@
           <td>Mở rộng CCPA: dữ liệu cá nhân trong AI training phải được phép</td>
         </tr>
         <tr>
-          <td><strong>SB 1047</strong> (vetoed)</td>
+          <td><strong>SB 53</strong> ✅ đã ký</td>
           <td>California</td>
           <td>Frontier AI safety</td>
-          <td>Bị Governor Newsom veto 2024 — nhưng các phiên bản mới đang được soạn</td>
+          <td>Newsom ký <strong>Sept 29, 2025</strong>, hiệu lực Jan 1, 2026 — kế thừa từ SB 1047 (vetoed 2024). Yêu cầu frontier developers công bố safety framework, cơ chế báo cáo safety incidents, và bảo vệ whistleblower. Ít onerous hơn SB 1047.</td>
         </tr>
         <tr>
-          <td><strong>Colorado AI Act</strong></td>
+          <td><strong>Colorado SB 24-205</strong> ⚠ tranh chấp</td>
           <td>Colorado</td>
           <td>High-risk AI decisions</td>
-          <td>Yêu cầu impact assessment, disclosure khi AI đưa ra "consequential decisions"</td>
+          <td>Ký tháng 5/2024, hiệu lực gốc Feb 2026, nhưng: tòa liên bang stay enforcement (Apr 27, 2026), DOJ + xAI kiện bảo hiến. Legislature thông qua <strong>SB 189</strong> (bill thay thế, May 2026) đang chờ Governor ký. Tình trạng rất biến động.</td>
         </tr>
         <tr>
           <td><strong>Texas AI Act</strong></td>
           <td>Texas</td>
           <td>Consequential AI decisions</td>
-          <td>Tương tự Colorado — hướng EU-style risk-based approach</td>
+          <td>Đang được soạn thảo — hướng EU-style risk-based approach. Chú ý EO Dec 2025 của Trump có thể ảnh hưởng tiến trình.</td>
         </tr>
         <tr>
           <td><strong>BIPA</strong></td>
@@ -625,6 +660,24 @@
     <em>Distribution</em> (có thể share không, license),
     <em>Maintenance</em> (ai duy trì, cập nhật khi nào).
   </p>
+
+  <h3>System Cards của Foundation Model Providers</h3>
+  <p>
+    Kể từ 2025, các provider lớn đã nâng chuẩn transparency đáng kể — và đây là benchmark
+    để vendor assessment:
+  </p>
+  <ul>
+    <li><strong>Anthropic</strong>: Công bố system card cho mỗi model release (Claude Opus 4, Sonnet 4,
+    v.v.) với safety evaluations, red-teaming results, và ASL (AI Safety Level) classification.
+    Anthropic Transparency Hub tổng hợp tất cả tài liệu. Một số model cards có third-party
+    assessments được gán nhãn rõ ràng.</li>
+    <li><strong>OpenAI</strong>: System cards kèm theo các model lớn (GPT-4o, o3, v.v.); safety
+    evals, usage policies, và model spec được publish.</li>
+    <li><strong>Thực tế với vendor risk assessment</strong>: Khi đánh giá AI provider, yêu cầu:
+    (1) System card / model card mới nhất, (2) SOC 2 Type II report, (3) Data processing agreement,
+    (4) Chính sách không train trên customer data. Các provider GPAI trong phạm vi EU AI Act phải
+    cung cấp technical documentation theo yêu cầu của EU AI Office.</li>
+  </ul>
 
   <!-- ─────────────────────────────────────────── 34.9 ─── -->
   <h2 id="audit-trails">34.9 Audit Trails cho AI Systems</h2>
@@ -1034,7 +1087,9 @@
     <li>
       <strong>EU AI Act áp dụng cho bạn nếu có người dùng EU.</strong>
       Bốn tiers: Unacceptable (cấm), High Risk (obligations nặng), Limited (disclosure), Minimal.
-      Phạt tới €35M hoặc 7% doanh thu toàn cầu. Timeline 2025–2027.
+      Phạt tới €35M hoặc 7% doanh thu toàn cầu. GPAI obligations: Aug 2025; GPAI penalty enforcement:
+      Aug 2026. High-Risk deadline <strong>dời</strong> → Dec 2, 2027 (stand-alone) hoặc Aug 2, 2028
+      (embedded), theo Digital AI Omnibus agreement May 2026.
     </li>
     <li>
       <strong>NIST AI RMF 1.0 là baseline tốt nhất để bắt đầu.</strong>
@@ -1073,14 +1128,13 @@
       Giai đoạn 3 (12+ tháng): ISO 42001, SOC 2 Type II, third-party audits, transparency report.
     </li>
   </ol>
-
   <nav class="section-footer">
     <a href="33-privacy.html" class="prev">
-      <div class="label">← trước</div>
-      <div class="title">33 — Privacy &amp; Data Protection</div>
+      <div class="label">← Trước</div>
+      <div class="title">33 — Privacy &amp; Data Protection cho AI</div>
     </a>
     <a href="35-eval-dataset-design.html" class="next">
-      <div class="label">tiếp theo →</div>
+      <div class="label">Tiếp theo →</div>
       <div class="title">35 — Eval Dataset Design</div>
     </a>
   </nav>

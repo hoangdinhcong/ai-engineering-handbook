@@ -12,7 +12,8 @@
   <div class="brand"><span class="dot"></span> AI Engineering</div>
   <div class="crumbs"><a href="../index.html">Mục lục</a> › Phần 12 · <span>39 — Computer-use &amp; Browser-use Agents</span></div>
   <div class="nav-actions">
-    <a href="38-inference-compute-scaling.html">← 38</a>
+    <a href="38-inference-compute-scaling.html">← Trước</a>
+    <a href="../index.html">Mục lục</a>
     <a href="40-code-execution-tool.html">Tiếp →</a>
   </div>
 </nav>
@@ -20,7 +21,7 @@
 <main class="page">
 
   <section class="hero">
-    <span class="eyebrow">Phần 12 · §39</span>
+    <div class="eyebrow-row"><span class="eyebrow">Phần 12 · §39</span><a class="hero-updated" href="../KNOWLEDGE_UPDATES.md" title="Lịch sử cập nhật kiến thức">↻ 2026-05-23</a></div>
     <h1>Computer-use &amp; Browser-use Agents</h1>
     <p class="lede">
       Khi AI không chỉ gọi API mà còn nhìn màn hình rồi bấm chuột, gõ phím, cuộn trang — đây là bước chuyển từ "agent gọi tool" sang "agent vận hành máy tính như người dùng thực sự".
@@ -325,6 +326,11 @@
     Một kỹ thuật grounding đáng chú ý: trước khi gửi screenshot lên VLM, system overlay các <strong>numbered bounding boxes</strong> lên tất cả các interactive elements (button, input, link). VLM chỉ cần trả về số hiệu element thay vì tọa độ pixel chính xác. Điều này giảm đáng kể lỗi miss-click và là technique được Anthropic dùng trong Claude Computer Use.
   </p>
 
+  <h3>OmniParser (Microsoft)</h3>
+  <p>
+    <strong>OmniParser v2</strong> (Feb 2025) là công cụ screen parsing của Microsoft Research: phân tích screenshot thành danh sách structured elements (button, icon, text field) với bounding box và nhãn ngữ nghĩa. Đạt 39.5% trên ScreenSpot Pro grounding benchmark (SOTA). Tích hợp với <strong>OmniTool</strong> — agent điều khiển Windows 11 VM, hỗ trợ GPT-4o, DeepSeek R1, Qwen-VL, và Anthropic Computer Use làm backbone. Thường được kết hợp với UI-TARS để cải thiện visual grounding trên desktop.
+  </p>
+
   <h2 id="implementations">39.6 Major implementations 2025–2026</h2>
 
   <!-- Comparison table -->
@@ -348,7 +354,7 @@
           <td>Full desktop (Docker sandbox), browser</td>
           <td>Low-level pixel + keyboard + screenshot + SOM</td>
           <td>Visual + SOM labels</td>
-          <td>OSWorld: ~22% (Claude 3.5, 2024); Claude 3.7 cải thiện đáng kể 2025</td>
+          <td>OSWorld: ~38% (Claude Sonnet 4.5, 2025 với beta <code>computer-use-2025-11-24</code>)</td>
           <td>Standard Claude API pricing; token per screenshot</td>
         </tr>
         <tr>
@@ -357,17 +363,17 @@
           <td>Browser (Chromium sandbox)</td>
           <td>High-level semantic + pixel fallback</td>
           <td>DOM accessibility tree primary</td>
-          <td>WebArena: ~58% (CUA model, 2025); best-in-class on booking tasks</td>
+          <td>OSWorld: 38.1% (CUA launch Jan 2025); GPT-5.5: 78.7% OSWorld-Verified (Apr 2026)</td>
           <td>Per-task pricing (Operator) / API (CUA)</td>
         </tr>
         <tr>
           <td><strong>Google Project Mariner</strong></td>
           <td>Google DeepMind</td>
           <td>Browser (Chrome extension)</td>
-          <td>Browser high-level + Gemini vision</td>
+          <td>Browser high-level + Gemini vision; xử lý 10 tác vụ song song</td>
           <td>DOM + visual hybrid (Gemini 2.0 Flash)</td>
-          <td>WebArena: ~83.5% (reported, Dec 2024) — state of art</td>
-          <td>Waitlist / Gemini API</td>
+          <td>WebVoyager: ~83.5% (Google I/O May 2025); không bypass purchase/ToS</td>
+          <td>Gemini API; rollout rộng từ Google I/O 2025</td>
         </tr>
         <tr>
           <td><strong>browser-use</strong></td>
@@ -375,8 +381,17 @@
           <td>Browser (Playwright)</td>
           <td>DOM + visual, 30+ browser actions</td>
           <td>Accessibility tree + screenshot</td>
-          <td>WebArena: ~58% với Claude 3.5; depends on backbone LLM</td>
+          <td>WebArena: ~58% với Claude 3.5; 50K+ GitHub stars (2025–2026)</td>
           <td>Open-source, self-hosted; LLM API cost only</td>
+        </tr>
+        <tr>
+          <td><strong>Stagehand (Browserbase)</strong></td>
+          <td>Browserbase (open-source SDK)</td>
+          <td>Browser (Playwright + cloud headless)</td>
+          <td>act() / extract() / observe() primitives; action caching tự động</td>
+          <td>DOM-first; screenshot fallback</td>
+          <td>v3 (Jan 2026): đa ngôn ngữ (Python, Go, Java, Rust); cache giảm ~30% LLM cost</td>
+          <td>Open-source SDK; Browserbase cloud có phí theo session</td>
         </tr>
         <tr>
           <td><strong>Skyvern</strong></td>
@@ -388,13 +403,22 @@
           <td>Open-source / Cloud plan available</td>
         </tr>
         <tr>
-          <td><strong>MultiOn</strong></td>
-          <td>MultiOn (YC)</td>
-          <td>Browser + limited desktop</td>
-          <td>High-level intent-based actions</td>
-          <td>Proprietary VLM + DOM</td>
-          <td>Consumer tasks (shopping, booking): high success rate</td>
-          <td>API subscription, per-task</td>
+          <td><strong>UI-TARS-2 (ByteDance)</strong></td>
+          <td>ByteDance (open-source VLM)</td>
+          <td>Desktop + browser + mobile</td>
+          <td>End-to-end VLM; mouse/keyboard/scroll; không cần framework</td>
+          <td>Screenshot-only (pure vision); OmniParser grounding</td>
+          <td>OSWorld: 47.5%; AndroidWorld: 73.3%; Online-Mind2Web: 88.2% (Sep 2025)</td>
+          <td>Open-source model; tự host; tích hợp MCP server</td>
+        </tr>
+        <tr>
+          <td><strong>Agent S2 / S3 (Simular)</strong></td>
+          <td>Simular AI</td>
+          <td>Full desktop (Ubuntu VM)</td>
+          <td>Compositional generalist-specialist; Mixture-of-Grounding</td>
+          <td>Visual + accessibility tree hybrid</td>
+          <td>OSWorld: 72.6% (Dec 2025) — <strong>đầu tiên vượt human baseline 72.36%</strong></td>
+          <td>API / self-hosted</td>
         </tr>
       </tbody>
     </table>
@@ -405,7 +429,7 @@
     <div>
       <div class="title">Eval scores thay đổi nhanh</div>
       <p>
-        Benchmark scores cho computer-use agents cải thiện rất nhanh — từ ~15% OSWorld (early 2024) lên 80%+ WebArena (late 2024) với các hệ thống tốt nhất. Những con số trên là snapshot 2025 và có thể đã lỗi thời. WebArena và OSWorld đang được thay thế dần bởi các benchmark khó hơn.
+        Benchmark scores cho computer-use agents cải thiện rất nhanh — từ ~15% OSWorld (early 2024) lên 72.6% (Agent S2, vượt human baseline Dec 2025). Những con số trên là snapshot đến mid-2026 và có thể đã lỗi thời. OSWorld đang có biến thể OSWorld-Human (đo hiệu quả tác vụ) và OSWorld-Verified cho so sánh sát hơn.
       </p>
     </div>
   </div>
@@ -460,6 +484,11 @@ asyncio.<span class="fn">run</span>(<span class="fn">main</span>())</code></pre>
 
   <p>
     Ưu điểm của <code>playwright-mcp</code>: tận dụng accessibility tree thay vì screenshot-only, giảm đáng kể token consumption và latency. Claude Code (§ này) chính là ví dụ điển hình dùng MCP cho browser automation.
+  </p>
+
+  <h3>Stagehand (Browserbase)</h3>
+  <p>
+    <strong>Stagehand v3</strong> (Jan 2026) là SDK open-source chạy trên Playwright, cung cấp ba AI primitives: <code>act()</code> (thực hiện action mô tả bằng ngôn ngữ tự nhiên), <code>extract()</code> (trích xuất dữ liệu có cấu trúc), và <code>observe()</code> (nhận diện các actions khả thi trên trang). Tính năng nổi bật: <strong>action caching tự động</strong> — DOM hashing giúp bỏ qua LLM call với các trang đã gặp, giảm ~30% cost và tăng 2x tốc độ. v3 hỗ trợ Python, Go, Java, Rust ngoài TypeScript. Tích hợp với Browserbase cloud cung cấp session replay và CAPTCHA solving.
   </p>
 
   <h3>Skyvern architecture</h3>
@@ -661,28 +690,35 @@ asyncio.<span class="fn">run</span>(<span class="fn">main</span>())</code></pre>
           <td>Web (local server: Reddit, shopping, GitLab, etc.)</td>
           <td>812 realistic web tasks</td>
           <td>Task completion rate (%)</td>
-          <td>~83% (Project Mariner), ~58% (CUA/browser-use)</td>
+          <td>~58% (browser-use/CUA); Project Mariner không công bố score WebArena chính thức</td>
         </tr>
         <tr>
-          <td><strong>VisualWebArena</strong></td>
-          <td>Web với visual tasks (xác định element bằng image)</td>
-          <td>910 tasks, vision-heavy</td>
+          <td><strong>WebVoyager</strong></td>
+          <td>Live web (50 sites thực)</td>
+          <td>643 tasks trên web thực</td>
           <td>Task completion rate (%)</td>
-          <td>~72% (GPT-4o based agents)</td>
+          <td>~83.5% (Project Mariner, May 2025); ~94% (Magnitude, 2026)</td>
         </tr>
         <tr>
           <td><strong>OSWorld</strong></td>
           <td>Full OS (Ubuntu VM): file ops, multi-app</td>
           <td>369 tasks cross 9 app domains</td>
           <td>Task success rate (%)</td>
-          <td>~38% (Claude 3.7 + SOM, 2025); human ~72%</td>
+          <td>38.1% (OpenAI CUA, Jan 2025); 47.5% (UI-TARS-2, Sep 2025); <strong>72.6% (Agent S2, Dec 2025 — vượt human 72.36%)</strong>; 78.7% (GPT-5.5, Apr 2026)</td>
         </tr>
         <tr>
           <td><strong>AndroidWorld</strong></td>
           <td>Android emulator: 116 apps</td>
           <td>116 unique + dynamic tasks</td>
           <td>Task success rate (%)</td>
-          <td>~44% (best agents 2025); human ~88%</td>
+          <td>~73.3% (UI-TARS-2, Sep 2025); human ~88%</td>
+        </tr>
+        <tr>
+          <td><strong>BrowseComp</strong></td>
+          <td>Live internet (multi-hop info retrieval)</td>
+          <td>1,266 câu hỏi hard-to-find facts</td>
+          <td>Accuracy (short answer)</td>
+          <td>GPT-4o ≈ 0% (không dùng tools); GPT-5.5 Pro: 90.1%; Claude Mythos Preview: 86.9% (leaderboard 2026)</td>
         </tr>
         <tr>
           <td><strong>WorkArena</strong></td>
@@ -696,7 +732,7 @@ asyncio.<span class="fn">run</span>(<span class="fn">main</span>())</code></pre>
   </div>
 
   <p>
-    Điểm nổi bật: ngay cả SOTA agents năm 2025 đều chưa đạt human performance trên bất kỳ benchmark nào. Gap lớn nhất là với <strong>OSWorld</strong> (full desktop, complex multi-app tasks) — nơi model phải lý giải về trạng thái hệ thống phức tạp hơn là chỉ điều hướng web.
+    Điểm nổi bật: đến cuối 2025, <strong>Agent S2 (Simular)</strong> đã vượt human baseline trên OSWorld (72.6% vs 72.36%). Đây là milestone lớn đầu tiên sau chưa đến 2 năm kể từ khi OSWorld ra mắt với các agent chỉ đạt ~15%. Tuy nhiên human performance trong benchmark environment không đồng nghĩa với "AGI" — human làm bài benchmark với constraints nhân tạo; real-world complexity vẫn là thách thức khác.
   </p>
 
   <h3>Sample action trace</h3>
@@ -799,19 +835,18 @@ Step 6:
     <li><strong>Grounding là bài toán khó nhất</strong>. Hybrid DOM + visual (với Set of Marks technique) là approach robust nhất. Pixel click thuần túy quá fragile với dynamic UI.</li>
     <li><strong>Latency ~3–10s per step</strong>. Giảm bằng accessibility tree thay screenshot, batch action hints, minimize số steps. Chấp nhận đây là trade-off; dùng async khi user không cần realtime.</li>
     <li><strong>Safety không phải afterthought</strong>. Human approval cho irreversible actions, prompt injection defense, sandbox isolation — tất cả phải design từ đầu.</li>
-    <li><strong>Eval benchmarks cho thấy gap lớn với human</strong>. WebArena ~83% (best), OSWorld ~38%. Production reliability thấp hơn benchmark đáng kể — đừng over-promise.</li>
+    <li><strong>Eval benchmarks: OSWorld human baseline đã bị vượt</strong>. Agent S2 đạt 72.6% OSWorld (Dec 2025, vượt human 72.36%); GPT-5.5 đạt 78.7% OSWorld-Verified (Apr 2026). BrowseComp là benchmark mới (OpenAI, Apr 2025) cho web-browsing agents với multi-hop reasoning. Production reliability vẫn thấp hơn benchmark — đừng over-promise.</li>
     <li><strong>Cách cũ (RPA brittle selectors) vs cách mới (VLM semantic grounding)</strong>. Mới robust hơn, tự-heal; nhưng chậm hơn và đắt hơn. Hybrid approach là optimal cho production.</li>
     <li><strong>Khi có API, dùng API</strong>. Computer-use là giải pháp cuối cùng, không phải mặc định.</li>
   </ol>
-
   <nav class="section-footer">
     <a href="38-inference-compute-scaling.html" class="prev">
-      <div class="label">← trước</div>
-      <div class="title">38 — Inference &amp; Compute Scaling</div>
+      <div class="label">← Trước</div>
+      <div class="title">38 — Inference-time Compute Scaling</div>
     </a>
     <a href="40-code-execution-tool.html" class="next">
-      <div class="label">tiếp theo →</div>
-      <div class="title">40 — Code Execution Tool</div>
+      <div class="label">Tiếp theo →</div>
+      <div class="title">40 — Code Execution as a Tool</div>
     </a>
   </nav>
 

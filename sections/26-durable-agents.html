@@ -13,6 +13,7 @@
   <div class="crumbs"><a href="../index.html">Mục lục</a> › Phần 9 · <span>26 — Long-running &amp; Durable Agents</span></div>
   <div class="nav-actions">
     <a href="25-agent-memory.html">← Trước</a>
+    <a href="../index.html">Mục lục</a>
     <a href="27-agent-eval.html">Tiếp →</a>
   </div>
 </nav>
@@ -20,7 +21,7 @@
 <main class="page">
 
   <section class="hero">
-    <span class="eyebrow">Phần 9 · §26</span>
+    <div class="eyebrow-row"><span class="eyebrow">Phần 9 · §26</span><a class="hero-updated" href="../KNOWLEDGE_UPDATES.md" title="Lịch sử cập nhật kiến thức">↻ 2026-05-23</a></div>
     <h1>Long-running &amp; Durable Agents</h1>
     <p class="lede">
       Agent chạy hàng giờ, hàng ngày không thể sống sót bằng một vòng lặp đơn giản.
@@ -369,7 +370,7 @@
       <div class="callout warn" style="margin-top:12px">
         <div class="icon">⚠</div>
         <div><div class="title">LLM calls không deterministic khi retry</div>
-        <p>Khác với tool calls (có thể cache), LLM calls khi retry sẽ produce output khác (do temperature &gt; 0). Đây là lý do nhiều durable agent frameworks treat LLM calls như "side effects cần record" — record output lần đầu và replay recorded output khi cần.</p></div>
+        <p>Khác với tool calls (có thể cache), LLM calls khi retry sẽ produce output khác (do temperature &gt; 0). Đây là lý do nhiều durable agent frameworks treat LLM calls như "side effects cần record" — record output lần đầu và replay recorded output khi cần. Lưu ý: nên ghi cả <code>model_id</code> vào record vì provider cập nhật model weights thường xuyên, ảnh hưởng đến khả năng reproduce chính xác hành vi.</p></div>
       </div>
     </div>
   </div>
@@ -399,17 +400,17 @@
         </tr>
         <tr>
           <td><strong>Inngest</strong></td>
-          <td>~20–100ms per step</td>
-          <td>At-least-once (với idempotency keys)</td>
-          <td>TypeScript, Python (2024+), Go</td>
-          <td>Free tier 50k/month; pay-as-you-go từ $20/month</td>
+          <td>~20–100ms per step (near-zero với Checkpointing mode)</td>
+          <td>At-least-once (với idempotency keys); Checkpointing mode hỗ trợ real-time workflows</td>
+          <td>TypeScript, Python, Go</td>
+          <td>Free tier; paid từ $75/month</td>
         </tr>
         <tr>
           <td><strong>Restate</strong></td>
           <td>&lt;5ms per step (embedded)</td>
           <td>Exactly-once (durable promises)</td>
           <td>TypeScript, Java, Kotlin, Python, Go, Rust</td>
-          <td>Open source self-host; Restate Cloud beta</td>
+          <td>Open source self-host; Restate Cloud GA (public, usage-based pricing)</td>
         </tr>
         <tr>
           <td><strong>Hatchet</strong></td>
@@ -430,7 +431,21 @@
           <td>~50–200ms per step</td>
           <td>At-least-once với retries</td>
           <td>TypeScript (primary), Python (v3)</td>
-          <td>Free 10k tasks/month; $0.001 per task sau đó</td>
+          <td>Free tier; paid từ $10/month</td>
+        </tr>
+        <tr>
+          <td><strong>Cloudflare Workflows</strong></td>
+          <td>~50–150ms per step (serverless)</td>
+          <td>At-least-once; auto-persist state sau mỗi step; waitForEvent API</td>
+          <td>TypeScript/JavaScript (Workers), Python (AI Gateway)</td>
+          <td>Free 1k/month; $0.01 per 1k workflow-steps sau đó; GA từ tháng 4/2025</td>
+        </tr>
+        <tr>
+          <td><strong>DBOS</strong></td>
+          <td>~1–10ms per step (database-backed)</td>
+          <td>Exactly-once qua Postgres transactions; DBOSAgent wrapper cho Pydantic AI</td>
+          <td>Python (primary), TypeScript</td>
+          <td>Open source (DBOS Transact); DBOS Cloud hosted tier</td>
         </tr>
       </tbody>
     </table>
@@ -442,9 +457,11 @@
       <div class="title">Chọn workflow engine năm 2026</div>
       <p>
         <strong>TypeScript stack + cần managed service:</strong> Inngest hoặc Trigger.dev — developer experience tốt nhất, deploy nhanh.<br>
-        <strong>Python heavy + enterprise scale:</strong> Temporal — battle-tested, ecosystem phong phú nhất.<br>
-        <strong>Latency-sensitive (embedded):</strong> Restate — overhead thấp nhất nhờ co-locate với service.<br>
+        <strong>Python heavy + enterprise scale:</strong> Temporal — battle-tested, tích hợp chính thức với OpenAI Agents SDK (public preview từ 9/2025).<br>
+        <strong>Latency-sensitive (embedded):</strong> Restate Cloud (GA) — overhead thấp nhất, tích hợp tốt với Pydantic AI.<br>
         <strong>Đã dùng AWS:</strong> Step Functions — ít vendor mới, tích hợp native với Lambda/ECS.<br>
+        <strong>Edge/serverless Workers:</strong> Cloudflare Workflows — GA từ 4/2025, tích hợp native với Cloudflare AI Gateway và Agents.<br>
+        <strong>Database-backed + Postgres:</strong> DBOS Transact — exactly-once qua DB transactions, không cần external workflow server.<br>
         <strong>Self-host &amp; open source:</strong> Temporal OSS hoặc Hatchet.
       </p>
     </div>
@@ -1205,7 +1222,7 @@ result = <span class="fn">run_agent</span>(<span class="str">"Research LLM evals
       hàng trăm lần tổng overhead checkpoint.
     </li>
     <li>
-      <strong>Workflow engines (Temporal, Inngest, Restate, Step Functions, Trigger.dev)</strong>
+      <strong>Workflow engines (Temporal, Inngest, Restate, Cloudflare Workflows, DBOS, Step Functions, Trigger.dev)</strong>
       cung cấp durability out-of-the-box. Đừng tự xây toàn bộ — dùng những gì đã có.
     </li>
     <li>
@@ -1247,15 +1264,14 @@ result = <span class="fn">run_agent</span>(<span class="str">"Research LLM evals
       </p>
     </div>
   </div>
-
   <nav class="section-footer">
     <a href="25-agent-memory.html" class="prev">
-      <div class="label">← trước</div>
-      <div class="title">25 — Agent Memory</div>
+      <div class="label">← Trước</div>
+      <div class="title">25 — Agent Memory Architectures</div>
     </a>
     <a href="27-agent-eval.html" class="next">
-      <div class="label">tiếp theo →</div>
-      <div class="title">27 — Agent Evaluation</div>
+      <div class="label">Tiếp theo →</div>
+      <div class="title">27 — Agent Eval &amp; Benchmarking</div>
     </a>
   </nav>
 

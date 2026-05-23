@@ -13,6 +13,7 @@
   <div class="crumbs"><a href="../index.html">Mục lục</a> › Phần 10 · <span>30 — Agent-specific Threats &amp; Mitigations</span></div>
   <div class="nav-actions">
     <a href="29-prompt-injection-deep.html">← Trước</a>
+    <a href="../index.html">Mục lục</a>
     <a href="31-sandboxing.html">Tiếp →</a>
   </div>
 </nav>
@@ -20,7 +21,7 @@
 <main class="page">
 
   <section class="hero">
-    <span class="eyebrow">Phần 10 · §30</span>
+    <div class="eyebrow-row"><span class="eyebrow">Phần 10 · §30</span><a class="hero-updated" href="../KNOWLEDGE_UPDATES.md" title="Lịch sử cập nhật kiến thức">↻ 2026-05-23</a></div>
     <h1>Agent-specific Threats &amp; Mitigations</h1>
     <p class="lede">
       Agent không chỉ trả lời — agent <em>hành động</em>: ghi file, chạy code, gửi email, kích hoạt deployment.
@@ -530,7 +531,7 @@ result = agent.run(<span class="str">"Query the DB"</span>, tools=[
     MCP servers, model weights, prompt templates từ community.
   </p>
 
-  <h3>Malicious MCP Servers</h3>
+  <h3>Malicious MCP Servers &amp; Tool Poisoning</h3>
   <p>
     Model Context Protocol (MCP) cho phép agent kết nối với tools qua external servers.
     Một MCP server độc hại có thể:
@@ -540,7 +541,25 @@ result = agent.run(<span class="str">"Query the DB"</span>, tools=[
     <li>Log mọi tool call và response (data exfil)</li>
     <li>Thay đổi hành vi dựa trên user identity (targeted attack)</li>
     <li>Thực hiện SSRF từ agent host network</li>
+    <li><strong>Tool description poisoning:</strong> nhúng malicious instruction ẩn trong <em>mô tả của tool</em> — agent đọc và thực thi như lệnh hợp lệ (OWASP MCP Top 10: MCP03)</li>
   </ul>
+
+  <div class="callout danger">
+    <div class="icon">!</div>
+    <div>
+      <div class="title">CVE-2025-54136 — MCPoison: lỗ hổng tool poisoning cấu trúc trong Cursor IDE</div>
+      <p>
+        Công bố tháng 8/2025 bởi TrueFoundry: attacker nhúng instruction độc hại vào <code>tool.description</code> của MCP server,
+        agent thực thi persistent code execution mà không có bất kỳ user interaction nào.
+        Invariant Labs (tháng 4/2025) cũng công bố kỹ thuật tương tự ảnh hưởng nhiều agent framework.
+        Tháng 9/2025: gói npm <code>postmark-mcp</code> bị xác nhận là MCP server backdoor đầu tiên in-the-wild.
+      </p>
+      <p style="margin-bottom:0">
+        <strong>Thống kê 2026:</strong> 5.5% MCP server công khai đã có poisoned tool descriptions;
+        200,000+ MCP instance dễ bị tấn công trên IDEs, internal tools, và cloud services.
+      </p>
+    </div>
+  </div>
 
   <pre><code><span class="cm"># Verify MCP server trước khi kết nối</span>
 mcp_config = {
@@ -555,8 +574,9 @@ mcp_config = {
 }
 
 <span class="cm"># Không bao giờ run MCP server từ unknown publisher</span>
-<span class="cm"># Treat MCP server output như untrusted user input</span>
-<span class="cm"># Sandbox MCP server trong separate process/container</span></code></pre>
+<span class="cm"># Treat MCP server output VÀ tool descriptions như untrusted input</span>
+<span class="cm"># Sandbox MCP server trong separate process/container</span>
+<span class="cm"># Scan tool.description cho instruction patterns trước khi register</span></code></pre>
 
   <h3>Fine-tuned Models với Backdoors</h3>
   <p>
@@ -824,10 +844,17 @@ USER_DAILY_BUDGET_USD = 20.00</code></pre>
         </tr>
         <tr>
           <td>2025</td>
-          <td>Malicious MCP Server — npm package</td>
-          <td>Typosquat của official MCP package</td>
+          <td>postmark-mcp npm Backdoor (Sept 2025)</td>
+          <td>Malicious MCP package in-the-wild đầu tiên</td>
           <td>Tool responses bị poison; data logged to attacker server</td>
-          <td>Version không pin; không verify package hash</td>
+          <td>Version không pin; không verify package hash; tool descriptions không được scan</td>
+        </tr>
+        <tr>
+          <td>2025</td>
+          <td>MCPoison / CVE-2025-54136 — Cursor IDE</td>
+          <td>Tool description poisoning trong MCP server (Invariant Labs Apr 2025; TrueFoundry Aug 2025)</td>
+          <td>Persistent code execution không cần user interaction; 84.2% thành công khi auto-approval bật</td>
+          <td>Tool descriptions không được treat như untrusted; không có MCP sandbox</td>
         </tr>
         <tr>
           <td>2025</td>
@@ -889,15 +916,18 @@ USER_DAILY_BUDGET_USD = 20.00</code></pre>
     <div class="card">
       <div style="font-weight:700;font-size:16px;margin-bottom:12px;color:#b4e07a">Cách hiện tại (2025–2026)</div>
       <ul style="margin:0;padding-left:18px;line-height:1.9">
-        <li>Tool registry + least privilege per tool</li>
+        <li>Tool registry + least privilege per tool (<strong>OWASP LLM06:2025 Excessive Agency</strong>)</li>
         <li>3-tier: read-only / write / destructive</li>
         <li>Dry-run preview trước mọi write action</li>
         <li>Cost ceiling + rate limit per session/user</li>
         <li>Immutable audit log mọi tool call</li>
-        <li>MCP server pin version + verify hash</li>
+        <li>MCP server pin version + verify hash + <strong>scan tool descriptions</strong> (CVE-2025-54136)</li>
         <li>Sub-agent depth max = 3</li>
-        <li>Validate + sanitize tool args</li>
+        <li>Validate + sanitize tool args <em>và</em> tool descriptions</li>
         <li>Secrets qua Vault, không bao giờ trong prompt</li>
+        <li>Agent có <strong>identity riêng</strong> — không reuse user OAuth token (<strong>OWASP ASI03</strong>)</li>
+        <li>Persistent memory được validate trước khi ghi (<strong>memory poisoning, OWASP ASI06</strong>)</li>
+        <li>Align với <strong>OWASP Top 10 for Agentic Applications (ASI01–ASI10)</strong> &amp; <strong>CISA/Five Eyes Agentic AI Guidance (tháng 5/2026)</strong></li>
       </ul>
     </div>
   </div>
@@ -987,6 +1017,24 @@ USER_DAILY_BUDGET_USD = 20.00</code></pre>
           <td>Audit fine-tune dataset trước khi dùng</td>
           <td>Behavioral testing với trigger phrases; isolate model</td>
         </tr>
+        <tr>
+          <td>Agent identity / OAuth misuse (OWASP ASI03)</td>
+          <td><span class="tag red">Critical</span></td>
+          <td>Agent có identity riêng; không dùng user OAuth token cho agent</td>
+          <td>Rotate agent credentials; log agent actions riêng; scope OAuth tối thiểu</td>
+        </tr>
+        <tr>
+          <td>Memory poisoning (OWASP ASI06)</td>
+          <td><span class="tag yellow">High</span></td>
+          <td>Validate và sanitize data trước khi ghi vào persistent memory</td>
+          <td>TTL cho memory entries; audit memory changes; sandboxed memory reads</td>
+        </tr>
+        <tr>
+          <td>MCP tool description poisoning (MCP03)</td>
+          <td><span class="tag red">Critical</span></td>
+          <td>Scan tool descriptions như untrusted input; allowlist tool schemas</td>
+          <td>Pin MCP version + verify hash; disable auto-approval; sandbox MCP process</td>
+        </tr>
       </tbody>
     </table>
   </div>
@@ -1068,16 +1116,22 @@ USER_DAILY_BUDGET_USD = 20.00</code></pre>
       <strong>Incidents thực tế 2024–2026:</strong> root cause chung trong mọi sự cố = agent có quyền quá rộng
       và không có approval gate. Least privilege + human-in-the-loop là defence đã ngăn được tất cả.
     </li>
+    <li>
+      <strong>Framework chuẩn 2025–2026:</strong> <em>OWASP Top 10 for Agentic Applications (ASI01–ASI10)</em>
+      phát hành tháng 12/2025 — peer-reviewed bởi 100+ chuyên gia, endorsed bởi NIST/Microsoft/NVIDIA.
+      <em>CISA + Five Eyes Agentic AI Guidance</em> (tháng 5/2026) khuyến nghị zero trust, defense-in-depth,
+      least privilege cho mọi agentic deployment. <em>OWASP LLM06:2025 Excessive Agency</em> định nghĩa
+      formal về over-permissioned agents và cách phòng ngừa.
+    </li>
   </ol>
-
   <nav class="section-footer">
     <a href="29-prompt-injection-deep.html" class="prev">
-      <div class="label">← trước</div>
+      <div class="label">← Trước</div>
       <div class="title">29 — Prompt Injection Deep-dive</div>
     </a>
     <a href="31-sandboxing.html" class="next">
-      <div class="label">tiếp theo →</div>
-      <div class="title">31 — Sandboxing &amp; Isolation</div>
+      <div class="label">Tiếp theo →</div>
+      <div class="title">31 — Sandboxing &amp; Isolation cho AI Agents</div>
     </a>
   </nav>
 

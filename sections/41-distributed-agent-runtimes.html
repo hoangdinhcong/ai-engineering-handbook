@@ -13,6 +13,7 @@
   <div class="crumbs"><a href="../index.html">Mục lục</a> › Phần 12 · <span>41 — Distributed Agent Runtimes</span></div>
   <div class="nav-actions">
     <a href="40-code-execution-tool.html">← Trước</a>
+    <a href="../index.html">Mục lục</a>
     <a href="42-edge-on-device.html">Tiếp →</a>
   </div>
 </nav>
@@ -20,7 +21,7 @@
 <main class="page">
 
   <section class="hero">
-    <span class="eyebrow">Phần 12 · §41</span>
+    <div class="eyebrow-row"><span class="eyebrow">Phần 12 · §41</span><a class="hero-updated" href="../KNOWLEDGE_UPDATES.md" title="Lịch sử cập nhật kiến thức">↻ 2026-05-23</a></div>
     <h1>Distributed Agent Runtimes</h1>
     <p class="lede">
       Từ một Python script đơn độc đến fleet of workers chạy song song — kiến trúc phân tán cho AI agents: queue, worker pool, agent mesh, sticky session, và cách đảm bảo hệ thống không sập khi một phần thất bại.
@@ -39,8 +40,8 @@
       <li><a href="#shared-memory">41.6 Chia sẻ memory phân tán</a></li>
       <li><a href="#sticky-session">41.7 Sticky session / session affinity</a></li>
       <li><a href="#multi-tenancy">41.8 Multi-tenancy at scale</a></li>
-      <li><a href="#frameworks">41.9 Frameworks: Ray, Dask, K8s, Modal</a></li>
-      <li><a href="#workflow-orchestrators">41.10 Workflow orchestrators: Temporal / Inngest</a></li>
+      <li><a href="#frameworks">41.9 Frameworks: Ray, K8s, Modal, Dapr, Cloudflare, Managed</a></li>
+      <li><a href="#workflow-orchestrators">41.10 Workflow orchestrators: Temporal, Inngest, Restate, LangGraph</a></li>
       <li><a href="#observability">41.11 Observability phân tán</a></li>
       <li><a href="#failure-modes">41.12 Failure modes</a></li>
       <li><a href="#cost-optimization">41.13 Tối ưu chi phí at scale</a></li>
@@ -415,6 +416,20 @@ QUEUE_URL = <span class="str">'https://sqs.us-east-1.amazonaws.com/123/agent-tas
     <li><strong>HTTP/REST:</strong> đơn giản nhất, dễ debug, nhưng overhead hơn gRPC. Phù hợp cho cross-team hoặc khi agent cần expose public API.</li>
   </ul>
 
+  <h3>A2A Protocol — chuẩn liên-framework cho agent mesh</h3>
+  <p>
+    Tháng 4/2025, Google công bố <strong>Agent2Agent (A2A) Protocol</strong> — chuẩn mở cho phép các AI agent của
+    các vendor khác nhau <em>khám phá nhau, ủy thác task, và phối hợp</em> qua HTTP + JSON-RPC 2.0 + Server-Sent Events.
+    A2A bổ sung cho MCP (agent↔tool) bằng tầng agent↔agent. Tháng 6/2025, A2A được đóng góp vào
+    Linux Foundation (Apache 2.0); tháng 8/2025, IBM's ACP sáp nhập vào A2A.
+    Đến tháng 4/2026, hơn 150 tổ chức hỗ trợ A2A gồm Google, Microsoft, AWS, Salesforce, SAP, ServiceNow, và IBM.
+  </p>
+  <ul>
+    <li><strong>Agent Card:</strong> mỗi agent publish một JSON "name card" mô tả khả năng — agent khác dùng để discovery.</li>
+    <li><strong>Task delegation:</strong> agent A giao task cho agent B qua HTTP POST; B có thể stream kết quả về qua SSE.</li>
+    <li><strong>Tích hợp với MCP:</strong> A2A (agent↔agent) + MCP (agent↔tool) tạo thành interoperability stack đầy đủ.</li>
+  </ul>
+
   <h2 id="shared-memory">41.6 Chia sẻ memory giữa distributed agents</h2>
   <p>
     Memory của agent (§37) phải được externalize hoàn toàn khi chạy distributed. Ba tier thường gặp:
@@ -597,7 +612,7 @@ QUEUE_URL = <span class="str">'https://sqs.us-east-1.amazonaws.com/123/agent-tas
     </table>
   </div>
 
-  <h2 id="frameworks">41.9 Frameworks: Ray, Dask, Kubernetes, Modal, Bento</h2>
+  <h2 id="frameworks">41.9 Frameworks: Ray, Kubernetes, Modal, Dapr Agents, Cloudflare Agents, managed runtimes</h2>
 
   <div class="table-wrap">
     <table>
@@ -625,8 +640,48 @@ QUEUE_URL = <span class="str">'https://sqs.us-east-1.amazonaws.com/123/agent-tas
           <td>Durable workflow orchestration, long-running agents</td>
           <td>Python, Go, Java, TypeScript</td>
           <td>Cao — event sourcing, replay</td>
-          <td>Self-host (Temporal server) hoặc Temporal Cloud</td>
-          <td>Workflow tự recover sau crash; activity retry built-in; history replay; tốt cho multi-step agent</td>
+          <td>Self-host hoặc Temporal Cloud</td>
+          <td>Tích hợp OpenAI Agents SDK GA (3/2026); Nexus + Multi-Region Replication GA (99.99% SLA); 9.1 nghìn tỷ executions; tốt cho multi-step agent</td>
+        </tr>
+        <tr>
+          <td><strong>Dapr Agents</strong></td>
+          <td>Production-grade agent runtime, durable multi-agent workflows</td>
+          <td>Python (thêm ngôn ngữ qua sidecar)</td>
+          <td>Cao — mọi LLM call &amp; tool call được checkpoint vào state store</td>
+          <td>Self-host (CNCF open-source)</td>
+          <td>GA v1.0 (CNCF, 3/2026); mỗi agent có cryptographic identity; built-in connectivity 50+ enterprise data sources; dựa trên Dapr Workflow engine đã battle-tested</td>
+        </tr>
+        <tr>
+          <td><strong>AutoGen v0.4</strong></td>
+          <td>Multi-agent conversation, distributed actor-based agents</td>
+          <td>Python, .NET</td>
+          <td>Ephemeral (cần tích hợp external persistence)</td>
+          <td>Open-source (Microsoft Research)</td>
+          <td>Kiến trúc lại hoàn toàn (1/2025) theo actor model; async message exchange; AgentChat API cấp cao + Core API cho distributed scenario; cross-language Python/.NET</td>
+        </tr>
+        <tr>
+          <td><strong>Cloudflare Agents</strong></td>
+          <td>Serverless edge agents, durable actor runtime toàn cầu</td>
+          <td>JavaScript/TypeScript, Python</td>
+          <td>Cao — Durable Objects + step-based journaling (Project Think, 4/2026)</td>
+          <td>Pay-per-use, scale-to-zero, không tốn phí khi idle</td>
+          <td>Agents Week 4/2026: Dynamic Workers (V8 isolate cold start &lt;5ms), Sandboxes GA, Cloudflare Mesh; phù hợp edge + global low-latency</td>
+        </tr>
+        <tr>
+          <td><strong>AWS Bedrock AgentCore</strong></td>
+          <td>Managed production agent runtime trên AWS</td>
+          <td>Bất kỳ (mang framework của bạn)</td>
+          <td>Cao — session isolation microVM, managed memory, tool gateway</td>
+          <td>Managed (serverless, per session)</td>
+          <td>GA 10/2025; framework-agnostic (LangGraph, CrewAI, LlamaIndex, Strands); mỗi user session = isolated microVM; tích hợp IAM, CloudWatch</td>
+        </tr>
+        <tr>
+          <td><strong>Vertex AI Agent Engine</strong></td>
+          <td>Managed agent runtime trên Google Cloud</td>
+          <td>Python (ADK)</td>
+          <td>Cao — managed state &amp; session persistence</td>
+          <td>Managed (Google Cloud pricing)</td>
+          <td>ADK đạt 7 triệu downloads Q1/2026; Wells Fargo là ngân hàng đầu tiên deploy agents toàn công ty trên Vertex AI; tích hợp A2A native</td>
         </tr>
         <tr>
           <td><strong>Kubernetes Jobs</strong></td>
@@ -643,14 +698,6 @@ QUEUE_URL = <span class="str">'https://sqs.us-east-1.amazonaws.com/123/agent-tas
           <td>Ephemeral (stateless functions)</td>
           <td>Pay per second GPU usage</td>
           <td>Đơn giản nhất để bắt đầu; built-in container + GPU; tốt cho event-triggered agent workloads</td>
-        </tr>
-        <tr>
-          <td><strong>Inferless / BentoML</strong></td>
-          <td>Model serving + agent backend</td>
-          <td>Python</td>
-          <td>Stateless serving</td>
-          <td>Managed cloud hoặc self-host</td>
-          <td>BentoML dễ đóng gói model + agent thành service; Inferless serverless GPU hosting</td>
         </tr>
       </tbody>
     </table>
@@ -678,11 +725,12 @@ workers = [AgentWorker.<span class="fn">remote</span>(<span class="str">'researc
 tasks = [w.<span class="fn">run_task</span>.<span class="fn">remote</span>(t) <span class="kw">for</span> w, t <span class="kw">in</span> <span class="fn">zip</span>(workers, batch)]
 results = ray.<span class="fn">get</span>(tasks)   <span class="cm"># parallel execution</span></code></pre>
 
-  <h2 id="workflow-orchestrators">41.10 Workflow orchestrators: Temporal và Inngest</h2>
+  <h2 id="workflow-orchestrators">41.10 Workflow orchestrators: Temporal, Inngest, Restate, LangGraph Platform</h2>
   <p>
     Queue-based worker pool giải quyết parallelism và scale, nhưng thiếu một thứ quan trọng:
     <strong>durability</strong> — khả năng resume từ đúng bước mà không mất progress khi hệ thống crash.
-    Đây là lúc <em>workflow orchestrators</em> phát huy.
+    Đây là lúc <em>workflow orchestrators</em> phát huy. Kể từ 2025, đây là lớp hạ tầng tăng trưởng nhanh nhất
+    trong AI agent stack.
   </p>
 
   <h3>Temporal cho distributed agent coordination</h3>
@@ -690,6 +738,9 @@ results = ray.<span class="fn">get</span>(tasks)   <span class="cm"># parallel e
     Temporal lưu toàn bộ workflow execution history dưới dạng events. Khi workflow crash,
     Temporal <em>replay</em> history để reconstruct state — agent tiếp tục từ đúng bước cuối cùng.
     Không cần viết retry logic, checkpoint logic thủ công.
+    Tháng 3/2026, <strong>Temporal + OpenAI Agents SDK integration</strong> đạt GA — agent OpenAI tự động
+    được bao bọc bởi durable execution, handle rate limit và crash mà không cần code thêm.
+    Temporal Nexus (cross-namespace workflow) và Multi-Region Replication (SLA 99.99%) cũng đạt GA cùng thời điểm.
   </p>
   <pre><code><span class="cm"># Temporal workflow cho multi-step agent</span>
 <span class="kw">from</span> temporalio <span class="kw">import</span> workflow, activity
@@ -724,11 +775,30 @@ results = ray.<span class="fn">get</span>(tasks)   <span class="cm"># parallel e
     <span class="kw">return</span> code
     <span class="cm"># Nếu crash ở step 2 → Temporal replay lại, bỏ qua step 1 (đã done)</span></code></pre>
 
-  <h3>Inngest — event-driven, dễ tích hợp</h3>
+  <h3>Inngest — event-driven, dễ tích hợp serverless</h3>
   <p>
-    Inngest tương tự Temporal nhưng dùng HTTP webhook thay vì gRPC, dễ tích hợp vào Next.js/Vercel/serverless.
+    Inngest dùng HTTP webhook thay vì gRPC — dễ tích hợp vào Next.js/Vercel/serverless.
     Phù hợp với stack JavaScript/TypeScript. Workflow định nghĩa bằng <code>inngest.createFunction()</code>,
-    trigger bởi events, tự retry với backoff.
+    trigger bởi events, tự retry với backoff. Phù hợp cho các team đã dùng Vercel/edge functions
+    và muốn thêm durability mà không vận hành Temporal server riêng.
+  </p>
+
+  <h3>Restate — durable execution nhẹ hơn, serverless-native</h3>
+  <p>
+    <strong>Restate</strong> dùng cùng cơ chế journal/replay như Temporal nhưng với footprint nhẹ hơn đáng kể.
+    Restate Cloud mở public 2025 với usage-based pricing. Điểm khác biệt: Restate tích hợp tốt với
+    serverless (Cloudflare Workers, AWS Lambda) và hỗ trợ <strong>durable sessions</strong> — stateful entity
+    tồn tại qua nhiều invocations mà không cần external Redis. Tháng 2025, Restate ra integration với
+    Pydantic AI để thêm durable execution cho agent loop Python với chỉ vài dòng code.
+  </p>
+
+  <h3>LangGraph Platform (LangGraph 1.0)</h3>
+  <p>
+    LangGraph 1.0 (stable release cuối 2025) là framework durable agent đầu tiên đạt major version.
+    <strong>LangGraph Platform</strong> (trước gọi là LangGraph Cloud, đổi tên thành LangSmith Deployment 10/2025)
+    là managed hosting layer cho agent LangGraph. Tính năng: checkpointing, durable execution,
+    human-in-the-loop approvals, "Remote Graphs" (gọi agent khác như microservice trong multi-agent architecture).
+    Được dùng bởi Uber, LinkedIn, Klarna ở production.
   </p>
 
   <h2 id="observability">41.11 Observability qua distributed system</h2>
@@ -945,17 +1015,19 @@ tracer = trace.<span class="fn">get_tracer</span>(<span class="str">"agent-worke
       <p class="label-sm" style="color:var(--danger)">→ Fragile, không fault-tolerant, tốn chi phí, debug khó, không scale well</p>
     </div>
     <div class="tab-panel">
-      <p><strong>Triển khai:</strong> Message queue (SQS/RabbitMQ) + stateless worker pool. Orchestrator đẩy task vào queue, workers kéo task ra xử lý. State externalized vào Redis + VectorDB + MongoDB. Spot instances cho cost efficiency.</p>
+      <p><strong>Triển khai:</strong> Message queue (SQS/RabbitMQ) + stateless worker pool, hoặc managed agent runtime (AWS Bedrock AgentCore GA 10/2025, Vertex AI Agent Engine, Cloudflare Agents). Orchestrator đẩy task vào queue, workers kéo task ra xử lý. State externalized vào Redis + VectorDB + MongoDB. Spot instances cho cost efficiency.</p>
 
-      <p><strong>Concurrency:</strong> N worker processes, mỗi process là một asyncio event loop. Scale = thêm pod. KEDA autoscale theo queue depth, scale to zero khi idle.</p>
+      <p><strong>Concurrency:</strong> N worker processes, mỗi process là một asyncio event loop. Scale = thêm pod. KEDA autoscale theo queue depth, scale to zero khi idle. Cloudflare Agents dùng V8 isolates cold start &lt;5ms cho edge scenarios.</p>
 
-      <p><strong>Fault handling:</strong> Task có idempotency key. Worker crash → task về queue (visibility timeout) → worker khác retry. DLQ cho tasks fail nhiều lần. Circuit breaker trước LLM API. Temporal/Inngest cho durable multi-step workflow.</p>
+      <p><strong>Fault handling:</strong> Task có idempotency key. Worker crash → task về queue (visibility timeout) → worker khác retry. DLQ cho tasks fail nhiều lần. Circuit breaker trước LLM API. Temporal/Inngest/Restate/LangGraph Platform cho durable multi-step workflow. Dapr Agents v1.0 (CNCF) checkpoint mọi LLM call và tool execution.</p>
+
+      <p><strong>Agent interop:</strong> A2A Protocol (Google → Linux Foundation 6/2025, 150+ orgs 4/2026) cho agent-to-agent cross-framework communication. MCP (agent↔tool) + A2A (agent↔agent) tạo interoperability stack đầy đủ.</p>
 
       <p><strong>Observability:</strong> OpenTelemetry distributed tracing với trace context propagated qua queue headers. Spans cho mỗi agent step, LLM call, tool call. Dashboard Grafana với queue depth, P95 latency, error rate by task type.</p>
 
       <p><strong>Scale:</strong> KEDA autoscale 0 → 50 workers theo queue depth. Warm pool cho latency-sensitive path. Spot instances. Batch scheduling cho non-urgent tasks vào giờ thấp điểm.</p>
 
-      <p class="label-sm" style="color:var(--accent-3)">→ Fault-tolerant, observable, cost-optimized, horizontally scalable</p>
+      <p class="label-sm" style="color:var(--accent-3)">→ Fault-tolerant, observable, cost-optimized, horizontally scalable, interoperable qua A2A</p>
     </div>
   </div>
 
@@ -979,21 +1051,22 @@ tracer = trace.<span class="fn">get_tracer</span>(<span class="str">"agent-worke
     <li><strong>Queue-based orchestration là nền tảng:</strong> SQS / RabbitMQ / Redis Streams / Kafka — producer đẩy task, consumer (worker) kéo ra, ACK khi done, không ACK nếu fail.</li>
     <li><strong>Sticky session là optimization:</strong> route cùng session về cùng worker để tận dụng KV cache warmth, không phải requirement. Luôn có fallback path.</li>
     <li><strong>Multi-tenancy:</strong> per-tenant queue + weighted round-robin + rate limiting tại đầu vào. Dedicated vs shared worker pool tuỳ theo tier và SLA.</li>
-    <li><strong>Workflow orchestrators (Temporal/Inngest):</strong> dùng khi cần durable multi-step agent với retry tự động và replay-on-crash — không phải cho mọi use case.</li>
+    <li><strong>Workflow orchestrators (Temporal/Inngest/Restate/LangGraph Platform):</strong> dùng khi cần durable multi-step agent với retry tự động và replay-on-crash. Temporal đạt 9.1 nghìn tỷ executions với SLA 99.99%; Restate và LangGraph Platform phù hợp hơn cho serverless và Python stack. Dapr Agents v1.0 (CNCF GA 3/2026) là lựa chọn mạnh cho Kubernetes-native, framework-agnostic.</li>
     <li><strong>Observability phân tán:</strong> propagate trace context qua queue headers, dùng OpenTelemetry spans cho mọi agent step. Không có distributed tracing = debugging mù.</li>
     <li><strong>Failure modes:</strong> retry storm → exponential backoff + jitter; partial failure → at-least-once + idempotency key; cascading → circuit breaker + backpressure.</li>
     <li><strong>Cost:</strong> spot instances + autoscale to zero + batch scheduling có thể giảm 70-80% chi phí compute so với on-demand constant capacity.</li>
-    <li><strong>Cold start:</strong> warm pool + lazy model loading + connection pre-warming. Scale to zero chỉ khi chấp nhận được cold start latency (batch workload, overnight jobs).</li>
+    <li><strong>Cold start:</strong> warm pool + lazy model loading + connection pre-warming. Scale to zero chỉ khi chấp nhận được cold start latency (batch workload, overnight jobs). Cloudflare Agents với V8 isolates đạt cold start &lt;5ms — phù hợp cho edge real-time agents.</li>
+    <li><strong>A2A Protocol:</strong> chuẩn mở agent-to-agent (Google → Linux Foundation 6/2025, Apache 2.0, 150+ tổ chức hỗ trợ 4/2026). Kết hợp với MCP tạo interoperability stack đầy đủ cho multi-agent cross-vendor systems.</li>
+    <li><strong>Managed runtimes:</strong> AWS Bedrock AgentCore (GA 10/2025), Vertex AI Agent Engine, và Cloudflare Agents mang session isolation, memory quản lý, và security built-in — giảm đáng kể infra burden cho team nhỏ.</li>
   </ol>
-
   <nav class="section-footer">
     <a href="40-code-execution-tool.html" class="prev">
-      <div class="label">← trước</div>
-      <div class="title">40 — Code Execution Tool</div>
+      <div class="label">← Trước</div>
+      <div class="title">40 — Code Execution as a Tool</div>
     </a>
     <a href="42-edge-on-device.html" class="next">
-      <div class="label">tiếp theo →</div>
-      <div class="title">42 — Edge &amp; On-Device AI</div>
+      <div class="label">Tiếp theo →</div>
+      <div class="title">42 — Edge &amp; On-device Agents</div>
     </a>
   </nav>
 

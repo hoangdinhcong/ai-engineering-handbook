@@ -20,7 +20,7 @@
 <main class="page">
 
   <section class="hero">
-    <span class="eyebrow">Phần 12 · §42</span>
+    <div class="eyebrow-row"><span class="eyebrow">Phần 12 · §42</span><a class="hero-updated" href="../KNOWLEDGE_UPDATES.md" title="Lịch sử cập nhật kiến thức">↻ 2026-05-23</a></div>
     <h1>Edge &amp; On-device Agents</h1>
     <p class="lede">
       Khi intelligence chạy ngay trên thiết bị — không cần mạng, không rời dữ liệu, không tốn inference bill.
@@ -118,19 +118,24 @@
 
   <p>
     Apple Intelligence (ra mắt iOS 18 / macOS Sequoia, mở rộng mạnh 2025–2026) là ví dụ production
-    đầy đủ nhất về on-device AI ở quy mô consumer. Kiến trúc gồm 3 lớp:
+    đầy đủ nhất về on-device AI ở quy mô consumer. Với iOS 26 / macOS Tahoe 26, Apple mở thêm
+    <strong>Foundation Models framework</strong> — cho phép third-party developers dùng trực tiếp
+    ~3B on-device model (guided generation, streaming, tool calling) qua Swift API, không cần kết nối
+    mạng, không tốn inference fee. Kiến trúc gồm 3 lớp:
   </p>
 
   <ul>
     <li>
       <strong>On-device foundation model (~3B parameters)</strong>: Chạy hoàn toàn trên Apple Neural Engine
-      trong chip A17 Pro / M-series. Xử lý summarization, Writing Tools, Smart Reply, Semantic Search.
+      trong chip A17 Pro / M-series và mới hơn. Xử lý summarization, Writing Tools, Smart Reply, Semantic Search,
+      cùng tool calling qua Foundation Models framework (iOS 26+).
       Không có gì rời khỏi thiết bị.
     </li>
     <li>
       <strong>Private Cloud Compute (PCC)</strong>: Khi request quá phức tạp cho on-device, iOS gửi
       lên Apple Silicon servers trên cloud — nhưng với <em>cryptographic attestation</em>: Apple cam kết
       không log, không retain, không có khả năng inspect data của user. Được audit bởi independent researchers.
+      Đầu 2026, PCC được nâng cấp lên chip M5, mang lại hiệu năng cao hơn cho các agent-style workloads phức tạp.
     </li>
     <li>
       <strong>ChatGPT integration (opt-in)</strong>: Chỉ khi user chủ động allow, mới gửi lên OpenAI
@@ -271,22 +276,49 @@
           <td><span class="tag green">Llama 3.2</span></td>
         </tr>
         <tr>
-          <td><strong>Qwen 2.5 1.5B</strong></td>
+          <td><strong>Qwen 3.5 0.8B</strong></td>
           <td>Alibaba</td>
-          <td>1.5B</td>
-          <td>128k</td>
-          <td>Mobile / edge</td>
-          <td>Tiếng Trung / Tiếng Anh mạnh; coding tốt cho kích thước</td>
+          <td>0.8B</td>
+          <td>262k</td>
+          <td>Mobile thấp cấp / IoT</td>
+          <td>~500MB; multimodal native; linear attention → constant memory; 4GB RAM phone</td>
           <td><span class="tag green">Apache 2.0</span></td>
         </tr>
         <tr>
-          <td><strong>Qwen 2.5 3B</strong></td>
+          <td><strong>Qwen 3.5 2B</strong></td>
           <td>Alibaba</td>
-          <td>3B</td>
-          <td>128k</td>
-          <td>Mobile / laptop NPU</td>
-          <td>Multilingual mạnh; instruction following tốt</td>
+          <td>2B</td>
+          <td>262k</td>
+          <td>Mobile / edge</td>
+          <td>~1.2GB; multimodal; hybrid linear/softmax attention; điểm ngọt cho 6–8GB RAM phone</td>
           <td><span class="tag green">Apache 2.0</span></td>
+        </tr>
+        <tr>
+          <td><strong>Gemma 4 E2B</strong></td>
+          <td>Google</td>
+          <td>2B eff.</td>
+          <td>32k</td>
+          <td>Pixel / Android / Chrome</td>
+          <td>Vision + audio + text + function calling on-device; Apache 2.0 từ tháng 4/2026</td>
+          <td><span class="tag green">Apache 2.0</span></td>
+        </tr>
+        <tr>
+          <td><strong>Gemma 4 E4B</strong></td>
+          <td>Google</td>
+          <td>4B eff.</td>
+          <td>32k</td>
+          <td>Pixel 9+ / mid-range laptop</td>
+          <td>Multimodal edge; tốt hơn Gemma 3 4B đáng kể; cần 8GB RAM</td>
+          <td><span class="tag green">Apache 2.0</span></td>
+        </tr>
+        <tr>
+          <td><strong>Llama 4 Scout</strong></td>
+          <td>Meta</td>
+          <td>~3B active (MoE)</td>
+          <td>10M</td>
+          <td>Mobile cao cấp / laptop</td>
+          <td>MoE: chỉ activate ~3B params khi inference; ~15–22 tok/s trên Snapdragon 8 Gen; multimodal</td>
+          <td><span class="tag green">Llama 4</span></td>
         </tr>
         <tr>
           <td><strong>SmolLM2 1.7B</strong></td>
@@ -307,9 +339,10 @@
       <div class="title">Chọn SLM như thế nào?</div>
       <p>
         Đừng chọn theo params — chọn theo <strong>task cụ thể</strong>.
-        Phi-4 cho math/code, Gemini Nano cho Android ecosystem, Qwen cho đa ngôn ngữ Châu Á,
-        SmolLM cho browser / resource-constrained. Luôn benchmark trên <em>task của bạn</em>, không
-        dựa vào leaderboard tổng quát.
+        Phi-4 cho math/code trên Windows Copilot+ (hoặc Phi-Silica nếu dùng Windows App SDK),
+        Gemini Nano / Gemma 4 E2B/E4B cho Android ecosystem, Qwen 3.5 cho đa ngôn ngữ Châu Á và context
+        dài (262k native), Llama 4 Scout nếu cần multimodal với context cực dài, SmolLM cho browser /
+        resource-constrained. Luôn benchmark trên <em>task của bạn</em>, không dựa vào leaderboard tổng quát.
       </p>
     </div>
   </div>
@@ -367,14 +400,14 @@
     <text x="50" y="258" font-weight="600" font-size="12" fill="#aab4c5">NPU nổi bật 2026:</text>
     <rect class="node-bg" x="50" y="265" width="120" height="26" rx="4"/>
     <text x="110" y="283" text-anchor="middle" font-size="11">Apple ANE (38 TOPS)</text>
-    <rect class="node-bg" x="185" y="265" width="140" height="26" rx="4"/>
-    <text x="255" y="283" text-anchor="middle" font-size="11">Qualcomm Hexagon (75 TOPS)</text>
-    <rect class="node-bg" x="340" y="265" width="120" height="26" rx="4"/>
-    <text x="400" y="283" text-anchor="middle" font-size="11">Intel NPU (48 TOPS)</text>
-    <rect class="node-bg" x="475" y="265" width="110" height="26" rx="4"/>
-    <text x="530" y="283" text-anchor="middle" font-size="11">AMD XDNA2 (50 TOPS)</text>
-    <rect class="node-bg" x="600" y="265" width="120" height="26" rx="4"/>
-    <text x="660" y="283" text-anchor="middle" font-size="11">NVIDIA Jetson (275 TOPS)</text>
+    <rect class="node-bg" x="185" y="265" width="150" height="26" rx="4"/>
+    <text x="260" y="283" text-anchor="middle" font-size="11">Hexagon NPU 6 (80 TOPS)</text>
+    <rect class="node-bg" x="348" y="265" width="120" height="26" rx="4"/>
+    <text x="408" y="283" text-anchor="middle" font-size="11">Intel NPU (48 TOPS)</text>
+    <rect class="node-bg" x="482" y="265" width="110" height="26" rx="4"/>
+    <text x="537" y="283" text-anchor="middle" font-size="11">AMD XDNA2 (50 TOPS)</text>
+    <rect class="node-bg" x="606" y="265" width="120" height="26" rx="4"/>
+    <text x="666" y="283" text-anchor="middle" font-size="11">NVIDIA Jetson (275 TOPS)</text>
   </svg>
 
   <h3>Vì sao NPU quan trọng?</h3>
@@ -429,6 +462,24 @@
           <td>iOS / Android / Embedded</td>
           <td>XNNPACK, CoreML, Qualcomm QNN</td>
           <td>Meta's runtime cho Llama trên mobile; production-grade</td>
+        </tr>
+        <tr>
+          <td><strong>MLC LLM</strong></td>
+          <td>iOS / Android / Web / macOS / Windows</td>
+          <td>Metal, CUDA, Vulkan, WebGPU, OpenCL</td>
+          <td>ML Compilation — tối ưu cả model lẫn runtime cho từng device; OpenAI-compatible API</td>
+        </tr>
+        <tr>
+          <td><strong>Phi-Silica (Windows App SDK)</strong></td>
+          <td>Windows Copilot+ PC</td>
+          <td>Qualcomm Hexagon NPU (native)</td>
+          <td>Microsoft's inbox SLM cho Copilot+ PCs; zero config, accessible qua WinRT API từ Jan 2025</td>
+        </tr>
+        <tr>
+          <td><strong>Foundation Models (iOS/macOS)</strong></td>
+          <td>iOS 26+ / macOS 26+</td>
+          <td>Apple Neural Engine (native)</td>
+          <td>Apple's public API cho on-device ~3B model; Guided Generation + Tool Calling + Streaming</td>
         </tr>
       </tbody>
     </table>
@@ -795,6 +846,20 @@ LOCAL_TOOLS = {
     <text x="380" y="218" text-anchor="middle" class="label-sm">Key guarantee: Apple không thể xem data ngay cả khi muốn — enforced by hardware + cryptography, not policy</text>
   </svg>
 
+  <div class="callout note">
+    <div class="icon">≡</div>
+    <div>
+      <div class="title">PCC cập nhật 2026: M5 chips + Agent Worker</div>
+      <p>
+        Đầu 2026, Apple nâng cấp PCC infrastructure lên chip <strong>M5</strong> (bỏ qua M3 Ultra và M4),
+        cải thiện đáng kể throughput cho các workload phức tạp. Đồng thời, Apple giới thiệu
+        <em>Private Cloud Compute Agent Worker</em> — một phiên bản iOS chuyên biệt theo kiến trúc agent,
+        cho phép PCC thực hiện multi-step agentic tasks (ví dụ Shortcuts dùng Apple Intelligence)
+        trong khi vẫn giữ đảm bảo privacy tương đương.
+      </p>
+    </div>
+  </div>
+
   <h3>Nguyên tắc PCC áp dụng được cho hệ thống của bạn</h3>
   <ul>
     <li><strong>Attestation</strong>: Server chứng minh cryptographically rằng nó chạy đúng software version — client verify trước khi gửi data</li>
@@ -1083,20 +1148,25 @@ LOCAL_TOOLS = {
       cost (zero inference $), control (no vendor dependency). Giải quyết bằng on-device model.
     </li>
     <li>
-      <strong>Apple Intelligence</strong> là blueprint production hoàn chỉnh nhất: on-device ~3B,
-      PCC cho medium complexity, opt-in cloud cho hard queries. Semantic index local.
+      <strong>Apple Intelligence + Foundation Models</strong> là blueprint production hoàn chỉnh nhất:
+      on-device ~3B với Foundation Models framework (iOS 26) mở cho third-party developers,
+      PCC (nâng cấp M5 + Agent Worker 2026) cho medium complexity, opt-in cloud cho hard queries.
+      Semantic index local.
     </li>
     <li>
-      <strong>SLMs 2026 đáng biết</strong>: Phi-4 (reasoning), Gemini Nano (Android), Llama 3.2 1B/3B
-      (open, versatile), Qwen 2.5 (multilingual), SmolLM (browser/edge). Chọn theo task, không theo hype.
+      <strong>SLMs 2026 đáng biết</strong>: Phi-4 / Phi-Silica (reasoning, Windows Copilot+),
+      Gemini Nano / Gemma 4 E2B/E4B (Android, multimodal edge), Llama 3.2 1B/3B + Llama 4 Scout (MoE,
+      context dài), Qwen 3.5 0.8B–2B (đa ngôn ngữ, 262k context), SmolLM (browser/edge).
+      Chọn theo task, không theo hype.
     </li>
     <li>
       <strong>Hardware</strong>: NPU (Apple ANE, Qualcomm Hexagon, Intel NPU, AMD XDNA) là game-changer —
       30–300 TOPS chuyên dụng cho AI inference, 5–15x hiệu quả hơn GPU về energy per TOPS.
     </li>
     <li>
-      <strong>Frameworks</strong>: Core ML (iOS/macOS native), MLX (Apple Silicon Python), ONNX Runtime
-      (cross-platform), llama.cpp (universal GGUF), ExecuTorch (Meta mobile production).
+      <strong>Frameworks</strong>: Foundation Models (iOS 26 native API), Core ML / MLX (Apple Silicon),
+      ONNX Runtime (cross-platform), llama.cpp (universal GGUF), ExecuTorch (Meta mobile production),
+      MLC LLM (ML-compiled, iOS/Android/Web), Phi-Silica (Windows Copilot+ NPU, WinRT API).
     </li>
     <li>
       <strong>Quantization</strong>: Q4_K_M là default mobile (model 3B ≈ 1.8GB, accuracy loss &lt;3%).
@@ -1155,15 +1225,14 @@ LOCAL_TOOLS = {
       </p>
     </div>
   </div>
-
   <nav class="section-footer">
     <a href="41-distributed-agent-runtimes.html" class="prev">
-      <div class="label">← trước</div>
+      <div class="label">← Trước</div>
       <div class="title">41 — Distributed Agent Runtimes</div>
     </a>
     <a href="../index.html" class="next">
-      <div class="label">Quay lại Mục lục →</div>
-      <div class="title">← Mục lục</div>
+      <div class="label">Mục lục →</div>
+      <div class="title">Quay lại mục lục</div>
     </a>
   </nav>
 

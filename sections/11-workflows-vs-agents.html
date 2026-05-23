@@ -13,6 +13,7 @@
   <div class="crumbs"><a href="../index.html">Mục lục</a> › Phần 4 · <span>11 — Workflows vs Agents</span></div>
   <div class="nav-actions">
     <a href="10-agents.html">← Trước</a>
+    <a href="../index.html">Mục lục</a>
     <a href="12-inference-serving.html">Tiếp →</a>
   </div>
 </nav>
@@ -20,10 +21,10 @@
 <main class="page">
 
   <section class="hero">
-    <span class="eyebrow">Phần 4 · §11</span>
+    <div class="eyebrow-row"><span class="eyebrow">Phần 4 · §11</span><a class="hero-updated" href="../KNOWLEDGE_UPDATES.md" title="Lịch sử cập nhật kiến thức">↻ 2026-05-23</a></div>
     <h1>Workflows vs Agents</h1>
     <p class="lede">
-      Khi nào dùng deterministic workflow, khi nào để LLM tự quyết? 5 patterns từ Anthropic's "Building effective agents" và migration path từ workflow đến agent.
+      Khi nào dùng deterministic workflow, khi nào để LLM tự quyết? 5 patterns từ Anthropic's "Building effective agents", vai trò của MCP và Agent Skills trong hệ sinh thái 2025-2026, và migration path từ workflow đến agent.
     </p>
     <img class="hero-image" src="../images/11-workflows-vs-agents.png" alt="Workflows vs Agents illustration" onerror="this.style.display='none'">
   </section>
@@ -104,6 +105,11 @@
           <td><span class="tag">Cao &amp; variable</span></td>
         </tr>
         <tr>
+          <td><strong>Reliability at scale</strong></td>
+          <td><span class="tag green">Tuyến tính</span> — 99% mỗi step</td>
+          <td><span class="tag">Compound failure</span> — 99%^10 = ~90% cho 10-step agent</td>
+        </tr>
+        <tr>
           <td><strong>Debuggability</strong></td>
           <td><span class="tag green">Dễ</span> — trace từng step</td>
           <td><span class="tag">Khó</span> — emergent behavior</td>
@@ -168,7 +174,7 @@
     <li><strong>Variable steps:</strong> Câu hỏi đơn giản cần 2 bước; câu hỏi phức tạp cần 15 bước — cần flexibility.</li>
     <li><strong>Exploration needed:</strong> Cần search, research, hoặc gather info trước khi biết phải làm gì.</li>
     <li><strong>Complex reasoning:</strong> Cần multi-hop, self-correction, hoặc judgment calls mà code không handle được.</li>
-    <li><strong>Latency tolerance:</strong> User ok chờ 30–120 giây (hoặc async).</li>
+    <li><strong>Latency tolerance:</strong> User ok chờ 30–120 giây (hoặc async). Năm 2025-2026, nhiều production agent chạy hoàn toàn async — user nhận kết quả qua notification, không chờ synchronous.</li>
   </ul>
 
   <h3>Ví dụ use cases phù hợp với Agent</h3>
@@ -188,6 +194,10 @@
         Anthropic khuyến nghị: <em>"Use the simplest solution that works."</em>
         Bắt đầu với workflow. Chỉ chuyển sang agent khi workflow rõ ràng không đủ.
         Agent phức tạp hơn workflow ở mọi dimension: cost, latency, debug, reliability.
+      </p>
+      <p style="margin-bottom:0">
+        <strong>Reasoning models (Claude Opus 4, o3, Gemini 2.5 Pro) không loại bỏ nhu cầu workflow.</strong>
+        Nghiên cứu 2025 cho thấy ngay cả model có khả năng reasoning mạnh vẫn cần explicit problem structure để tránh constraint violations trong long-horizon tasks. Reasoning tốt hơn giúp <em>mỗi agent step</em> đáng tin cậy hơn — không phải lý do để bỏ qua workflow design.
       </p>
     </div>
   </div>
@@ -439,6 +449,19 @@
   <p><strong>Khi nào dùng:</strong> Task lớn cần nhiều loại expertise. Workers có thể specialize (research vs. writing vs. analysis). Orchestrator không cần biết details — chỉ delegate.</p>
   <p><strong>Ví dụ:</strong> Deep research agent, complex software development (plan → code → test → review), business intelligence report generation.</p>
 
+  <div class="callout note">
+    <div class="icon">≡</div>
+    <div>
+      <div class="title">MCP: chuẩn kết nối tools cho Orchestrator-Workers (2024-2026)</div>
+      <p>
+        Anthropic's <strong>Model Context Protocol (MCP)</strong> — ra mắt 11/2024, được OpenAI và Google adopt vào 2025, donate cho Linux Foundation cuối 2025 — trở thành de facto standard để agent gọi tools và kết nối data sources. Claude hiện có 75+ connectors qua MCP directory.
+      </p>
+      <p style="margin-bottom:0">
+        <strong>Code Execution với MCP (2025):</strong> Thay vì pass tool outputs trực tiếp qua model context, pattern mới yêu cầu model <em>viết code</em> để gọi MCP tools rồi execute. Kết quả: workflow từng tốn ~150,000 tokens chỉ còn ~2,000 tokens — <strong>giảm 98.7%</strong> token usage. Cực kỳ relevant cho Orchestrator-Workers pattern ở production scale.
+      </p>
+    </div>
+  </div>
+
   <!-- Pattern 5: Evaluator-Optimizer -->
   <h3>⑤ Evaluator-Optimizer</h3>
   <p>
@@ -493,6 +516,19 @@
       <p>
         Real-world systems thường kết hợp: Routing → Orchestrator-Workers (với mỗi worker là Prompt Chaining) → Evaluator-Optimizer trên output cuối.
         Hiểu 5 patterns này cho phép compose bất kỳ AI system phức tạp nào.
+      </p>
+    </div>
+  </div>
+
+  <div class="callout note">
+    <div class="icon">≡</div>
+    <div>
+      <div class="title">Agent Skills — reusable capability modules (cuối 2025 / 2026)</div>
+      <p>
+        Anthropic ra mắt <strong>Agent Skills</strong> vào cuối 2025 và mở làm open standard vào 3/2026. Skills là các reusable capability modules được invoke tự động qua Claude.ai, Claude Code, và API — không cần maintain logic riêng cho từng surface.
+      </p>
+      <p style="margin-bottom:0">
+        Thay vì nhồi toàn bộ logic vào system prompt, teams đóng gói behavior thành Skills có thể version, inspect, và govern. Kết quả: token overhead giảm (chỉ load context cần thiết), audit dễ hơn, và behavior nhất quán hơn across interactions. OpenAI, Cursor đang xem xét adopt cùng spec — tín hiệu rằng Skills có thể trở thành standard tương tự MCP.
       </p>
     </div>
   </div>
@@ -616,16 +652,18 @@
     <li><strong>5 Anthropic patterns:</strong> Prompt Chaining (sequential), Routing (classify+dispatch), Parallelization (sectioning/voting), Orchestrator-Workers (hierarchical), Evaluator-Optimizer (generate+critique+refine).</li>
     <li><strong>Hybrid</strong> là common case: deterministic outer workflow + agent steps ở chỗ cần flexibility.</li>
     <li><strong>Migration path</strong>: Stage 1 (LLM in workflow) → Stage 2 (limited tools) → Stage 3 (bounded agent) → Stage 4 (full autonomous). Tăng từng bước sau khi có data.</li>
-    <li><strong>Default: workflow.</strong> Chứng minh workflow không đủ trước khi chuyển sang agent.</li>
+    <li><strong>MCP (2024-2026):</strong> Model Context Protocol là standard kết nối tools cho agent. Pattern "code execution với MCP" giảm 98.7% token usage so với truyền tool outputs qua context.</li>
+    <li><strong>Agent Skills (2025-2026):</strong> Reusable capability modules — version được, audit được, token-efficient — becoming open standard tương tự MCP.</li>
+    <li><strong>Compound reliability:</strong> Agent 10 bước với 99% per-step chỉ đạt ~90% end-to-end success. Workflow giữ reliability tuyến tính. Càng nhiều steps → càng cần kiểm soát tốt từng step.</li>
+    <li><strong>Default: workflow.</strong> Reasoning models mạnh hơn không thay thế workflow design — chúng giúp mỗi step đáng tin cậy hơn. Chứng minh workflow không đủ trước khi chuyển sang agent.</li>
   </ol>
-
   <nav class="section-footer">
     <a href="10-agents.html" class="prev">
-      <div class="label">← trước</div>
+      <div class="label">← Trước</div>
       <div class="title">10 — Agents &amp; Tool Use</div>
     </a>
     <a href="12-inference-serving.html" class="next">
-      <div class="label">tiếp theo →</div>
+      <div class="label">Tiếp theo →</div>
       <div class="title">12 — Inference &amp; Serving</div>
     </a>
   </nav>

@@ -13,6 +13,7 @@
   <div class="crumbs"><a href="../index.html">Mục lục</a> › Phần 5 · <span>13 — Observability &amp; Evaluation in Production</span></div>
   <div class="nav-actions">
     <a href="12-inference-serving.html">← Trước</a>
+    <a href="../index.html">Mục lục</a>
     <a href="14-reliability-safety.html">Tiếp →</a>
   </div>
 </nav>
@@ -20,7 +21,7 @@
 <main class="page">
 
   <section class="hero">
-    <span class="eyebrow">Phần 5 · §13</span>
+    <div class="eyebrow-row"><span class="eyebrow">Phần 5 · §13</span><a class="hero-updated" href="../KNOWLEDGE_UPDATES.md" title="Lịch sử cập nhật kiến thức">↻ 2026-05-23</a></div>
     <h1>Observability &amp; Evaluation in Production</h1>
     <p class="lede">
       LLM không có "error 500" rõ ràng — chúng thất bại một cách im lặng. Tracing, online evals, drift detection và user feedback loops là vũ khí duy nhất để biết hệ thống đang hoạt động tốt hay không.
@@ -79,6 +80,8 @@
       <p>
         Không thể chỉ dùng Prometheus/Grafana vì metric truyền thống không capture "content quality".
         Phải combine infrastructure metrics (latency, error rate, cost) với semantic metrics (eval score, relevance, faithfulness).
+        Với <strong>agent systems</strong>, độ phức tạp tăng thêm một bậc: phải trace từng LLM call, tool call, và retrieval step
+        riêng biệt — OTel GenAI SIG đã chuẩn hóa <em>agent spans</em> riêng cho mục đích này (cuối 2025).
       </p>
     </div>
   </div>
@@ -86,8 +89,16 @@
   <h2 id="tracing">11.2 Tracing — OpenTelemetry semantics cho LLM</h2>
   <p>
     OpenTelemetry (OTel) là tiêu chuẩn vendor-neutral cho distributed tracing. LLM ecosystem đã
-    bổ sung semantic conventions riêng cho AI workloads. Một <em>trace</em> là cây các <em>spans</em>
-    — mỗi span đại diện cho một operation.
+    bổ sung semantic conventions riêng cho AI workloads thông qua <strong>GenAI SIG</strong> — bắt đầu
+    từ tháng 4/2024 và đang trong quá trình stabilization (tính đến đầu 2026, phần lớn vẫn
+    <em>experimental</em>). Một <em>trace</em> là cây các <em>spans</em> — mỗi span đại diện
+    cho một operation.
+  </p>
+  <p>
+    Kể từ cuối 2025, OTel GenAI SIG đã bổ sung thêm <strong>agent spans</strong> riêng biệt:
+    <code>gen_ai.agent.name</code>, <code>gen_ai.agent.description</code>, cùng với events chuẩn hóa
+    để capture tool calls và tool results trong multi-step agent trace. Các framework lớn
+    (LangChain, LlamaIndex, AutoGen, OpenAI Agents SDK) đã ship emitter OTel-compliant trong Q1 2026.
   </p>
 
   <!-- SVG: Trace Tree -->
@@ -160,7 +171,7 @@ span.set_attributes({
   <span class="cm"># Recommended</span>
   <span class="str">"gen_ai.request.temperature"</span>: <span class="num">0.7</span>,
   <span class="str">"gen_ai.request.max_tokens"</span>: <span class="num">2048</span>,
-  <span class="str">"gen_ai.response.finish_reason"</span>: <span class="str">"end_turn"</span>,
+  <span class="str">"gen_ai.response.finish_reasons"</span>: [<span class="str">"end_turn"</span>],  <span class="cm"># plural array, v1.27+</span>
 
   <span class="cm"># Custom: cost &amp; eval</span>
   <span class="str">"llm.cost.usd"</span>: <span class="num">0.00186</span>,
@@ -190,28 +201,28 @@ span.set_attributes({
         <tr>
           <td><strong>Langfuse</strong></td>
           <td>Open-source / SaaS</td>
-          <td>Self-host được, eval tích hợp, dataset management, prompt versioning</td>
-          <td>UI còn đang phát triển</td>
+          <td>Self-host được, eval + annotation queue + prompt versioning đã open-source MIT (6/2025). Được ClickHouse mua lại 1/2026, vẫn duy trì MIT và độc lập.</td>
+          <td>ClickHouse acquisition tạo rủi ro roadmap dài hạn</td>
           <td>Free self-host; cloud có free tier</td>
         </tr>
         <tr>
           <td><strong>Braintrust</strong></td>
           <td>SaaS</td>
-          <td>Eval framework mạnh, dataset versioning, CI integration tốt</td>
+          <td>Eval framework mạnh, dataset versioning, CI integration tốt, multi-turn evals. Gọi vốn $80M Series B (2/2026, định giá $800M). Free tier 1M spans/tháng.</td>
           <td>Không self-host, tất cả cloud</td>
-          <td>Freemium, $50+/tháng cho team</td>
+          <td>Free 1M spans; $50+/tháng cho team</td>
         </tr>
         <tr>
           <td><strong>Arize Phoenix</strong></td>
           <td>Open-source</td>
-          <td>Tracing cực tốt, OpenInference standard, đẹp cho debugging</td>
-          <td>Cần tự setup infra</td>
-          <td>MIT license, free</td>
+          <td>Tracing cực tốt, OTel-native, đẹp cho debugging agent traces. Arize AI thương mại có drift detection mạnh từ ML monitoring.</td>
+          <td>Cần tự setup infra cho Phoenix; Arize enterprise lock-in</td>
+          <td>MIT license, free (Phoenix); Enterprise pricing (Arize AI)</td>
         </tr>
         <tr>
           <td><strong>LangSmith</strong></td>
           <td>SaaS (LangChain)</td>
-          <td>Tích hợp sâu với LangChain, tracing automatic</td>
+          <td>Tích hợp sâu với LangChain/LangGraph, tracing automatic, Agent Sandboxes (3/2026), multi-turn evals, GitHub CI integration</td>
           <td>Lock-in LangChain ecosystem</td>
           <td>Freemium</td>
         </tr>
@@ -221,6 +232,13 @@ span.set_attributes({
           <td>Zero-code: chỉ đổi base URL, auto log mọi thứ</td>
           <td>Tất cả request đi qua proxy của họ</td>
           <td>Free tier, $20+/tháng</td>
+        </tr>
+        <tr>
+          <td><strong>Logfire (Pydantic)</strong></td>
+          <td>SaaS / Self-host</td>
+          <td>Built trên OTel, AI-native từ team Pydantic, tích hợp tốt với PydanticAI, dashboard chuẩn out-of-the-box, full-stack observability (không chỉ LLM)</td>
+          <td>Còn khá mới, ecosystem nhỏ hơn</td>
+          <td>Free tier; trả phí theo usage</td>
         </tr>
         <tr>
           <td><strong>Custom OTel</strong></td>
@@ -238,8 +256,10 @@ span.set_attributes({
     <div>
       <div class="title">Khuyến nghị thực tế</div>
       <p>
-        Nếu bắt đầu: dùng <strong>Langfuse</strong> self-hosted — free, flexible, không vendor lock-in.
+        Nếu bắt đầu: dùng <strong>Langfuse</strong> self-hosted — vẫn MIT sau khi ClickHouse mua lại (1/2026), flexible, không vendor lock-in.
+        Nếu dùng PydanticAI hoặc cần full-stack OTel: <strong>Logfire</strong> (Pydantic) tích hợp tự nhiên nhất.
         Nếu đã có Grafana/Datadog stack: add <strong>Arize Phoenix</strong> với OTel export.
+        Nếu eval là ưu tiên hàng đầu: <strong>Braintrust</strong> (free 1M spans/tháng, CI integration mạnh).
         Nếu team nhỏ, không muốn ops: <strong>Helicone</strong> setup trong 5 phút.
       </p>
     </div>
@@ -368,11 +388,12 @@ Output JSON: {{"relevance": X, "faithfulness": X, "helpfulness": X, "reasoning":
   <div class="callout note">
     <div class="icon">≡</div>
     <div>
-      <div class="title">LLM-as-Judge bias</div>
+      <div class="title">LLM-as-Judge bias &amp; calibration</div>
       <p>
         LLM judges có xu hướng favor response dài hơn, và model của nhà nào thì bias về phía đó.
-        Luôn calibrate judge với human ratings trước khi trust kết quả. Dùng 2-3 judge models khác nhau
-        và lấy majority vote khi quan trọng.
+        Luôn <strong>validate judge trên golden dataset</strong> (mục tiêu đạt 75–90% agreement với human labels)
+        trước khi scale lên production traffic. Dùng 2-3 judge models khác nhau và lấy majority vote khi quan trọng.
+        Quan trọng: cùng một evaluator nên chạy cả trong development lẫn production để scores có thể so sánh trực tiếp.
       </p>
     </div>
   </div>
@@ -383,11 +404,13 @@ Output JSON: {{"relevance": X, "faithfulness": X, "helpfulness": X, "reasoning":
     distribution shift của user queries, hay thay đổi prompt. 3 loại drift cần theo dõi:
   </p>
 
-  <h3>1. Input distribution drift</h3>
+  <h3>1. Input distribution drift &amp; embedding drift</h3>
   <p>
-    Queries từ users thay đổi về topic, language, độ phức tạp. Track bằng:
-    embedding clustering (so sánh centroid distribution), topic model, hay đơn giản là
-    distribution của query length theo thời gian.
+    Queries từ users thay đổi về topic, language, độ phức tạp. Track bằng embedding clustering
+    (so sánh cluster distribution giữa baseline và snapshot mới — thay đổi lớn trong tỷ lệ cluster
+    báo hiệu user queries đang cover semantic area mới). Dùng UMAP hoặc t-SNE để project embedding 2D
+    và visual inspect khi cluster mới xuất hiện. Ngoài ra, theo dõi <strong>retrieval hit rate</strong>
+    bằng probe set cố định: hit rate giảm liên tục là dấu hiệu retrieval drift trong RAG index.
   </p>
 
   <h3>2. Output quality drift</h3>
@@ -600,20 +623,19 @@ Output JSON: {{"relevance": X, "faithfulness": X, "helpfulness": X, "reasoning":
   <ol>
     <li><strong>LLM failure ẩn:</strong> HTTP 200 không có nghĩa là output đúng — cần semantic observability bên cạnh infrastructure metrics.</li>
     <li><strong>Tracing đầy đủ:</strong> mọi LLM call phải có span với token count, latency, cost, model. Dùng OpenTelemetry semantic conventions.</li>
-    <li><strong>Tool chọn:</strong> Langfuse (self-host), Braintrust (eval-heavy), Arize Phoenix (tracing-focused), Helicone (zero-code).</li>
+    <li><strong>Tool chọn:</strong> Langfuse (self-host, MIT — acquired by ClickHouse 1/2026), Braintrust (eval-heavy, $80M Series B 2/2026), Arize Phoenix (OTel-native tracing), Logfire (PydanticAI stack), Helicone (zero-code).</li>
     <li><strong>Logging:</strong> log có chọn lọc, filter PII, sample 10% normal + 100% errors và bad ratings.</li>
     <li><strong>Online eval:</strong> sample 5-10% traffic, score với cheap LLM judge, alert khi drops.</li>
-    <li><strong>Drift:</strong> monitor input distribution, eval score trend, và cost/request — 3 leading indicators của quality degradation.</li>
+    <li><strong>Drift:</strong> monitor input distribution (embedding cluster shift, UMAP visualization, retrieval probe hit rate), eval score trend, và cost/request — 3 leading indicators của quality degradation.</li>
     <li><strong>SLOs:</strong> define ít nhất TTFT P95, error rate, eval score avg, cost/request — và set alert thresholds.</li>
   </ol>
-
   <nav class="section-footer">
     <a href="12-inference-serving.html" class="prev">
-      <div class="label">← trước</div>
+      <div class="label">← Trước</div>
       <div class="title">12 — Inference &amp; Serving</div>
     </a>
     <a href="14-reliability-safety.html" class="next">
-      <div class="label">tiếp theo →</div>
+      <div class="label">Tiếp theo →</div>
       <div class="title">14 — Reliability &amp; Safety</div>
     </a>
   </nav>

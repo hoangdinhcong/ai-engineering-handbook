@@ -12,7 +12,8 @@
   <div class="brand"><span class="dot"></span> AI Engineering</div>
   <div class="crumbs"><a href="../index.html">Mục lục</a> › Phần 6 · <span>16 — Designing AI Products (UX)</span></div>
   <div class="nav-actions">
-    <a href="15-security.html">← 15</a>
+    <a href="15-security.html">← Trước</a>
+    <a href="../index.html">Mục lục</a>
     <a href="17-multimodal.html">Tiếp →</a>
   </div>
 </nav>
@@ -20,7 +21,7 @@
 <main class="page">
 
   <section class="hero">
-    <span class="eyebrow">Phần 6 · §16</span>
+    <div class="eyebrow-row"><span class="eyebrow">Phần 6 · §16</span><a class="hero-updated" href="../KNOWLEDGE_UPDATES.md" title="Lịch sử cập nhật kiến thức">↻ 2026-05-23</a></div>
     <h1>Designing AI Products (UX)</h1>
     <p class="lede">
       AI UX không phải là UX thông thường — probabilistic outputs, latency biến động, và hallucination risk đòi hỏi những pattern thiết kế hoàn toàn khác.
@@ -33,14 +34,15 @@
     <ul>
       <li><a href="#ai-ux-diff">16.1 AI UX khác UX truyền thống</a></li>
       <li><a href="#patterns">16.2 Core UX patterns</a></li>
-      <li><a href="#undo">16.3 Undo / Regenerate / Edit</a></li>
-      <li><a href="#hitl">16.4 Human-in-the-loop &amp; approval flows</a></li>
-      <li><a href="#trust">16.5 Trust signals</a></li>
-      <li><a href="#latency">16.6 Latency budget design</a></li>
-      <li><a href="#degradation">16.7 Graceful degradation</a></li>
-      <li><a href="#error-ux">16.8 Error UX</a></li>
-      <li><a href="#onboarding">16.9 Onboarding</a></li>
-      <li><a href="#examples">16.10 Ví dụ thực tế</a></li>
+      <li><a href="#artifacts-canvas">16.3 Artifacts, Canvas &amp; Generative UI</a></li>
+      <li><a href="#undo">16.4 Undo / Regenerate / Edit</a></li>
+      <li><a href="#hitl">16.5 Human-in-the-loop &amp; approval flows</a></li>
+      <li><a href="#trust">16.6 Trust signals</a></li>
+      <li><a href="#latency">16.7 Latency budget design</a></li>
+      <li><a href="#degradation">16.8 Graceful degradation</a></li>
+      <li><a href="#error-ux">16.9 Error UX</a></li>
+      <li><a href="#onboarding">16.10 Onboarding</a></li>
+      <li><a href="#examples">16.11 Ví dụ thực tế</a></li>
       <li><a href="#tom-tat">Tóm tắt</a></li>
     </ul>
   </aside>
@@ -77,6 +79,14 @@
     <div>
       <div class="title">Mental model quan trọng nhất</div>
       <p>AI không phải là tool với defined behavior — AI là <em>collaborator</em> với probabilistic behavior. UX phải thiết kế cho <strong>dialogue và iteration</strong>, không phải cho single-shot deterministic action.</p>
+    </div>
+  </div>
+
+  <div class="callout warning">
+    <div class="icon">!</div>
+    <div>
+      <div class="title">Chat-as-only-UI là anti-pattern cho agents</div>
+      <p>Khi AI chuyển từ copilot (chờ lệnh) sang agent (tự hành), chat box thuần túy không đủ. Agent cần: <strong>status panel</strong> (đang làm gì), <strong>intervention points</strong> (dừng/sửa hướng giữa chừng), và <strong>activity log</strong> (đã làm gì). Copilot → agent là shift từ "request/response" sang "goal + oversight". Thiếu các surface này, user mất kiểm soát và mất tin tưởng.</p>
     </div>
   </div>
 
@@ -124,6 +134,9 @@
 
   <p>
     Streaming cũng cho phép user can thiệp sớm — nhìn vào 2 giây đầu thấy model đang đi sai hướng, dừng lại và reformulate, thay vì chờ 15 giây rồi mới biết sai.
+  </p>
+  <p>
+    Với agentic workflows, streaming không chỉ áp dụng cho text — mà còn cho <strong>tool call steps</strong>: hiển thị từng bước agent đang thực hiện ("Đang tìm kiếm tài liệu…", "Đang phân tích kết quả…", "Chuẩn bị gửi email…") cho phép user thấy tiến trình và interrupt trước khi action nguy hiểm được thực thi. Đây là sự khác biệt giữa agent "black box" và agent "transparent".
   </p>
 
   <h3>Citations (link to source)</h3>
@@ -181,7 +194,39 @@
     <text x="630" y="143" text-anchor="middle" font-size="11">→ Export as bullet points</text>
   </svg>
 
-  <h2 id="undo">16.3 Undo / Regenerate / Edit — let user steer</h2>
+  <h2 id="artifacts-canvas">16.3 Artifacts, Canvas &amp; Generative UI — vượt qua chat box</h2>
+  <p>
+    Một trong những tiến hóa quan trọng nhất của AI UX năm 2024–2025 là sự xuất hiện của <strong>side-panel artifacts</strong> và <strong>canvas</strong> — không gian làm việc tách biệt khỏi chat stream, nơi AI output có thể được render, chạy, và chỉnh sửa trực tiếp.
+  </p>
+
+  <div class="grid-2">
+    <div class="card">
+      <h4>Claude Artifacts &amp; Generative UI</h4>
+      <p>Artifacts là cơ chế hiển thị nội dung dạng side panel — code, markdown, SVG, HTML. <strong>Generative UI</strong> là tập con của Artifacts: HTML/JavaScript thực sự chạy được, user có thể tương tác trực tiếp với app được tạo ra ngay trong conversation. Triết lý: <em>execution environment</em> — tạo và chạy ngay.</p>
+    </div>
+    <div class="card">
+      <h4>ChatGPT Canvas</h4>
+      <p>Canvas là <em>editing environment</em> — thiết kế cho việc tinh chỉnh và cộng tác. AI và user cùng chỉnh sửa document/code trong một không gian chung. Canvas không render/run code; user thấy code, không phải app đang chạy. Triết lý: <em>pair programmer inside your editor</em>.</p>
+    </div>
+    <div class="card">
+      <h4>Generative UI builders (V0, Bolt, Lovable)</h4>
+      <p>V0 (Vercel) generate production-grade React/Tailwind components từ text prompt. Bolt tập trung full-stack với browser-based editor. Lovable kết hợp visual editing + code, đạt $20M ARR trong 2 tháng (2025). Tất cả đều là <em>prototyping accelerators</em> — production thực sự vẫn cần developer cho 20–30% cuối.</p>
+    </div>
+    <div class="card">
+      <h4>Khi nào dùng pattern nào</h4>
+      <p><strong>Artifacts/Generative UI</strong>: khi user cần <em>xem kết quả chạy</em> ngay (dashboard, form, chart). <strong>Canvas</strong>: khi user cần <em>cộng tác chỉnh sửa</em> document dài. <strong>Chat-only</strong>: Q&amp;A, brainstorm, tasks không cần output phức tạp. Chat-only cho mọi use case là anti-pattern.</p>
+    </div>
+  </div>
+
+  <div class="callout note">
+    <div class="icon">≡</div>
+    <div>
+      <div class="title">Design system as primary artifact (2025)</div>
+      <p>Xu hướng mới nhất: thay vì thiết kế từng màn hình, AI nhận <strong>design system</strong> làm input và generate màn hình cụ thể on-demand từ hệ thống đó. Màn hình là ephemeral output; design system mới là artifact bền vững. Đây là shift căn bản so với canvas-based tools truyền thống.</p>
+    </div>
+  </div>
+
+  <h2 id="undo">16.4 Undo / Regenerate / Edit — let user steer</h2>
   <p>
     Vì AI output là probabilistic, user cần control để steer về hướng mong muốn. Ba cơ chế cốt lõi:
   </p>
@@ -201,6 +246,17 @@
     Claude, ChatGPT cho phép chỉnh sửa message và tạo parallel conversation branches. User có thể thử nhiều cách hỏi, compare outcomes, rồi tiếp tục từ nhánh tốt nhất. Đây là pattern quan trọng cho "exploration" use cases.
   </p>
 
+  <h3>Agentic undo stacks (2025)</h3>
+  <p>
+    Với agentic systems thực hiện nhiều bước, "undo" phức tạp hơn nhiều — không thể chỉ "Ctrl+Z" toàn bộ. Best practices 2025:
+  </p>
+  <ul>
+    <li><strong>Atomic steps</strong>: mỗi action của agent là một unit độc lập, có thể rollback riêng (idempotent tools)</li>
+    <li><strong>Checkpointing</strong>: lưu snapshot state trước mỗi write action quan trọng, cho phép "rewind to checkpoint"</li>
+    <li><strong>Agent undo stack</strong>: UI hiển thị danh sách actions đã thực hiện, user có thể undo từng bước hoặc từ một điểm cụ thể trở đi</li>
+    <li><strong>"You can't always reverse what happened, but you can always see what happened"</strong>: audit log đầy đủ là safety net tối thiểu khi rollback không khả thi</li>
+  </ul>
+
   <div class="callout tip">
     <div class="icon">★</div>
     <div>
@@ -209,7 +265,7 @@
     </div>
   </div>
 
-  <h2 id="hitl">16.4 Human-in-the-loop &amp; approval flows</h2>
+  <h2 id="hitl">16.5 Human-in-the-loop &amp; approval flows</h2>
   <p>
     Khi AI thực hiện <strong>write actions</strong> — gửi email, tạo ticket, thực thi code, gọi API bên thứ ba — cần approval flow. "Read before act" là nguyên tắc cốt lõi của agentic systems.
   </p>
@@ -269,7 +325,20 @@
     <li><strong>Human executes</strong>: AI shows instructions, human does manually (e.g., production database change)</li>
   </ul>
 
-  <h2 id="trust">16.5 Trust signals</h2>
+  <h3>Autonomy dial — pattern 2025</h3>
+  <p>
+    Thay vì hardcode mức autonomy, nhiều sản phẩm agentic 2025 cung cấp <strong>autonomy dial/slider</strong> — user chọn mức kiểm soát mong muốn. Framework pre-action / in-action / post-action từ Smashing Magazine (2026):
+  </p>
+  <ul>
+    <li><strong>Pre-action</strong>: Intent Preview (agent hiện kế hoạch trước khi làm) + Autonomy Dial (user set mức tự hành)</li>
+    <li><strong>In-action</strong>: Explainable Rationale (tại sao agent đang làm vậy) + Confidence Signal (agent tự báo mức chắc chắn)</li>
+    <li><strong>Post-action</strong>: Action Audit &amp; Undo (xem và rollback) + Escalation Pathway (agent tự escalate khi gặp edge case)</li>
+  </ul>
+  <p>
+    Một copilot đột ngột hành xử như agent (tự làm mà không hỏi) cảm giác <em>intrusive</em>. Một agent liên tục xin xác nhận từng bước cảm giác <em>underpowered</em>. Autonomy dial giúp user tự chọn điểm cân bằng phù hợp với ngữ cảnh và mức tin tưởng hiện tại.
+  </p>
+
+  <h2 id="trust">16.6 Trust signals</h2>
   <p>
     Trust phải được build qua transparency, không qua assertion. "Trust me, I'm an AI" không đủ. Các trust signals hiệu quả:
   </p>
@@ -290,7 +359,7 @@
     </table>
   </div>
 
-  <h2 id="latency">16.6 Latency budget design</h2>
+  <h2 id="latency">16.7 Latency budget design</h2>
   <p>
     Latency trong AI apps là multi-dimensional. Cần phân biệt và budget riêng:
   </p>
@@ -309,7 +378,7 @@
     <li><strong>Interrupt capability</strong>: cho user dừng generation nếu đã đủ</li>
   </ul>
 
-  <h2 id="degradation">16.7 Graceful degradation</h2>
+  <h2 id="degradation">16.8 Graceful degradation</h2>
   <p>
     AI services fail — model API down, rate limit hit, context too long, inference timeout. UX phải handle gracefully:
   </p>
@@ -337,7 +406,7 @@
     </div>
   </div>
 
-  <h2 id="error-ux">16.8 Error UX</h2>
+  <h2 id="error-ux">16.9 Error UX</h2>
   <p>
     AI error messages tệ nhất là "Something went wrong" hoặc "I don't know". Tốt hơn là <strong>transparent failure + actionable alternative</strong>.
   </p>
@@ -365,7 +434,7 @@
     </div>
   </div>
 
-  <h2 id="onboarding">16.9 Onboarding</h2>
+  <h2 id="onboarding">16.10 Onboarding</h2>
   <p>
     First-time user experience với AI products là critical — user đang học không chỉ UI mà còn một paradigm mới. Sai ở đây → user không return.
   </p>
@@ -395,7 +464,7 @@
     Bắt đầu với simple chat. Reveal advanced features (citation mode, agent capabilities, settings) sau khi user quen với basics. Đừng overwhelm với features ngay lần đầu.
   </p>
 
-  <h2 id="examples">16.10 Ví dụ thực tế — những gì họ làm tốt</h2>
+  <h2 id="examples">16.11 Ví dụ thực tế — những gì họ làm tốt</h2>
 
   <div class="table-wrap">
     <table>
@@ -404,11 +473,13 @@
       </thead>
       <tbody>
         <tr><td><strong>ChatGPT</strong></td><td>Branch conversation history, custom GPTs cho context, voice mode seamless</td><td>Branch history là killer feature cho exploration — cần cho mọi AI chat</td></tr>
-        <tr><td><strong>Claude (claude.ai)</strong></td><td>Extended thinking visible, artifact panel tách biệt, Projects persistent context</td><td>Show reasoning tăng trust; artifact panel tách riêng "working document" khỏi chat</td></tr>
+        <tr><td><strong>Claude (claude.ai)</strong></td><td>Extended thinking visible, Artifacts side panel, Generative UI (HTML/JS chạy trực tiếp), Projects persistent context</td><td>Generative UI = execution env: user tương tác với app ngay trong chat. Show reasoning tăng trust; artifact panel tách riêng "working document" khỏi chat</td></tr>
         <tr><td><strong>Cursor</strong></td><td>Inline diff với Accept/Reject per change, @file context, Composer cho multi-file</td><td>Granular accept/reject tốt hơn all-or-nothing; explicit context control quan trọng</td></tr>
         <tr><td><strong>Perplexity</strong></td><td>Every answer có citations với snippet preview, source list có thể filter, Pro search transparent về search steps</td><td>Citations không chỉ link — cần snippet preview để user không phải click mỗi link</td></tr>
         <tr><td><strong>Notion AI</strong></td><td>AI tích hợp ngay trong text editor, "/" command, "Improve writing" context-aware, revision marks</td><td>AI native trong editing context tốt hơn chat sidebar riêng cho writing tasks</td></tr>
         <tr><td><strong>GitHub Copilot</strong></td><td>Ghost text completion, Tab to accept một token / toàn bộ suggestion, multi-line context</td><td>Partial acceptance (Tab từng từ) reduce friction; ghost text không interrupt flow</td></tr>
+        <tr><td><strong>V0 / Bolt / Lovable</strong></td><td>Generate UI từ text prompt; Lovable: visual edit + code + deploy; V0: React/Tailwind components; Bolt: full-stack browser IDE</td><td>Generative UI builders = prototyping accelerators. Lovable $20M ARR trong 2 tháng (2025). Production cuối vẫn cần dev cho ~20–30% remaining complexity.</td></tr>
+        <tr><td><strong>ChatGPT Canvas</strong></td><td>Editing environment tích hợp trong chat: AI + user cùng chỉnh sửa document/code; comment và annotation trực tiếp trên nội dung</td><td>Canvas = collaboration UX; khác Artifacts ở chỗ không render/run code — phù hợp cho writing và code review hơn là app prototyping</td></tr>
       </tbody>
     </table>
   </div>
@@ -416,22 +487,23 @@
   <h2 id="tom-tat">Tóm tắt</h2>
   <ol>
     <li><strong>AI UX ≠ traditional UX</strong>: probabilistic outputs, variable latency, hallucination risk đòi hỏi pattern thiết kế khác — dialogue và iteration thay vì single-shot deterministic.</li>
-    <li><strong>Streaming</strong> là pattern quan trọng nhất: giảm perceived latency từ 15s xuống 1-3s (TTFT), cho phép user can thiệp sớm.</li>
+    <li><strong>Chat-as-only-UI là anti-pattern cho agents</strong>: agent cần status panel, intervention points, và activity log — không chỉ chat box.</li>
+    <li><strong>Streaming</strong> là pattern quan trọng nhất: giảm perceived latency từ 15s xuống 1-3s (TTFT), cho phép user can thiệp sớm. Với agents, stream cả tool-call steps.</li>
+    <li><strong>Artifacts / Canvas / Generative UI</strong>: vượt ra ngoài chat — execution env (Claude Artifacts), editing env (ChatGPT Canvas), hoặc generative UI builders (V0, Bolt, Lovable). Chọn pattern phù hợp use case.</li>
     <li><strong>Citations + confidence indicators</strong> xây dựng trust — không phải assertion mà là transparency.</li>
-    <li><strong>Undo / Regenerate / Edit</strong>: user phải luôn có cách steer AI theo hướng mong muốn.</li>
-    <li><strong>Approval flows</strong> cho write actions: friction proportional to reversibility. Full auto chỉ khi low-risk và easily reversible.</li>
+    <li><strong>Agentic undo</strong>: atomic steps + checkpointing + undo stack. Khi rollback không khả thi, audit log đầy đủ là safety net tối thiểu.</li>
+    <li><strong>Autonomy dial</strong>: user chọn mức kiểm soát. Pre-action preview → in-action rationale → post-action audit/undo. Copilot vs agent là spectrum, không phải binary.</li>
     <li><strong>Error UX</strong>: transparent failure + actionable alternative, không bao giờ chỉ nói "I don't know".</li>
     <li><strong>Graceful degradation</strong>: AI là enhancement — core functionality phải hoạt động khi AI unavailable.</li>
     <li><strong>Onboarding</strong>: set expectations, provide templates, progressive disclosure. First session quyết định retention.</li>
   </ol>
-
   <nav class="section-footer">
     <a href="15-security.html" class="prev">
-      <div class="label">← trước</div>
+      <div class="label">← Trước</div>
       <div class="title">15 — Security</div>
     </a>
     <a href="17-multimodal.html" class="next">
-      <div class="label">tiếp theo →</div>
+      <div class="label">Tiếp theo →</div>
       <div class="title">17 — Multimodal Applications</div>
     </a>
   </nav>

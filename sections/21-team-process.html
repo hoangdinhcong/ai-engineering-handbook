@@ -13,6 +13,7 @@
   <div class="crumbs"><a href="../index.html">Mục lục</a> › Phần 7 · <span>21 — Team &amp; Process</span></div>
   <div class="nav-actions">
     <a href="20-cost-finops.html">← Trước</a>
+    <a href="../index.html">Mục lục</a>
     <a href="22-future-advanced.html">Tiếp →</a>
   </div>
 </nav>
@@ -20,7 +21,7 @@
 <main class="page">
 
   <section class="hero">
-    <span class="eyebrow">Phần 7 · §21</span>
+    <div class="eyebrow-row"><span class="eyebrow">Phần 7 · §21</span><a class="hero-updated" href="../KNOWLEDGE_UPDATES.md" title="Lịch sử cập nhật kiến thức">↻ 2026-05-23</a></div>
     <h1>Team &amp; Process</h1>
     <p class="lede">
       Build sản phẩm AI không chỉ là kỹ thuật — tổ chức team, collaboration với PM và domain experts,
@@ -49,8 +50,27 @@
   <h2 id="ai-engineer-in-org">21.1 AI Engineer trong Tổ Chức</h2>
   <p>
     Không có cấu trúc tổ chức "đúng" duy nhất cho AI engineering. Ba model phổ biến, mỗi cái
-    phù hợp với quy mô và giai đoạn khác nhau:
+    phù hợp với quy mô và giai đoạn khác nhau.
   </p>
+
+  <div class="callout note">
+    <div class="icon">≡</div>
+    <div>
+      <div class="title">Sự phân hoá vai trò AI Engineer (2025–2026)</div>
+      <p>
+        Đến 2025–2026, "AI Engineer" không còn là một vai trò đồng nhất. Ba chuyên môn mới nổi
+        đang được tuyển dụng tách biệt tại các công ty lớn:
+      </p>
+      <ul>
+        <li><strong>Agent Engineer (Agentic AI Engineer)</strong>: Build agent loops — tool calling, sub-agent orchestration, memory, multi-step planning. Theo Stanford AI Index 2026, job postings dạng này tăng 280% YoY. Gartner dự báo 40% enterprise app sẽ có task-specific agents vào cuối 2026.</li>
+        <li><strong>AI Evals Engineer</strong>: Thiết kế, vận hành, và duy trì toàn bộ evaluation framework — định nghĩa metrics có ý nghĩa (context adherence, hallucination rate, instruction alignment), build eval harness, chạy evals trong CI/CD. OpenAI, Anthropic đã có hiring track riêng cho role này.</li>
+        <li><strong>Context Engineer</strong>: Quản lý toàn bộ information environment mà model hoạt động trong đó — system instructions, retrieved knowledge, tool definitions, conversation summaries. Được Andrej Karpathy và Shopify CEO Tobi Lütke công nhận vào giữa 2025; khác với Prompt Engineer ở chỗ cần kỹ năng thiết kế hệ thống (RAG, vector DB, memory architecture).</li>
+      </ul>
+      <p>
+        Tại startup và scale-up, một người vẫn đảm nhiệm cả ba. Tại enterprise, đây là ba track tuyển dụng riêng biệt.
+      </p>
+    </div>
+  </div>
 
   <svg class="diagram" viewBox="0 0 760 340" role="img" aria-label="Org chart variants: standalone vs embedded vs platform">
     <defs>
@@ -148,9 +168,9 @@
           <td><span class="tag green">Cao — nền tảng</span></td>
         </tr>
         <tr>
-          <td><strong>Prompt Engineering</strong></td>
-          <td>Chain-of-thought, few-shot, structured output, tool use, system design</td>
-          <td><span class="tag green">Cao — core skill</span></td>
+          <td><strong>Prompt / Context Engineering</strong></td>
+          <td>Chain-of-thought, few-shot, structured output, tool use; quản lý context window, memory, retrieval pipeline</td>
+          <td><span class="tag green">Cao — core skill (2025: "Context Engineering" đang thay thế dần "Prompt Engineering")</span></td>
         </tr>
         <tr>
           <td><strong>ML Literacy</strong></td>
@@ -159,8 +179,8 @@
         </tr>
         <tr>
           <td><strong>Evaluation</strong></td>
-          <td>Design eval sets, metrics, LLM-as-judge, A/B testing</td>
-          <td><span class="tag green">Cao — differentiator</span></td>
+          <td>Design eval sets, metrics, LLM-as-judge, A/B testing, eval harness trong CI/CD</td>
+          <td><span class="tag green">Cao — differentiator (2026: AI Evals Engineer là role tuyển dụng riêng)</span></td>
         </tr>
         <tr>
           <td><strong>Product Sense</strong></td>
@@ -279,9 +299,24 @@
   </p>
   <ul>
     <li>Prototype có thể xong trong <strong>vài giờ</strong> (thử prompt, chạy eval set nhỏ)</li>
-    <li>Iteration chủ yếu ở <strong>prompt level</strong>, không cần rebuild infrastructure</li>
+    <li>Iteration chủ yếu ở <strong>prompt / context level</strong>, không cần rebuild infrastructure</li>
     <li>Ship canary sớm giúp collect real data thay vì chỉ guess</li>
   </ul>
+
+  <div class="callout note">
+    <div class="icon">≡</div>
+    <div>
+      <div class="title">Agentic loop: review point chuyển upstream</div>
+      <p>
+        Với agentic systems, agent loop có thể chạy <strong>nhiều phút đến nhiều giờ</strong> — không thể review
+        từng bước. Thực hành 2025–2026 chuyển human review checkpoint lên upstream: thay vì review code,
+        team review <strong>spec</strong> và <strong>prompt/tool definition</strong> trước khi agent chạy.
+        Pattern phổ biến: 3 checkpoints — (1) review priorities, (2) review spec, (3) intent review trước khi ship.
+        Cách này áp dụng cả khi dùng AI codegen (Cursor, GitHub Copilot) — review ở mức direction,
+        không review từng dòng code được generate.
+      </p>
+    </div>
+  </div>
 
   <h3>Sự khác biệt so với traditional software loop</h3>
   <div class="table-wrap">
@@ -312,7 +347,26 @@
     <li><strong>"Add to golden set" khi fix bug</strong>: Khi fix một failure mode, thêm nó vào eval set để không tái phát</li>
     <li><strong>Eval results trong PR description</strong>: "Before: 82%, After: 91%" → reviewers thấy impact ngay</li>
     <li><strong>Weekly eval review</strong>: 30 phút/tuần để review recent failures và discuss patterns</li>
-    <li><strong>Eval ownership</strong>: Ai chịu trách nhiệm maintain eval set, add cases mới từ production feedback</li>
+    <li><strong>Eval ownership</strong>: Ai chịu trách nhiệm maintain eval set, add cases mới từ production feedback. Ở team đủ lớn, đây là role <em>AI Evals Engineer</em> full-time.</li>
+  </ul>
+
+  <h3>Rituals mới trong AI-native teams (2025–2026)</h3>
+  <ul>
+    <li>
+      <strong>Spec Review meeting</strong>: Trước khi viết code (hoặc trước khi agent chạy), cả team review spec
+      — input/output contract, failure modes, eval criteria. Đây là thay thế của requirement review truyền thống,
+      nhưng quan trọng hơn vì AI sẽ xử lý implementation.
+    </li>
+    <li>
+      <strong>Prompt Review</strong>: Prompt/system instruction được review như code — có reviewer, có changelog,
+      có lý do thay đổi. GPT-5 prompting guide (OpenAI, 2025) ghi nhận: teams dùng LLM để review chính
+      prompt library của mình đã phát hiện nhiều ambiguity và contradiction không thấy qua manual review.
+    </li>
+    <li>
+      <strong>AI Pairing norms</strong>: Team thống nhất về cách pair với AI codegen tools — ai là "driver"
+      (viết prompt/spec), ai review output, khi nào accept suggestion mà không cần manual review. Tỷ lệ
+      ~41% code được AI generate (2025) đòi hỏi norms rõ ràng, không để mỗi người tự handle khác nhau.
+    </li>
   </ul>
 
   <h2 id="documentation">21.6 Documentation</h2>
@@ -402,6 +456,23 @@
     <li>Share learnings sau mỗi incident: "post-mortem cho AI failures" rất valuable</li>
   </ul>
 
+  <div class="callout note">
+    <div class="icon">≡</div>
+    <div>
+      <div class="title">AI codegen và team size: thực tế 2025–2026</div>
+      <p>
+        Với ~41% code được AI generate (2025) và 85% developers dùng AI tools hằng ngày,
+        nhiều người kỳ vọng team size giảm tương ứng. Thực tế phức tạp hơn:
+      </p>
+      <ul>
+        <li>AI-savvy engineer có thể output tương đương 5 developer truyền thống — nhưng code output tăng cũng tăng gánh nặng review, debug, và bảo trì</li>
+        <li>AI-native startup xu hướng chạy với <strong>3–5 senior engineers + AI augmentation</strong> thay vì team 8–12 người. Tuy nhiên, enterprise headcount vẫn tương đối ổn do opportunity space mở rộng</li>
+        <li>Junior developer không mất việc nhưng role thay đổi: từ "viết code" sang "review AI output, maintain eval harness, catch regressions"</li>
+        <li>Hiring signal mới: candidates cần demo được <strong>AI pairing workflow</strong> thực tế, không chỉ nói biết dùng Copilot</li>
+      </ul>
+    </div>
+  </div>
+
   <h2 id="non-determinism">21.9 Working with Non-Determinism</h2>
   <p>
     Non-determinism là fundamental property của LLMs, không phải bug. Manage expectations
@@ -474,6 +545,20 @@
     </div>
   </div>
 
+  <div class="callout danger">
+    <div class="icon">✕</div>
+    <div>
+      <div class="title">AI Codegen Velocity Trap</div>
+      <p>
+        Team adopt AI coding tools (Cursor, GitHub Copilot), velocity tăng mạnh, nhưng không có
+        eval harness và review norms tương ứng. Kết quả: code được generate nhanh hơn nhưng
+        cũng chứa nhiều bugs tinh vi hơn — 45% developers (2025 survey) nói debugging AI-generated
+        code mất <em>lâu hơn</em> dự kiến. Quy tắc: tốc độ generate tăng thì rigor review và
+        eval coverage phải tăng tương ứng, không phải giảm.
+      </p>
+    </div>
+  </div>
+
   <h3>Pitfalls nhỏ hơn nhưng phổ biến</h3>
   <ul>
     <li>Over-engineering lần đầu: RAG + fine-tune + agents ngay từ đầu — start simple, add complexity khi cần</li>
@@ -486,20 +571,21 @@
   <h2 id="tom-tat">Tóm tắt</h2>
   <ol>
     <li><strong>Không có org structure duy nhất đúng</strong>: Standalone, embedded, platform — chọn theo stage và quy mô.</li>
-    <li><strong>T-shaped skills</strong>: Rộng đủ để understand stack, sâu ở evaluation và prompt engineering.</li>
+    <li><strong>"AI Engineer" phân hoá thành nhiều roles</strong>: Agent Engineer, AI Evals Engineer, Context Engineer — tại startup một người đảm nhiệm cả ba, tại enterprise đây là ba track tuyển dụng riêng (2025–2026).</li>
+    <li><strong>T-shaped skills</strong>: Rộng đủ để understand stack, sâu ở evaluation và context engineering.</li>
     <li><strong>Collaboration đa chiều</strong>: PM define success, designer plan for failure, domain expert cung cấp eval data.</li>
-    <li><strong>Eval-driven development</strong> là practice cả team, không chỉ tech: không có eval, không có ship.</li>
+    <li><strong>Eval-driven development</strong> là practice cả team, không chỉ tech: không có eval, không có ship. Thêm Spec Review và Prompt Review vào team rituals.</li>
+    <li><strong>AI codegen tăng velocity nhưng đòi hỏi review rigor tương ứng</strong>: ~41% code AI-generated (2025) — tốc độ generate tăng không thay thế được eval coverage.</li>
     <li><strong>Document mọi thứ</strong>: Prompts, decisions, eval sets — AI features có nhiều dimension cần document hơn traditional SW.</li>
-    <li><strong>Tránh 4 big pitfalls</strong>: AI hype, demo-driven dev, no eval, vendor lock-in không có kế hoạch.</li>
+    <li><strong>Tránh 5 big pitfalls</strong>: AI hype, demo-driven dev, no eval, vendor lock-in, và AI codegen velocity trap.</li>
   </ol>
-
   <nav class="section-footer">
     <a href="20-cost-finops.html" class="prev">
-      <div class="label">← trước</div>
+      <div class="label">← Trước</div>
       <div class="title">20 — Cost &amp; FinOps cho AI</div>
     </a>
     <a href="22-future-advanced.html" class="next">
-      <div class="label">tiếp theo →</div>
+      <div class="label">Tiếp theo →</div>
       <div class="title">22 — Tương lai &amp; các chủ đề nâng cao</div>
     </a>
   </nav>

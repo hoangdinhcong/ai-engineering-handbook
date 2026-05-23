@@ -13,6 +13,7 @@
   <div class="crumbs"><a href="../index.html">Mục lục</a> › Phần 4 · <span>09 — RAG</span></div>
   <div class="nav-actions">
     <a href="08-vector-search.html">← Trước</a>
+    <a href="../index.html">Mục lục</a>
     <a href="10-agents.html">Tiếp →</a>
   </div>
 </nav>
@@ -20,7 +21,7 @@
 <main class="page">
 
   <section class="hero">
-    <span class="eyebrow">Phần 4 · §09</span>
+    <div class="eyebrow-row"><span class="eyebrow">Phần 4 · §09</span><a class="hero-updated" href="../KNOWLEDGE_UPDATES.md" title="Lịch sử cập nhật kiến thức">↻ 2026-05-23</a></div>
     <h1>RAG — Retrieval-Augmented Generation</h1>
     <p class="lede">
       Kiến trúc cho phép LLM truy xuất kiến thức ngoài training data: từ chunking và embedding đến hybrid search, reranking, và advanced patterns như HyDE, multi-hop, GraphRAG.
@@ -40,8 +41,9 @@
       <li><a href="#metadata">7.7 Metadata & Multitenancy</a></li>
       <li><a href="#advanced">7.8 Advanced RAG</a></li>
       <li><a href="#graphrag">7.9 GraphRAG</a></li>
-      <li><a href="#eval">7.10 RAG Evaluation</a></li>
-      <li><a href="#traps">7.11 Production traps</a></li>
+      <li><a href="#agentic-rag">7.10 Agentic RAG</a></li>
+      <li><a href="#eval">7.11 RAG Evaluation</a></li>
+      <li><a href="#traps">7.12 Production traps</a></li>
       <li><a href="#tom-tat">Tóm tắt</a></li>
     </ul>
   </aside>
@@ -72,19 +74,28 @@
     <li><strong>Citable answers:</strong> Câu trả lời có thể dẫn nguồn cụ thể, giúp người dùng verify và tăng trust.</li>
   </ul>
 
-  <h3>RAG vs Fine-tuning vs Long context</h3>
+  <h3>RAG vs Fine-tuning vs Long context vs CAG</h3>
   <div class="table-wrap">
     <table>
       <thead>
         <tr><th>Phương pháp</th><th>Khi nào phù hợp</th><th>Hạn chế</th></tr>
       </thead>
       <tbody>
-        <tr><td><strong>RAG</strong></td><td>Dữ liệu thay đổi liên tục, cần citation, corpus lớn</td><td>Retrieval có thể miss; latency cao hơn</td></tr>
+        <tr><td><strong>RAG</strong></td><td>Dữ liệu thay đổi liên tục, cần citation, corpus &gt;1M tokens</td><td>Retrieval có thể miss; latency cao hơn; infra phức tạp</td></tr>
         <tr><td>Fine-tuning</td><td>Style/format cố định, domain behavior, không cần citation</td><td>Không update được real-time; expensive</td></tr>
-        <tr><td>Long context</td><td>Toàn bộ tài liệu vừa trong 1 prompt (&lt;200k tokens)</td><td>Cost cao; "lost-in-the-middle" problem</td></tr>
-        <tr><td>Kết hợp</td><td>Corpus rất lớn + domain style cụ thể</td><td>Phức tạp nhất, chi phí cao nhất</td></tr>
+        <tr><td>Long context</td><td>Corpus vừa trong context window (Claude/Gemini 1M tokens GA từ 2026)</td><td>Cost cao khi query nhiều; RAG vẫn tốt hơn ở recall chính xác</td></tr>
+        <tr><td><strong>CAG</strong> (Cache-Augmented Generation)</td><td>Corpus nhỏ–vừa (&lt;1M tokens), ít thay đổi, cần tốc độ cao nhất</td><td>KV cache tốn memory; không phù hợp corpus lớn/động</td></tr>
+        <tr><td>Kết hợp RAG + FT</td><td>Corpus rất lớn + domain style cụ thể</td><td>Phức tạp nhất, chi phí cao nhất; ~60% production 2025–2026 dùng cả hai</td></tr>
       </tbody>
     </table>
+  </div>
+
+  <div class="callout note">
+    <div class="icon">≡</div>
+    <div>
+      <div class="title">CAG — Cache-Augmented Generation</div>
+      <p><strong>CAG</strong> preload toàn bộ document vào context và cache KV trước, loại bỏ hoàn toàn retrieval runtime. Đạt tốc độ nhanh hơn đến 40× so với RAG. Phù hợp khi corpus vừa trong 1M-token window và không thay đổi thường xuyên. Anthropic gợi ý: với corpus &lt;200k tokens, full-context + prompt caching thường nhanh và rẻ hơn xây retrieval infra.</p>
+    </div>
   </div>
 
   <!-- ═══════════════════════════════════════════════
@@ -460,6 +471,22 @@ token_embeddings = <span class="fn">embed_full_doc</span>(document)  <span class
           <td>Xuất sắc</td>
           <td>Tiếng Việt tốt; lightweight</td>
         </tr>
+        <tr>
+          <td><code>embed-v4</code></td>
+          <td>Cohere</td>
+          <td>1024</td>
+          <td>—</td>
+          <td>Tốt</td>
+          <td>Ra mắt cuối 2025; $0.01/1M tokens; tích hợp chặt với rerank-v3</td>
+        </tr>
+        <tr>
+          <td><code>jina-embeddings-v3</code></td>
+          <td>Jina AI</td>
+          <td>768 (variable)</td>
+          <td>8192</td>
+          <td>Tốt</td>
+          <td>Variable-length output; task-specific adapters; Late Chunking support</td>
+        </tr>
       </tbody>
     </table>
   </div>
@@ -635,6 +662,7 @@ fused = {}
       <tbody>
         <tr><td><code>rerank-english-v3.0</code></td><td>Cohere</td><td>Cross-encoder</td><td>~200ms</td><td>English, production</td></tr>
         <tr><td><code>rerank-multilingual-v3</code></td><td>Cohere</td><td>Cross-encoder</td><td>~250ms</td><td>Multilingual including Vietnamese</td></tr>
+        <tr><td><code>rerank-v4.0-pro</code></td><td>Cohere</td><td>Cross-encoder</td><td>~300ms</td><td>32k context; 100+ ngôn ngữ; hỗ trợ JSON/semi-structured; agent workflows</td></tr>
         <tr><td><code>bge-reranker-v2-m3</code></td><td>BAAI (OSS)</td><td>Cross-encoder</td><td>variable</td><td>Self-host, multilingual</td></tr>
         <tr><td>ColBERT v2</td><td>Stanford (OSS)</td><td>Late interaction</td><td>~50ms</td><td>Fast + accurate; PLAID index</td></tr>
         <tr><td>LLM rerank</td><td>Any LLM</td><td>Prompt-based</td><td>1–5s</td><td>Highest accuracy; expensive</td></tr>
@@ -736,13 +764,36 @@ results = qdrant.<span class="fn">search</span>(
 
   <div class="tabs" data-tabs>
     <div class="tab-buttons">
-      <button class="active">Query Rewriting</button>
+      <button class="active">Contextual Retrieval</button>
+      <button>Query Rewriting</button>
       <button>HyDE</button>
+      <button>Self-RAG / CRAG</button>
       <button>Multi-hop</button>
       <button>Self-Query</button>
       <button>Query Routing</button>
     </div>
     <div class="tab-panel active">
+      <h4>Contextual Retrieval (Anthropic, 2024–2025)</h4>
+      <p>
+        Anthropic công bố kỹ thuật <strong>Contextual Retrieval</strong> — thay vì embed chunk thuần, dùng LLM prepend một đoạn context ngắn (~100 tokens) mô tả chunk trong ngữ cảnh toàn bộ document trước khi embed. Kết quả: <strong>giảm 49% retrieval failure</strong>; kết hợp với reranker giảm tới 67%.
+      </p>
+      <pre><code><span class="cm"># Contextual Retrieval: augment chunk trước khi embed</span>
+CONTEXT_PROMPT = <span class="fn">f</span><span class="str">"""
+&lt;document&gt;{full_document}&lt;/document&gt;
+Here is the chunk we want to situate:
+&lt;chunk&gt;{chunk}&lt;/chunk&gt;
+Provide a succinct context (1-2 sentences) to situate this chunk.
+Answer only with the context, nothing else.
+"""</span>
+ctx = llm.<span class="fn">complete</span>(CONTEXT_PROMPT)  <span class="cm"># ~100 tokens</span>
+augmented_chunk = ctx + <span class="str">"\n\n"</span> + chunk
+embedding = embed_model.<span class="fn">embed</span>(augmented_chunk)</code></pre>
+      <p>
+        <strong>Hai sub-techniques:</strong> Contextual Embeddings (embed chunk đã augment) và Contextual BM25 (BM25 trên chunk đã augment). Sử dụng <strong>prompt caching</strong> để tái dùng document context, giảm chi phí LLM augmentation đáng kể.
+      </p>
+      <p><strong>Khi nào dùng:</strong> Corpus có nhiều chunk ambiguous nếu đứng độc lập (tài liệu pháp lý, sách kỹ thuật, wiki dài). Chi phí augmentation được khấu hao qua prompt caching.</p>
+    </div>
+    <div class="tab-panel">
       <h4>Query Rewriting / Expansion</h4>
       <p>
         LLM viết lại câu hỏi của user để tối ưu cho retrieval. Có thể tạo nhiều query variant
@@ -774,6 +825,24 @@ hypothetical_doc = llm.<span class="fn">complete</span>(hyde_prompt)
 hyde_embedding = embedding_model.<span class="fn">embed</span>(hypothetical_doc)
 results = vector_db.<span class="fn">search</span>(hyde_embedding, top_k=<span class="num">5</span>)</code></pre>
       <p><strong>Khi nào dùng:</strong> Queries ngắn, abstract; documents dài, detailed. HyDE thường giúp khi có semantic gap lớn giữa question style và document style.</p>
+    </div>
+    <div class="tab-panel">
+      <h4>Self-RAG &amp; Corrective RAG (CRAG)</h4>
+      <p>
+        <strong>Self-RAG</strong> (2023–2025): model tự đánh giá xem có cần retrieve không và có tin tưởng kết quả không, thông qua các <em>reflection tokens</em> đặc biệt (<code>ISREL</code>, <code>ISSUP</code>, <code>ISUSE</code>). Giảm hallucination tới 52% so với RAG truyền thống.
+      </p>
+      <p>
+        <strong>CRAG — Corrective RAG</strong>: sau khi retrieve, một <em>relevance classifier</em> đánh giá mỗi chunk. Nếu điểm thấp, hệ thống tự động kích hoạt web search để bổ sung. Benchmark 2025: CRAG đạt Precision@5 = 0.69, hallucination rate 10.5%, latency ~240ms — thực tế nhất trong các Agentic RAG patterns.
+      </p>
+      <pre><code><span class="cm"># CRAG pattern: evaluate + correct</span>
+retrieved = vector_db.<span class="fn">search</span>(query, top_k=<span class="num">5</span>)
+scored = [(chunk, relevance_classifier.<span class="fn">score</span>(query, chunk))
+          <span class="kw">for</span> chunk <span class="kw">in</span> retrieved]
+low_quality = [c <span class="kw">for</span> c, s <span class="kw">in</span> scored <span class="kw">if</span> s &lt; THRESHOLD]
+<span class="kw">if</span> low_quality:
+    web_results = web_search.<span class="fn">query</span>(query)  <span class="cm"># fallback</span>
+    scored += [(r, <span class="num">1.0</span>) <span class="kw">for</span> r <span class="kw">in</span> web_results]
+answer = llm.<span class="fn">generate</span>(query, [c <span class="kw">for</span> c, s <span class="kw">in</span> scored <span class="kw">if</span> s &gt; THRESHOLD])</code></pre>
     </div>
     <div class="tab-panel">
       <h4>Multi-hop Retrieval</h4>
@@ -840,9 +909,9 @@ RESPONSE: {
   ════════════════════════════════════════════════ -->
   <h2 id="graphrag">7.9 GraphRAG</h2>
   <p>
-    <strong>GraphRAG</strong> (Microsoft, 2024) kết hợp <em>knowledge graph</em> với RAG truyền thống.
+    <strong>GraphRAG</strong> (Microsoft, ra mắt 2024, cập nhật liên tục 2025) kết hợp <em>knowledge graph</em> với RAG truyền thống.
     Thay vì chỉ chunk và embed, GraphRAG extract <strong>entities và relationships</strong> từ corpus
-    và build một knowledge graph, sau đó traverse graph để retrieve thông tin liên quan.
+    và build một knowledge graph, sau đó traverse graph để retrieve thông tin liên quan. Microsoft liên tục phát triển thêm các variants mới trong 2025.
   </p>
 
   <h3>Khi nào GraphRAG vượt trội</h3>
@@ -860,24 +929,115 @@ RESPONSE: {
     <li><strong>Query với map-reduce:</strong> Map query đến các community summaries, reduce lại thành global answer.</li>
   </ol>
 
+  <h3>Các variants GraphRAG (2025)</h3>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Variant</th><th>Đặc điểm</th><th>Chi phí index</th><th>Khi nào dùng</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Full GraphRAG</strong></td>
+          <td>Build full knowledge graph + community summaries</td>
+          <td>10–50× vector RAG</td>
+          <td>Global reasoning, complex relationship queries</td>
+        </tr>
+        <tr>
+          <td><strong>LazyGraphRAG</strong> (2025)</td>
+          <td>Không pre-summarize; chỉ extract entity khi query, dùng NLP nhẹ thay LLM</td>
+          <td><strong>0.1% của Full GraphRAG</strong> (ngang vector RAG)</td>
+          <td>Muốn graph reasoning mà không chịu indexing cost; corpus lớn/dynamicc</td>
+        </tr>
+        <tr>
+          <td><strong>DRIFT Search</strong> (2025)</td>
+          <td>Dynamic Reasoning &amp; Inference with Flexible Traversal — merge global + local search</td>
+          <td>Tương đương Full GraphRAG</td>
+          <td>Query cần cả "big picture" lẫn chi tiết cụ thể</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
   <div class="callout warn">
     <div class="icon">⚠</div>
     <div>
-      <div class="title">GraphRAG rất đắt về indexing cost</div>
+      <div class="title">GraphRAG rất đắt về indexing cost — dùng LazyGraphRAG trước</div>
       <p>
-        Build GraphRAG index tốn nhiều LLM calls hơn naive RAG đến 10–50x vì phải extract entities
-        từ mọi chunk. Chỉ đáng đầu tư khi use case cần global reasoning hoặc complex relationship queries.
+        Full GraphRAG tốn 10–50× LLM calls so với vector RAG vì phải extract entities từ mọi chunk.
+        <strong>LazyGraphRAG (2025)</strong> loại bỏ pre-summarization, chi phí indexing chỉ bằng 0.1% của Full GraphRAG,
+        ngang với vector RAG thông thường — thử LazyGraphRAG trước khi commit vào Full GraphRAG.
       </p>
     </div>
   </div>
 
   <!-- ═══════════════════════════════════════════════
-       7.10 RAG Evaluation
+       7.10 Agentic RAG
   ════════════════════════════════════════════════ -->
-  <h2 id="eval">7.10 RAG Evaluation — RAGAS và các metrics</h2>
+  <h2 id="agentic-rag">7.10 Agentic RAG</h2>
+  <p>
+    <strong>Agentic RAG</strong> nâng RAG lên một bậc: thay vì pipeline cố định (retrieve một lần → generate),
+    agent tự quyết định <em>khi nào</em> retrieve, <em>từ đâu</em>, và <em>có cần lặp lại</em> không.
+    Benchmark 2025 cho thấy Agentic RAG đạt 89% accuracy trên multi-hop reasoning, so với 34% của Static RAG.
+  </p>
+
+  <h3>5 pattern Agentic RAG chính (2025–2026)</h3>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Pattern</th><th>Cách hoạt động</th><th>Ưu điểm</th><th>Latency</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Self-RAG</strong></td>
+          <td>Model phát reflection tokens (ISREL, ISSUP, ISUSE) để tự đánh giá kết quả</td>
+          <td>Giảm 52% hallucination</td>
+          <td>+~20%</td>
+        </tr>
+        <tr>
+          <td><strong>CRAG</strong></td>
+          <td>Relevance classifier sau retrieve; web search fallback khi thấp điểm</td>
+          <td>Precision@5=0.69, latency ~240ms</td>
+          <td>+~15%</td>
+        </tr>
+        <tr>
+          <td><strong>Adaptive RAG</strong></td>
+          <td>Classifier phân loại query → chọn pipeline depth (no-RAG / single-hop / multi-hop)</td>
+          <td>Tối ưu cost tùy query</td>
+          <td>Thấp cho simple queries</td>
+        </tr>
+        <tr>
+          <td><strong>ReAct over docs</strong></td>
+          <td>Reason-Act loop: LLM reason → chọn tool → retrieve → tiếp tục</td>
+          <td>Linh hoạt nhất; multi-source</td>
+          <td>Cao (nhiều hops)</td>
+        </tr>
+        <tr>
+          <td><strong>Multi-hop decomposition</strong></td>
+          <td>Phân tách câu hỏi phức tạp → sub-queries → merge kết quả</td>
+          <td>Giải quyết câu hỏi "2+ bước"</td>
+          <td>Tỉ lệ thuận với số hops</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout note">
+    <div class="icon">≡</div>
+    <div>
+      <div class="title">MCP trở thành chuẩn cho Agentic RAG tool calls</div>
+      <p>
+        Model Context Protocol (MCP) — ban đầu do Anthropic phát triển — được Linux Foundation's Agentic AI Foundation tiếp nhận tháng 12/2025 và được cả OpenAI lẫn Google adopt. MCP là standard de facto để RAG agent gọi retrieval tools, web search, SQL, và APIs bên ngoài.
+      </p>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════
+       7.11 RAG Evaluation
+  ════════════════════════════════════════════════ -->
+  <h2 id="eval">7.11 RAG Evaluation — RAGAS, TruLens và các metrics</h2>
   <p>
     RAG evaluation phức tạp hơn truyền thống vì cần đánh giá cả <em>retrieval quality</em>
-    và <em>generation quality</em> cùng lúc.
+    và <em>generation quality</em> cùng lúc. Ba framework phổ biến nhất: <strong>RAGAS</strong> (reference-free, LLM-as-judge), <strong>TruLens</strong> (Snowflake-backed, monitoring production), và <strong>ARES</strong> (Stanford, tạo LLM judge riêng cho từng pipeline).
   </p>
 
   <h3>4 metrics cốt lõi của RAGAS</h3>
@@ -942,7 +1102,7 @@ result = <span class="fn">evaluate</span>(dataset, metrics=[
   <!-- ═══════════════════════════════════════════════
        7.11 Production Traps
   ════════════════════════════════════════════════ -->
-  <h2 id="traps">7.11 Production Traps</h2>
+  <h2 id="traps">7.12 Production Traps</h2>
 
   <div class="callout danger">
     <div class="icon">!</div>
@@ -1006,22 +1166,23 @@ result = <span class="fn">evaluate</span>(dataset, metrics=[
   <h2 id="tom-tat">Tóm tắt</h2>
   <ol>
     <li><strong>RAG</strong> = tách kiến thức ra khỏi model weights → update không cần retrain, có citation, corpus có thể rất lớn.</li>
+    <li><strong>RAG vs CAG vs Long Context:</strong> Với corpus &lt;1M tokens ít thay đổi, CAG (cache KV) nhanh hơn 40×. Với corpus lớn/động, RAG là lựa chọn duy nhất. ~60% production 2025–2026 kết hợp RAG + fine-tuning.</li>
     <li><strong>Chunking</strong> là bước có ảnh hưởng nhất: bắt đầu với Recursive splitter 512/50, nâng cấp lên Parent-Child khi cần.</li>
-    <li><strong>Embedding model</strong> phải giống nhau ở ingestion và query; check MTEB leaderboard khi chọn.</li>
-    <li><strong>Hybrid search (dense + BM25) + reranker</strong> gần như luôn tốt hơn dense-only.</li>
-    <li><strong>Metadata filtering</strong> không chỉ là tính năng — với multitenancy, nó là security requirement.</li>
-    <li><strong>Advanced RAG</strong> (HyDE, multi-hop, self-query) giải quyết complex queries; chỉ dùng khi naive RAG fail.</li>
-    <li><strong>RAGAS</strong>: 4 metrics cốt lõi — Faithfulness, Answer Relevance, Context Precision, Context Recall.</li>
+    <li><strong>Embedding model</strong> phải giống nhau ở ingestion và query; check MTEB leaderboard khi chọn. Cohere embed-v4 và voyage-3-large là lựa chọn hàng đầu 2025–2026.</li>
+    <li><strong>Hybrid search (dense + BM25) + reranker</strong> gần như luôn tốt hơn dense-only. Cohere rerank-v4.0-pro hỗ trợ 32k context và JSON.</li>
+    <li><strong>Contextual Retrieval</strong> (Anthropic): prepend context vào chunk trước khi embed → giảm 49–67% retrieval failure.</li>
+    <li><strong>GraphRAG</strong>: Full GraphRAG tốn kém (10–50×), thử LazyGraphRAG (0.1% cost) trước. DRIFT search cho queries cần cả global lẫn local context.</li>
+    <li><strong>Agentic RAG</strong> (Self-RAG, CRAG, Adaptive): đạt 89% accuracy trên multi-hop so với 34% của Static RAG. MCP là chuẩn de facto cho tool calls.</li>
+    <li><strong>Eval frameworks:</strong> RAGAS (reference-free), TruLens (production monitoring), ARES (custom LLM judges). 4 metrics cốt lõi: Faithfulness, Answer Relevance, Context Precision, Context Recall.</li>
     <li><strong>Production traps</strong>: chunk boundary, conflicting context, latency, citation accuracy — plan cho những cái này từ sớm.</li>
   </ol>
-
   <nav class="section-footer">
     <a href="08-vector-search.html" class="prev">
-      <div class="label">← trước</div>
+      <div class="label">← Trước</div>
       <div class="title">08 — Vector Search &amp; Knowledge Stores</div>
     </a>
     <a href="10-agents.html" class="next">
-      <div class="label">tiếp theo →</div>
+      <div class="label">Tiếp theo →</div>
       <div class="title">10 — Agents &amp; Tool Use</div>
     </a>
   </nav>

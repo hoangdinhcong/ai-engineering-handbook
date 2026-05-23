@@ -12,15 +12,16 @@
   <div class="brand"><span class="dot"></span> AI Engineering</div>
   <div class="crumbs"><a href="../index.html">Mục lục</a> › Phần 9 · <span>27 — Agent Eval &amp; Benchmarking</span></div>
   <div class="nav-actions">
-    <a href="26-durable-agents.html">← Durable Agents</a>
-    <a href="28-multi-agent-orchestration.html">Multi-Agent →</a>
+    <a href="26-durable-agents.html">← Trước</a>
+    <a href="../index.html">Mục lục</a>
+    <a href="28-multi-agent-orchestration.html">Tiếp →</a>
   </div>
 </nav>
 
 <main class="page">
 
   <section class="hero">
-    <span class="eyebrow">Phần 9 · §27</span>
+    <div class="eyebrow-row"><span class="eyebrow">Phần 9 · §27</span><a class="hero-updated" href="../KNOWLEDGE_UPDATES.md" title="Lịch sử cập nhật kiến thức">↻ 2026-05-23</a></div>
     <h1>Agent Eval &amp; Benchmarking</h1>
     <p class="lede">
       Đánh giá AI agent phức tạp hơn đánh giá LLM đơn lẻ gấp nhiều lần — cần đo đồng thời
@@ -334,8 +335,8 @@ score = <span class="fn">judge_reasoning</span>(thought, context)</code></pre>
           <td>Fix GitHub issues thực</td>
           <td>Python repo sandbox</td>
           <td>% issues resolved (unit tests)</td>
-          <td>~65–70% (top agents)</td>
-          <td>Verified = human-filtered subset, ít noise hơn gốc</td>
+          <td>~75–79% (top agents, tháng 5/2026)</td>
+          <td>Verified = human-filtered 500 tasks; lưu ý: nghiên cứu SWE-ABS 2026 cho thấy khi tăng cường test suite, điểm SOTA giảm từ ~79% xuống ~62%</td>
         </tr>
         <tr>
           <td><strong>SWE-bench Multilingual</strong></td>
@@ -366,16 +367,16 @@ score = <span class="fn">judge_reasoning</span>(thought, context)</code></pre>
           <td>Desktop computer tasks</td>
           <td>Real OS (macOS/Ubuntu)</td>
           <td>Task success + screen state</td>
-          <td>~35–45%</td>
-          <td>GUI grounding khó; agent phải "nhìn" màn hình và click</td>
+          <td>~80–82% (tháng 5/2026); vượt human baseline 72.36% từ cuối 2025</td>
+          <td>GUI grounding khó; agent phải "nhìn" màn hình và click; tiến bộ rất nhanh: đầu 2025 chỉ ~38%</td>
         </tr>
         <tr>
           <td><strong>WebArena</strong></td>
           <td>Web navigation tasks</td>
           <td>Simulated web apps</td>
           <td>Task success rate</td>
-          <td>~55–60%</td>
-          <td>Realistic web environments: e-commerce, forum, git, email</td>
+          <td>~45–50% (SOTA thực tế sau khi loại bỏ reward hacking)</td>
+          <td>Realistic web environments: e-commerce, forum, git, email; 812 tasks; chú ý: dễ bị khai thác reward hacking (Berkeley RDI 2026)</td>
         </tr>
         <tr>
           <td><strong>VisualWebArena</strong></td>
@@ -394,20 +395,20 @@ score = <span class="fn">judge_reasoning</span>(thought, context)</code></pre>
           <td>Unified framework đo trên nhiều env cùng lúc</td>
         </tr>
         <tr>
-          <td><strong>Tau-bench</strong></td>
+          <td><strong>τ-bench (TAU-bench)</strong></td>
           <td>Customer service agents</td>
           <td>Simulated user + database</td>
           <td>Task success + policy compliance</td>
-          <td>~70%</td>
-          <td>Đo cả policy adherence — quan trọng cho enterprise agents</td>
+          <td>~86% Retail (Claude Sonnet 4.5, tháng 5/2026); gốc 2024 chỉ &lt;50%</td>
+          <td>Đo cả policy adherence; τ²/τ³-bench mở rộng thêm domain banking và voice modality; quan trọng cho enterprise agents</td>
         </tr>
         <tr>
-          <td><strong>BFCL v3</strong></td>
-          <td>Function/tool calling</td>
+          <td><strong>BFCL v3 / v4</strong></td>
+          <td>Function/tool calling (multi-turn)</td>
           <td>Programmatic</td>
           <td>AST + exec correctness</td>
-          <td>~90%+ (top models)</td>
-          <td>Berkeley Function Calling Leaderboard; phân biệt AST vs executable</td>
+          <td>~77–78% (BFCL v3, top models 2026); v4 ra mắt với agentic eval toàn diện hơn</td>
+          <td>Berkeley Function Calling Leaderboard; v3 đo multi-turn 800 tasks; v4 bổ sung holistic agentic evaluation; phân biệt AST vs executable</td>
         </tr>
         <tr>
           <td><strong>MLE-bench</strong></td>
@@ -425,6 +426,30 @@ score = <span class="fn">judge_reasoning</span>(thought, context)</code></pre>
           <td>~55%</td>
           <td>Realistic mobile-style API interactions; multi-app dependencies</td>
         </tr>
+        <tr>
+          <td><strong>BrowseComp</strong></td>
+          <td>Hard web research (1,266 câu hỏi)</td>
+          <td>Live internet</td>
+          <td>Exact answer match</td>
+          <td>~86–90% (top agents, tháng 5/2026)</td>
+          <td>OpenAI benchmark; đo persistence và creativity trong web navigation để tìm thông tin khó/ẩn</td>
+        </tr>
+        <tr>
+          <td><strong>Cybench</strong></td>
+          <td>Capture-the-Flag (CTF) challenges</td>
+          <td>Cybersecurity sandbox</td>
+          <td>Task completion rate</td>
+          <td>~39% (top non-specialized, 2026); dual-use — cần thận trọng</td>
+          <td>Đo khả năng tấn công mạng agentic end-to-end; quan trọng cho security research và red-teaming</td>
+        </tr>
+        <tr>
+          <td><strong>Terminal-Bench 2.0</strong></td>
+          <td>CLI/terminal tasks thực tế (89 tasks)</td>
+          <td>Unique terminal envs</td>
+          <td>Automated test verification</td>
+          <td>Đang được thiết lập (2026); hard benchmark, tiệm cận production workflows</td>
+          <td>Mỗi task có unique environment và human-written solution; hard-difficulty; ra mắt đầu 2026</td>
+        </tr>
       </tbody>
     </table>
   </div>
@@ -439,6 +464,58 @@ score = <span class="fn">judge_reasoning</span>(thought, context)</code></pre>
         prompt injection resistance, permission escalation. Đặc biệt quan trọng cho
         production agents có quyền gọi tool thật. SOTA vẫn còn thấp (~60–70% safe on adversarial inputs).
       </p>
+    </div>
+  </div>
+
+  <div class="callout note">
+    <div class="icon">≡</div>
+    <div>
+      <div class="title">Reasoning Agent Benchmarks — HLE, ARC-AGI-2, FrontierMath</div>
+      <p>
+        Ngoài benchmark agent tác vụ, nhóm benchmark đo <strong>khả năng suy luận nền tảng</strong>
+        của model cũng liên quan trực tiếp đến agent performance:
+      </p>
+      <ul>
+        <li>
+          <strong>HLE (Humanity's Last Exam)</strong>: 2,500 câu hỏi đa lĩnh vực (toán, khoa học, nhân văn)
+          ở mức độ khó nhất của tri thức nhân loại. SOTA tháng 5/2026 khoảng 48–65% (tùy model và
+          có/không có tools). Điểm HLE tương quan mạnh với khả năng giải quyết task phức tạp của agent.
+        </li>
+        <li>
+          <strong>ARC-AGI-2</strong>: Đo abstract reasoning qua biến đổi lưới màu (input-output grid pairs).
+          Khó hơn ARC-AGI-1 đáng kể; model phải suy luận quy tắc biến đổi từ ví dụ — không thể memorize.
+        </li>
+        <li>
+          <strong>FrontierMath</strong>: Benchmark toán học tiên tiến được xây dựng với giới toán học chuyên nghiệp.
+          Điểm thấp trên FrontierMath thường chỉ ra agent sẽ gặp khó khăn với formal reasoning chains.
+        </li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="callout tip">
+    <div class="icon">★</div>
+    <div>
+      <div class="title">Eval Frameworks 2026: Inspect, Braintrust, Phoenix</div>
+      <p>
+        Ba framework phổ biến nhất để xây và chạy agent eval trong 2026:
+      </p>
+      <ul>
+        <li>
+          <strong>Inspect AI</strong> (UK AISI): open-source, hỗ trợ BFCL eval tích hợp sẵn; thiết kế
+          cho safety research và systematic eval. Dùng tốt khi cần reproducible, auditable evals.
+        </li>
+        <li>
+          <strong>Braintrust</strong>: SaaS managed platform; tích hợp trace, prompt management, và dataset
+          versioning. SDK wrappers cho OpenAI Agents SDK, LangGraph, CrewAI, Pydantic AI; phù hợp
+          cho team muốn tốc độ iteration nhanh và dashboard centralized.
+        </li>
+        <li>
+          <strong>Phoenix (Arize)</strong>: open-source, OpenTelemetry-first; self-hostable;
+          tốt cho team muốn kiểm soát hoàn toàn infrastructure và không phụ thuộc vendor.
+          Native adapters cho các framework phổ biến.
+        </li>
+      </ul>
     </div>
   </div>
 
@@ -1263,9 +1340,11 @@ metrics_to_track = [
       <em>Step-level</em> (từng action đúng không? — dùng cho fine-tuning và granular optimization).
     </li>
     <li>
-      <strong>Benchmark 2026 quan trọng nhất:</strong> SWE-bench (Verified / Multilingual / Live) cho coding,
-      GAIA cho general tasks, OSWorld cho desktop, WebArena cho web, BFCL cho tool-calling,
-      Tau-bench cho enterprise compliance, MLE-bench cho ML engineering.
+      <strong>Benchmark 2026 quan trọng nhất:</strong> SWE-bench (Verified / Multilingual / Live) cho coding (~75–79% SOTA),
+      GAIA cho general tasks, OSWorld cho desktop (~80%+, vượt human baseline), WebArena cho web,
+      BFCL v3/v4 cho tool-calling, τ-bench cho enterprise compliance (~86% Retail),
+      MLE-bench cho ML engineering; <em>mới 2025–2026</em>: BrowseComp (web research), Cybench (security),
+      Terminal-Bench (CLI); <em>reasoning</em>: HLE, ARC-AGI-2, FrontierMath.
     </li>
     <li>
       <strong>Ba giới hạn chết của benchmark công khai:</strong> contamination (data leak vào training),
@@ -1302,15 +1381,14 @@ metrics_to_track = [
       Alert sớm khi regression. Không ship khi golden suite fail.
     </li>
   </ol>
-
   <nav class="section-footer">
     <a href="26-durable-agents.html" class="prev">
-      <div class="label">← trước đó</div>
-      <div class="title">26 — Durable Agents</div>
+      <div class="label">← Trước</div>
+      <div class="title">26 — Long-running &amp; Durable Agents</div>
     </a>
     <a href="28-multi-agent-orchestration.html" class="next">
-      <div class="label">tiếp theo →</div>
-      <div class="title">28 — Multi-Agent Orchestration</div>
+      <div class="label">Tiếp theo →</div>
+      <div class="title">28 — Multi-agent Orchestration (chuyên sâu)</div>
     </a>
   </nav>
 

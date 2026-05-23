@@ -13,6 +13,7 @@
   <div class="crumbs"><a href="../index.html">Mục lục</a> › Phần 11 · <span>37 — Continuous Eval &amp; Regression cho AI</span></div>
   <div class="nav-actions">
     <a href="36-reward-modeling.html">← Trước</a>
+    <a href="../index.html">Mục lục</a>
     <a href="38-inference-compute-scaling.html">Tiếp →</a>
   </div>
 </nav>
@@ -20,7 +21,7 @@
 <main class="page">
 
   <section class="hero">
-    <span class="eyebrow">Phần 11 · §37</span>
+    <div class="eyebrow-row"><span class="eyebrow">Phần 11 · §37</span><a class="hero-updated" href="../KNOWLEDGE_UPDATES.md" title="Lịch sử cập nhật kiến thức">↻ 2026-05-23</a></div>
     <h1>Continuous Eval &amp; Regression cho AI</h1>
     <p class="lede">
       Eval không phải là việc làm một lần trước khi ship. Đây là vòng lặp liên tục: mỗi commit kích hoạt eval suite, mỗi deployment sample production traffic, mỗi alert chỉ ra ngay failing slice. Không có continuous eval, bạn chỉ biết hệ thống bị hỏng khi user phàn nàn.
@@ -40,7 +41,7 @@
       <li><a href="#eval-observability">37.7 Eval observability</a></li>
       <li><a href="#cadence">37.8 Eval cadence</a></li>
       <li><a href="#prompts-vs-models">37.9 Prompts vs models vs agents</a></li>
-      <li><a href="#tooling">37.10 Tooling ecosystem</a></li>
+      <li><a href="#tooling">37.10 Tooling ecosystem (Braintrust, LangSmith, Promptfoo*, Inspect, Langfuse)</a></li>
       <li><a href="#anti-patterns">37.11 Anti-patterns trong eval design</a></li>
       <li><a href="#stats">37.12 Statistical significance</a></li>
       <li><a href="#old-vs-new">37.13 Cách cũ vs cách hiện tại</a></li>
@@ -423,7 +424,7 @@ flag=true nếu cần human review ngay (safety issue, hallucination rõ ràng).
   context_block = <span class="str">f"Context retrieved: {context}"</span> <span class="kw">if</span> context <span class="kw">else</span> <span class="str">""</span>
   judge_resp = <span class="kw">await</span> llm.complete(
     ONLINE_JUDGE_PROMPT.format(user_query=query, ai_response=response, context_block=context_block),
-    model=<span class="str">"claude-haiku-4-5"</span>,  <span class="cm"># cheap judge</span>
+    model=<span class="str">"claude-haiku-4-5"</span>,  <span class="cm"># cheap judge — hoặc claude-haiku-4-7 khi có</span>
     max_tokens=<span class="num">200</span>,
   )
   scores = json.loads(judge_resp)
@@ -721,6 +722,15 @@ flag=true nếu cần human review ngay (safety issue, hallucination rõ ràng).
         <li><strong>Format:</strong> Thêm dimension về latency và cost vào mỗi case — model mới có thể tốt hơn chất lượng nhưng 2x chậm hơn</li>
         <li><strong>Tip:</strong> Luôn so sánh side-by-side: chạy cả model cũ và mới trên toàn bộ eval set, so sánh score phân phối</li>
       </ul>
+      <h4>Model-version-bump regression playbook (2025–2026)</h4>
+      <ol>
+        <li><strong>Freeze baseline:</strong> Lưu kết quả eval đầy đủ của version hiện tại làm <code>.eval-baseline.json</code> trước khi thay đổi bất cứ điều gì.</li>
+        <li><strong>Chạy full suite song song:</strong> Gọi cả model cũ lẫn model mới trên toàn bộ golden + regression set cùng lúc (Batch API). Ghi lại score, latency P50/P95, và cost/request cho từng case.</li>
+        <li><strong>So sánh distribution — không chỉ mean:</strong> Dùng Mann-Whitney + bootstrap CI. Tìm slice nào bị regression (score giảm có ý nghĩa thống kê), kể cả khi overall score tăng.</li>
+        <li><strong>Gate theo delta tuyệt đối:</strong> Nếu bất kỳ slice nào giảm &gt;5% so với baseline với p&lt;0.05, chặn migration. Không chấp nhận "trade-off" ẩn ở slice quan trọng.</li>
+        <li><strong>Cost regression:</strong> Nếu cost/request tăng &gt;20%, yêu cầu approval rõ ràng trước khi deploy dù score có tốt hơn.</li>
+        <li><strong>Canary deploy trước:</strong> Roll out model mới cho 5–10% traffic, theo dõi online eval score 24–48h trước khi full rollout.</li>
+      </ol>
     </div>
     <div class="tab-panel">
       <h4>Eval cho Agent systems</h4>
@@ -739,13 +749,35 @@ flag=true nếu cần human review ngay (safety issue, hallucination rõ ràng).
 
   <h2 id="tooling">37.10 Tooling: Braintrust, Langfuse, Promptfoo, LangSmith, custom</h2>
 
+  <h3>Inspect (UK AISI) — framework đánh giá frontier AI, open-source</h3>
+  <p>
+    <strong>Inspect</strong> là framework eval open-source do UK AI Security Institute (AISI) phát triển, tập trung vào đánh giá khả năng và safety của frontier LLM. Từ tháng 5/2026, kho <code>inspect_evals</code> bao gồm hơn 200 eval được cộng đồng đóng góp, phủ coding, reasoning, cybersecurity, và agent safety (OWASP Top 10 for Agentic Applications 2026). Dùng khi bạn cần eval tiêu chuẩn học thuật/safety, hoặc muốn so sánh model của bạn với benchmark công khai.
+  </p>
+  <pre><code><span class="cm"># Cài đặt và chạy eval với Inspect</span>
+<span class="cm"># pip install inspect-ai</span>
+<span class="kw">from</span> inspect_ai <span class="kw">import</span> task, Task
+<span class="kw">from</span> inspect_ai.dataset <span class="kw">import</span> json_dataset
+<span class="kw">from</span> inspect_ai.scorer <span class="kw">import</span> model_graded_fact
+<span class="kw">from</span> inspect_ai.solver <span class="kw">import</span> generate
+
+<span class="kw">@task</span>
+<span class="kw">def</span> <span class="fn">my_eval</span>():
+  <span class="kw">return</span> Task(
+    dataset=json_dataset(<span class="str">"evals/golden-set.jsonl"</span>),
+    solver=[generate()],
+    scorer=model_graded_fact(),
+  )
+
+<span class="cm"># inspect eval my_eval.py --model anthropic/claude-sonnet-4-7</span></code></pre>
+
   <h3>Promptfoo — open-source, cấu hình YAML</h3>
+  <p><em>Lưu ý (tháng 3/2026): OpenAI thông báo mua lại Promptfoo. Dự án tiếp tục open-source và vẫn hỗ trợ đa provider.</em></p>
   <pre><code><span class="cm"># promptfooconfig.yaml</span>
 prompts:
   - file://prompts/summarize-v2.txt
 
 providers:
-  - id: anthropic:claude-sonnet-4-5
+  - id: anthropic:claude-sonnet-4-7
     config:
       temperature: <span class="num">0.3</span>
 
@@ -778,7 +810,7 @@ tests:
 <span class="kw">async def</span> <span class="fn">task</span>(input: dict) -> str:
 
   response = <span class="kw">await</span> anthropic_client.messages.create(
-    model=<span class="str">"claude-sonnet-4-5"</span>,
+    model=<span class="str">"claude-sonnet-4-7"</span>,
     messages=[{<span class="str">"role"</span>: <span class="str">"user"</span>, <span class="str">"content"</span>: input[<span class="str">"query"</span>]}],
   )
   <span class="kw">return</span> response.content[<span class="num">0</span>].text
@@ -829,8 +861,14 @@ tests:
         <tr>
           <td><strong>LangSmith</strong></td>
           <td>SaaS (LangChain)</td>
-          <td>Tích hợp tự nhiên với LangChain, UI debug trace đẹp, eval tích hợp</td>
-          <td>Đang dùng LangChain/LangGraph ecosystem</td>
+          <td>Tích hợp tự nhiên với LangChain, UI debug trace, online eval trên production trace, Insights Agent (GA 2025) tự phân loại usage pattern, Multi-turn Evals cho agent conversation</td>
+          <td>Đang dùng LangChain/LangGraph ecosystem; cần monitor multi-turn agent</td>
+        </tr>
+        <tr>
+          <td><strong>Inspect (AISI)</strong></td>
+          <td>Open-source (UK AISI)</td>
+          <td>200+ benchmark eval sẵn có, chuẩn học thuật/safety, agent + multi-modal, OWASP Agentic Top 10 (2026), CI-ready</td>
+          <td>Cần eval theo chuẩn safety/frontier; so sánh với benchmark công khai; không vendor lock-in</td>
         </tr>
         <tr>
           <td><strong>Custom script</strong></td>
@@ -922,6 +960,28 @@ tests:
     <span class="str">"mean_delta"</span>: np.mean(scores_v2) - np.mean(scores_v1),
     <span class="str">"reliable"</span>: is_reliable,
   }</code></pre>
+
+  <h3>Bootstrap Confidence Intervals</h3>
+  <p>
+    Thay vì chỉ báo điểm số đơn lẻ, hãy kèm theo bootstrap CI để thể hiện độ bất định của kết quả eval. Lấy 500–1,000 bootstrap samples từ tập test, tính metric mỗi lần — nếu CI 95% của hai systems không overlap, có bằng chứng mạnh một system thực sự tốt hơn. Lưu ý: với LLM-as-judge, bootstrap trên test-case level (không phải gọi judge thêm lần nào nữa) để tránh tăng cost 1,000x.
+  </p>
+  <pre><code><span class="kw">import</span> numpy <span class="kw">as</span> np
+
+<span class="kw">def</span> <span class="fn">bootstrap_ci</span>(scores: list[float], n_boot: int = <span class="num">1000</span>, ci: float = <span class="num">0.95</span>) -> tuple[float, float]:
+  <span class="cm">"""Bootstrap CI cho eval score — không cần gọi thêm LLM."""</span>
+  boots = [np.mean(np.random.choice(scores, len(scores), replace=<span class="kw">True</span>)) <span class="kw">for</span> _ <span class="kw">in</span> range(n_boot)]
+  lo = np.percentile(boots, (1 - ci) / <span class="num">2</span> * <span class="num">100</span>)
+  hi = np.percentile(boots, (1 + ci) / <span class="num">2</span> * <span class="num">100</span>)
+  <span class="kw">return</span> lo, hi
+
+<span class="cm"># Ví dụ: two systems không overlap → kết luận có ý nghĩa</span>
+<span class="cm"># System A: CI 95% = [0.87, 0.91]</span>
+<span class="cm"># System B: CI 95% = [0.82, 0.86] → A tốt hơn có ý nghĩa thống kê</span></code></pre>
+
+  <h3>Sequential Testing cho Online Eval (không cần fixed sample size)</h3>
+  <p>
+    A/B test truyền thống yêu cầu fix sample size trước. Với online eval liên tục, dùng <strong>sequential testing</strong> (ví dụ: SPRT — Sequential Probability Ratio Test, hoặc always-valid confidence sequences) để có thể dừng sớm khi đã đủ evidence — hoặc tiếp tục thu thập khi signal còn yếu. Thư viện <code>scipy.stats</code> và <code>statsmodels</code> có SPRT; gói <code>sequentialtesting</code> cung cấp always-valid CI theo phương pháp Johari et al. (2015) được Airbnb, Netflix áp dụng rộng rãi.
+  </p>
 
   <h3>Multiple comparisons problem</h3>
   <p>
@@ -1075,18 +1135,18 @@ n = analysis.solve_power(effect_size=<span class="num">0.3</span>, alpha=<span c
     <li><strong>Eval budget:</strong> treat eval cost như SLO — quyết định upfront, back-calculate sample rate và judge model. Batch API giảm 50% chi phí ngay lập tức.</li>
     <li><strong>Observability 3 levels:</strong> aggregate score → failing slice → individual example with trace. Không thể debug nếu không có drill-down.</li>
     <li><strong>Anti-patterns cần tránh:</strong> single metric, no slicing, train-on-eval, eval contamination, judge bias chưa calibrate. Eval kém thiết kế nguy hiểm hơn không có eval.</li>
-    <li><strong>Statistics matter:</strong> dùng Mann-Whitney + Cohen's d cho so sánh, Bonferroni correction cho multiple comparisons, minimum 200 samples/nhóm cho online A/B.</li>
+    <li><strong>Statistics matter:</strong> dùng Mann-Whitney + Cohen's d cho so sánh, bootstrap CI (500–1,000 samples, tái sử dụng judge output đã có) để thể hiện độ bất định, sequential testing (SPRT / always-valid CI) cho online A/B không cần fix sample size trước, Bonferroni/FDR correction cho multiple comparisons.</li>
+    <li><strong>Model-version-bump playbook:</strong> freeze baseline → chạy full suite song song (Batch API) → so sánh distribution per slice → gate nếu bất kỳ slice nào giảm &gt;5% hoặc cost tăng &gt;20% → canary 5–10% trước full rollout. Không chấp nhận "trade-off" ẩn.</li>
     <li><strong>Cách hiện tại:</strong> commit → CI gate → canary deploy → online sample → dashboard alert → failing samples trở thành regression cases cho PR tiếp theo. Vòng lặp tự cải thiện.</li>
   </ol>
-
   <nav class="section-footer">
     <a href="36-reward-modeling.html" class="prev">
-      <div class="label">← trước</div>
-      <div class="title">36 — Reward Modeling</div>
+      <div class="label">← Trước</div>
+      <div class="title">36 — Reward Modeling &amp; Process Supervision</div>
     </a>
     <a href="38-inference-compute-scaling.html" class="next">
-      <div class="label">tiếp theo →</div>
-      <div class="title">38 — Inference &amp; Compute Scaling</div>
+      <div class="label">Tiếp theo →</div>
+      <div class="title">38 — Inference-time Compute Scaling</div>
     </a>
   </nav>
 

@@ -12,7 +12,8 @@
   <div class="brand"><span class="dot"></span> AI Engineering</div>
   <div class="crumbs"><a href="../index.html">Mục lục</a> › Phần 6 · <span>17 — Multimodal Applications</span></div>
   <div class="nav-actions">
-    <a href="16-designing-ai-products.html">← 16</a>
+    <a href="16-designing-ai-products.html">← Trước</a>
+    <a href="../index.html">Mục lục</a>
     <a href="18-code-generating-ai.html">Tiếp →</a>
   </div>
 </nav>
@@ -20,7 +21,7 @@
 <main class="page">
 
   <section class="hero">
-    <span class="eyebrow">Phần 6 · §17</span>
+    <div class="eyebrow-row"><span class="eyebrow">Phần 6 · §17</span><a class="hero-updated" href="../KNOWLEDGE_UPDATES.md" title="Lịch sử cập nhật kiến thức">↻ 2026-05-23</a></div>
     <h1>Multimodal Applications</h1>
     <p class="lede">
       Text, image, audio, video — khi AI xử lý nhiều loại input cùng lúc, mọi thứ trở nên mạnh hơn và phức tạp hơn. Đây là map đầy đủ của multimodal landscape.
@@ -71,7 +72,7 @@
     <!-- Center: Foundation Model -->
     <rect class="node-accent" x="290" y="100" width="180" height="60" rx="10"/>
     <text x="380" y="125" text-anchor="middle" font-weight="700" font-size="14">Foundation Model</text>
-    <text x="380" y="145" text-anchor="middle" class="label-sm">GPT-4o · Claude 3.5 · Gemini 1.5</text>
+    <text x="380" y="145" text-anchor="middle" class="label-sm">GPT-5 · Claude Opus 4.7 · Gemini 2.5</text>
 
     <!-- Text modality -->
     <rect class="node-blue" x="20" y="105" width="140" height="50" rx="8"/>
@@ -82,19 +83,19 @@
     <!-- Image modality -->
     <rect class="node-blue" x="600" y="20" width="140" height="50" rx="8"/>
     <text x="670" y="42" text-anchor="middle" font-weight="600">🖼 Image</text>
-    <text x="670" y="58" text-anchor="middle" class="label-sm">GPT-4o · Claude · Gemini · Qwen-VL</text>
+    <text x="670" y="58" text-anchor="middle" class="label-sm">GPT-5 · Claude 4 · Gemini 2.5 · Qwen3-VL</text>
     <line x1="600" y1="50" x2="472" y2="105" stroke="#7cc4ff" stroke-width="1.5" marker-end="url(#arr7)"/>
 
     <!-- Audio modality -->
     <rect class="node-green" x="600" y="105" width="140" height="50" rx="8"/>
     <text x="670" y="127" text-anchor="middle" font-weight="600">🎙 Audio</text>
-    <text x="670" y="145" text-anchor="middle" class="label-sm">Whisper · Deepgram · GPT-4o audio</text>
+    <text x="670" y="145" text-anchor="middle" class="label-sm">Whisper v3-turbo · Deepgram · GPT-5 audio</text>
     <line x1="600" y1="130" x2="472" y2="130" stroke="#b4e07a" stroke-width="1.5" marker-end="url(#arr7)"/>
 
     <!-- Video modality -->
     <rect class="node-green" x="600" y="190" width="140" height="50" rx="8"/>
     <text x="670" y="212" text-anchor="middle" font-weight="600">🎬 Video</text>
-    <text x="670" y="228" text-anchor="middle" class="label-sm">Gemini 1.5 Pro · GPT-4o frames</text>
+    <text x="670" y="228" text-anchor="middle" class="label-sm">Gemini 2.5 Pro · GPT-5 · Veo 3</text>
     <line x1="600" y1="210" x2="472" y2="155" stroke="#b4e07a" stroke-width="1.5" marker-end="url(#arr7)"/>
 
     <!-- Document modality -->
@@ -124,7 +125,7 @@
 
   <h3>Charts &amp; graphs</h3>
   <p>
-    Claude và GPT-4o có thể đọc bar chart, line chart, pie chart và extract values hoặc trends. Hữu ích cho "chat with your dashboard" use cases. Lưu ý: accuracy không bằng bảng số liệu raw — nên supplement với data source khi có thể.
+    Claude Opus 4.7 và GPT-5 có thể đọc bar chart, line chart, pie chart và extract values hoặc trends. Hữu ích cho "chat with your dashboard" use cases. Lưu ý: accuracy không bằng bảng số liệu raw — nên supplement với data source khi có thể.
   </p>
 
   <h3>Screenshots &amp; UI analysis</h3>
@@ -138,11 +139,12 @@
         <tr><th>Model</th><th>Vision strengths</th><th>Image input</th><th>Cost/image (~1024px)</th></tr>
       </thead>
       <tbody>
-        <tr><td><strong>Claude 3.5 Sonnet</strong></td><td>Document analysis, OCR, detailed description, code in screenshots</td><td>Base64 hoặc URL, multiple images</td><td>~$0.004–0.008</td></tr>
-        <tr><td><strong>GPT-4o</strong></td><td>General vision, charts, real-world scenes, multi-image reasoning</td><td>Base64, URL, multiple images</td><td>~$0.003–0.01</td></tr>
-        <tr><td><strong>Gemini 1.5 Pro</strong></td><td>Long document (1000+ pages as images), video frames, interleaved</td><td>Up to 3600 images per request</td><td>~$0.002–0.005</td></tr>
-        <tr><td><strong>Qwen-VL</strong></td><td>Open-source, strong on Chinese text OCR, competitive general vision</td><td>Base64, local deploy</td><td>Self-hosted cost only</td></tr>
-        <tr><td><strong>LLaVA / InternVL</strong></td><td>Open-source, self-hostable, privacy-sensitive use cases</td><td>Local only</td><td>GPU cost only</td></tr>
+        <tr><td><strong>Claude Opus 4.7</strong></td><td>High-res images up to 2576px long edge (~3.75 MP), chemical structures, complex technical diagrams, OCR, code screenshots</td><td>Base64 hoặc URL, multiple images</td><td>~$0.005–0.010</td></tr>
+        <tr><td><strong>GPT-5 / GPT-5.4</strong></td><td>Natively multimodal (trained end-to-end), spatial reasoning, VQA, charts, multi-image. GPT-5.4 ra mắt tháng 3/2026</td><td>Base64, URL, multiple images; 400K token context</td><td>~$0.004–0.012</td></tr>
+        <tr><td><strong>Gemini 2.5 Pro</strong></td><td>3 giờ video trong 1M token context (low res: 6 giờ), bounding box detection, audio-visual cues, SOTA VideoMME</td><td>Up to 3600 images/request hoặc native video file</td><td>~$0.002–0.005</td></tr>
+        <tr><td><strong>Llama 4 Scout / Maverick</strong></td><td>Open-weight, natively multimodal (early fusion), 10M token context, MoE architecture; Scout 17B-16E, Maverick 17B-128E</td><td>Base64, local deploy, API</td><td>Self-hosted hoặc inference API</td></tr>
+        <tr><td><strong>Qwen3-VL / Qwen2.5-VL</strong></td><td>Open-source, dynamic-resolution, absolute time encoding cho video, 72B flagship ngang GPT-4o, mạnh OCR tiếng Trung/Việt</td><td>Base64, local deploy</td><td>Self-hosted cost only</td></tr>
+        <tr><td><strong>Pixtral 12B (Mistral)</strong></td><td>Open-weight, compact 12B, tốt cho self-hosted vision, hỗ trợ llama.cpp</td><td>Base64, local only</td><td>GPU cost only</td></tr>
       </tbody>
     </table>
   </div>
@@ -198,17 +200,17 @@ Format as a side-by-side comparison table."""</span></code></pre>
     STT chuyển audio thành transcript text. Các options:
   </p>
   <ul>
-    <li><strong>Whisper (OpenAI)</strong>: open-source, self-hostable, rất tốt cho nhiều ngôn ngữ. Batch processing, không phải realtime. Faster-whisper cho throughput tốt hơn.</li>
+    <li><strong>Whisper large-v3-turbo (OpenAI)</strong>: open-source, self-hostable, 99+ ngôn ngữ, 12% WER. Phiên bản turbo cắt giảm decoder xuống 4 layers (từ 32), nhanh hơn 216× realtime với chất lượng gần như tương đương large-v3. Không hỗ trợ translation task.</li>
     <li><strong>Deepgram</strong>: API, realtime streaming, thấp latency, tốt cho live transcription. Nova-2 model rất competitive. Hỗ trợ tiếng Việt.</li>
     <li><strong>AssemblyAI</strong>: API với additional AI features (speaker diarisation, sentiment, chapter detection).</li>
-    <li><strong>GPT-4o audio / Gemini Live</strong>: native audio input, không cần separate STT — model hiểu speech trực tiếp.</li>
+    <li><strong>GPT-5 audio / Gemini 2.5 Live</strong>: native audio input, không cần separate STT — model hiểu speech trực tiếp. Gemini 2.5 Flash native audio hỗ trợ streaming audio/video realtime.</li>
   </ul>
 
   <h3>Text-to-Speech (TTS)</h3>
   <ul>
-    <li><strong>ElevenLabs</strong>: chất lượng cao nhất cho voice cloning và natural prosody. Latency ~300ms với streaming.</li>
+    <li><strong>ElevenLabs v3</strong> (GA tháng 2/2026): thế hệ mới nhất, emotionally-aware với inline audio tags (<code>[whispers]</code>, <code>[laughs]</code>), 70+ ngôn ngữ, Text to Dialogue ghép nhiều giọng. Latency cao hơn v2 nhưng expressiveness vượt trội.</li>
     <li><strong>OpenAI TTS</strong>: tốt, nhanh, 6 voices, cost hợp lý. Streaming support.</li>
-    <li><strong>Google Cloud TTS</strong>: nhiều voices, WaveNet/Neural2 quality, multilingual tốt.</li>
+    <li><strong>Sesame CSM (open-source)</strong>: conversational speech model mã nguồn mở, tối ưu cho voice agent với natural turn-taking.</li>
     <li><strong>Kokoro (open-source)</strong>: self-hostable, quality gần với commercial.</li>
   </ul>
 
@@ -240,8 +242,8 @@ Format as a side-by-side comparison table."""</span></code></pre>
     <!-- LLM -->
     <rect class="node-accent" x="300" y="45" width="160" height="70" rx="8"/>
     <text x="380" y="70" text-anchor="middle" font-weight="600">LLM</text>
-    <text x="380" y="90" text-anchor="middle" class="label-sm">GPT-4o Realtime</text>
-    <text x="380" y="106" text-anchor="middle" class="label-sm">Gemini Live · Claude</text>
+    <text x="380" y="90" text-anchor="middle" class="label-sm">GPT-5 Realtime</text>
+    <text x="380" y="106" text-anchor="middle" class="label-sm">Gemini 2.5 Live · Claude</text>
     <line x1="460" y1="80" x2="488" y2="80" stroke="#6f7c92" stroke-width="1.5" marker-end="url(#arr8)"/>
 
     <!-- TTS -->
@@ -266,7 +268,7 @@ Format as a side-by-side comparison table."""</span></code></pre>
   </svg>
 
   <p>
-    GPT-4o Realtime API và Gemini Live hợp nhất STT + LLM + TTS vào một model — output streaming audio trực tiếp, interruption handling native. Total latency có thể dưới 500ms — đủ cho natural conversation.
+    GPT-5 Realtime API và Gemini 2.5 Live hợp nhất STT + LLM + TTS vào một model — output streaming audio trực tiếp, interruption handling native. Total latency có thể dưới 500ms — đủ cho natural conversation.
   </p>
 
   <h3>Speaker diarisation</h3>
@@ -281,17 +283,17 @@ Format as a side-by-side comparison table."""</span></code></pre>
 
   <h3>Frame sampling</h3>
   <p>
-    Extract N frames từ video (uniform sampling hoặc keyframe detection), gửi kèm với prompt. GPT-4o nhận nhiều images, Gemini 1.5 Pro nhận up to 1 hour video (native). Hữu ích cho: video summarization, instruction extraction từ tutorial, content moderation.
+    Extract N frames từ video (uniform sampling hoặc keyframe detection), gửi kèm với prompt. GPT-5 nhận nhiều images, Gemini 2.5 Pro nhận native video file. Hữu ích cho: video summarization, instruction extraction từ tutorial, content moderation.
   </p>
 
-  <h3>Gemini long video</h3>
+  <h3>Gemini 2.5 Pro long video</h3>
   <p>
-    Gemini 1.5 Pro xử lý up to 1 giờ video native (nạp thẳng file hoặc YouTube URL). Model thấy temporal relationships, không chỉ isolated frames. Phù hợp cho: analyze meeting recordings, Q&amp;A về video content, generate transcript với timestamps.
+    Gemini 2.5 Pro xử lý up to 3 giờ video trong 1M token context (low-res mode: ~6 giờ với 2M context). Model thấy temporal relationships và audio-visual cues, không chỉ isolated frames. SOTA trên VideoMME benchmark. Phù hợp cho: analyze meeting recordings, Q&amp;A về video content, generate transcript với timestamps, event localization.
   </p>
 
-  <h3>Video generation (ngoài scope)</h3>
+  <h3>Video generation — production readiness 2026</h3>
   <p>
-    Sora (OpenAI), Veo (Google), Kling, Runway là các model generate video từ text/image. Đây là generative AI area phát triển nhanh nhưng ngoài scope của AI Engineering tập trung vào applications — chủ yếu vì API stability và production readiness còn hạn chế.
+    Video generation đã đạt production readiness với API ổn định. <strong>Veo 3.1 (Google)</strong> generate video + synchronized audio trong một pass (dialogue, sound effects, ambient soundscape) — tuy nhiên giới hạn 8 giây/clip. <strong>Runway Gen-4.5</strong> hỗ trợ one-minute multi-shot generation trong single pass (API GA tháng 2/2026). <strong>Sora 2</strong> (OpenAI) đã bị discontinued vào tháng 4/2026 — OpenAI tập trung vào GPT-5 natively multimodal. Năm 2026, native 4K output đã là standard, multi-shot storyboarding cho phép long-form narratives nhất quán.
   </p>
 
   <h2 id="cross-modal">17.6 Cross-modal patterns</h2>
@@ -309,7 +311,7 @@ Format as a side-by-side comparison table."""</span></code></pre>
         <tr><td><strong>Voice → text → response → voice</strong></td><td>Mic → STT → LLM → TTS → Speaker</td><td>Voice assistant, call center AI</td></tr>
         <tr><td><strong>Document → chunks → QA</strong></td><td>PDF (image) → vision OCR → text chunks → embed → RAG</td><td>Document Q&amp;A with scanned PDFs</td></tr>
         <tr><td><strong>Video → transcript → insight</strong></td><td>MP4 → Whisper → transcript → LLM summarize/analyze</td><td>Meeting notes, lecture summary</td></tr>
-        <tr><td><strong>Text → image → verify</strong></td><td>LLM generate description → DALL-E generate image → vision model verify accuracy</td><td>Content generation with visual QA</td></tr>
+        <tr><td><strong>Text → image → verify</strong></td><td>LLM generate description → image gen model (GPT Image 2, Imagen 4, Flux 2 Pro) → vision model verify accuracy</td><td>Content generation with visual QA</td></tr>
       </tbody>
     </table>
   </div>
@@ -375,7 +377,7 @@ Format as a side-by-side comparison table."""</span></code></pre>
     <div class="icon">★</div>
     <div>
       <div class="title">Voice là strict realtime — không có negotiation</div>
-      <p>&gt; 500ms end-to-end latency cho voice agent nghe rất awkward với humans. &gt; 1s là unacceptable. Pipeline STT → LLM → TTS waterfall thường không thể đạt dưới 500ms — cần native audio-in/audio-out model như GPT-4o Realtime hoặc Gemini Live.</p>
+      <p>&gt; 500ms end-to-end latency cho voice agent nghe rất awkward với humans. &gt; 1s là unacceptable. Pipeline STT → LLM → TTS waterfall thường không thể đạt dưới 500ms — cần native audio-in/audio-out model như GPT-5 Realtime hoặc Gemini 2.5 Live.</p>
     </div>
   </div>
 
@@ -388,7 +390,10 @@ Format as a side-by-side comparison table."""</span></code></pre>
 
   <h3>Document Q&amp;A với scanned PDFs</h3>
   <p>
-    Scanned PDF không có text layer — chỉ có images. Pipeline: PDF → extract page images → vision model hoặc OCR engine → text → chunk → embed → RAG. Với LlamaParse hoặc Azure Document Intelligence, có thể giữ được table structure và layout.
+    Scanned PDF không có text layer — chỉ có images. Pipeline truyền thống: PDF → extract page images → vision model hoặc OCR engine → text → chunk → embed → RAG. Với LlamaParse hoặc Azure Document Intelligence, có thể giữ được table structure và layout.
+  </p>
+  <p>
+    <strong>Multimodal RAG với ColPali/ColQwen:</strong> Thay vì OCR trước, ColPali (và phiên bản mới ColQwen) embed trực tiếp page images thành patch-level vectors — giữ spatial layout, formatting, và mối quan hệ text-visual. Truy xuất bằng late interaction (như ColBERT). Ưu điểm: không mất thông tin qua OCR. Nhược điểm: storage overhead cao (hàng trăm vectors/trang); chưa phù hợp với corpus hàng triệu trang.
   </p>
 
   <h3>Voice assistant</h3>
@@ -409,21 +414,20 @@ Format as a side-by-side comparison table."""</span></code></pre>
   <h2 id="tom-tat">Tóm tắt</h2>
   <ol>
     <li><strong>Hai kiến trúc chính</strong>: single-model multi-input (cross-modal reasoning tốt hơn) vs pipeline của specialized models (modular, dễ swap). Production thường là hybrid.</li>
-    <li><strong>Vision</strong>: GPT-4o và Claude 3.5 Sonnet mạnh ngang nhau cho document/UI analysis. Gemini 1.5 Pro cho volume lớn (1000+ pages). Resize ảnh trước khi gửi để giảm cost.</li>
-    <li><strong>Document AI</strong>: Azure DI/Textract cho structured extraction, vision LLM cho flexible/novel layouts. Combine cả hai trong production.</li>
-    <li><strong>Audio</strong>: Whisper cho batch STT (tốt, free), Deepgram cho realtime streaming, ElevenLabs cho chất lượng TTS cao nhất. GPT-4o Realtime cho native audio-in/audio-out.</li>
+    <li><strong>Vision</strong>: GPT-5 và Claude Opus 4.7 (hỗ trợ ảnh up to 3.75 MP) mạnh cho document/UI analysis. Gemini 2.5 Pro cho video dài (3–6 giờ) và volume ảnh lớn. Llama 4 Scout/Maverick là option open-weight natively multimodal. Resize ảnh trước khi gửi để giảm cost.</li>
+    <li><strong>Document AI</strong>: Azure DI/Textract cho structured extraction, vision LLM cho flexible/novel layouts. ColPali/ColQwen cho multimodal RAG không cần OCR. Combine trong production.</li>
+    <li><strong>Audio</strong>: Whisper large-v3-turbo cho batch STT (216× realtime, free), Deepgram cho realtime streaming, ElevenLabs v3 cho TTS expressiveness cao nhất. GPT-5 Realtime / Gemini 2.5 Live cho native audio-in/audio-out.</li>
     <li><strong>Voice agent realtime</strong> cần &lt; 500ms — chỉ đạt được với native audio model, không phải waterfall STT→LLM→TTS.</li>
     <li><strong>Cost</strong>: image tokens đắt hơn text tokens đáng kể. Audio per-minute tích lũy nhanh. Luôn resize và compress trước khi gửi.</li>
     <li><strong>Error propagation</strong> trong cross-modal pipeline: validate output tại mỗi bước, log intermediates, handle per-modality failure gracefully.</li>
   </ol>
-
   <nav class="section-footer">
     <a href="16-designing-ai-products.html" class="prev">
-      <div class="label">← trước</div>
+      <div class="label">← Trước</div>
       <div class="title">16 — Designing AI Products (UX)</div>
     </a>
     <a href="18-code-generating-ai.html" class="next">
-      <div class="label">tiếp theo →</div>
+      <div class="label">Tiếp theo →</div>
       <div class="title">18 — Code-generating AI Systems</div>
     </a>
   </nav>

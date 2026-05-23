@@ -13,6 +13,7 @@
   <div class="crumbs"><a href="../index.html">Mục lục</a> › Phần 10 · <span>33 — Privacy &amp; Data Protection cho AI</span></div>
   <div class="nav-actions">
     <a href="32-ai-red-team.html">← Trước</a>
+    <a href="../index.html">Mục lục</a>
     <a href="34-compliance.html">Tiếp →</a>
   </div>
 </nav>
@@ -20,7 +21,7 @@
 <main class="page">
 
   <section class="hero">
-    <span class="eyebrow">Phần 10 · §33</span>
+    <div class="eyebrow-row"><span class="eyebrow">Phần 10 · §33</span><a class="hero-updated" href="../KNOWLEDGE_UPDATES.md" title="Lịch sử cập nhật kiến thức">↻ 2026-05-23</a></div>
     <h1>Privacy &amp; Data Protection cho AI</h1>
     <p class="lede">
       Dữ liệu người dùng chạy qua LLM app theo nhiều con đường — training, inference, RAG, log, agent memory.
@@ -324,7 +325,7 @@ print(f<span class="str">"Final privacy budget spent: ε = {epsilon:.2f}"</span>
     <li><strong>Gradient inversion:</strong> gradient bản thân có thể bị dùng để tái tạo dữ liệu training. FL + DP là cần thiết.</li>
     <li><strong>Communication overhead:</strong> gradient của LLM 7B params ≈ 28GB/round — không khả thi với nhiều client</li>
     <li><strong>Non-IID data:</strong> dữ liệu phân bố không đều giữa các client làm mô hình khó hội tụ</li>
-    <li><strong>Thực tế ứng dụng:</strong> Google dùng FL cho Gboard keyboard (dự đoán từ nhỏ), Apple dùng cho on-device models (Siri, QuickType) — không phải LLM scale</li>
+    <li><strong>Thực tế ứng dụng:</strong> Google dùng FL cho Gboard keyboard (dự đoán từ nhỏ), Apple dùng cho on-device models (Siri, QuickType) — không phải LLM scale. Năm 2025, framework <strong>DP-FedLoRA</strong> (arxiv 2509.09097) chính thức hóa federated fine-tuning LLM với LoRA + DP-SGD theo từng client, mở ra khả năng fine-tune embedding model và LoRA adapter trong healthcare và tài chính mà không chia sẻ raw data</li>
   </ul>
 
   <!-- ═══════════════════════════════════════════════════════ -->
@@ -344,6 +345,9 @@ print(f<span class="str">"Final privacy budget spent: ε = {epsilon:.2f}"</span>
   <h3>Microsoft Presidio — ví dụ thực tế</h3>
   <p>
     Presidio là thư viện open-source của Microsoft, hỗ trợ 20+ loại PII entity, có thể extend thêm recognizer tùy chỉnh.
+    Phiên bản 2.2.362 (tháng 3/2026) bổ sung <strong>LangExtract recognizer</strong> — dùng LLM (Ollama local hoặc Azure OpenAI)
+    để phát hiện PII theo ngữ cảnh, tăng recall đáng kể với PII gián tiếp và ngôn ngữ phi-Anh. Ngoài ra có thêm
+    salted hashing operator (chống brute-force) và hỗ trợ ARM64 Docker image.
   </p>
 
   <pre><code><span class="kw">from</span> presidio_analyzer <span class="kw">import</span> AnalyzerEngine, RecognizerRegistry
@@ -388,11 +392,17 @@ clean_text, entities_found = redact_pii(user_input, language=<span class="str">"
 
 response = llm.generate(clean_text)  <span class="cm"># PII không bao giờ rời server</span></code></pre>
 
-  <h3>Giải pháp cloud — AWS Comprehend</h3>
+  <h3>Giải pháp cloud — AWS Comprehend &amp; Nightfall AI</h3>
   <p>
     AWS Comprehend cung cấp <code>detect_pii_entities</code> API hỗ trợ 16+ PII types với pricing
     theo ký tự. Phù hợp khi đã dùng AWS stack, tuy nhiên bản thân text vẫn gửi lên AWS để phân tích —
     cần cân nhắc nếu data đặc biệt nhạy cảm.
+  </p>
+  <p>
+    <strong>Nightfall AI</strong> (2025–2026) là lựa chọn chuyên biệt hơn cho LLM pipelines: detection engine 125M-parameter
+    kết hợp LLM embeddings để đánh giá ngữ cảnh, giảm false positive đến 85% so với regex thuần túy.
+    Nightfall hỗ trợ chặn prompt chứa PII/PHI/secrets trước khi gửi tới LLM API — phù hợp làm lớp
+    "firewall for AI" trong enterprise stack. Có thể tạo custom entity detector bằng natural-language prompt.
   </p>
 
   <!-- ═══════════════════════════════════════════════════════ -->
@@ -581,10 +591,10 @@ qdrant = QdrantClient(url=<span class="str">"..."</span>)
         </tr>
         <tr>
           <td><strong>Anthropic API</strong></td>
-          <td>30 ngày (trust &amp; safety)</td>
-          <td>Có — qua request hoặc enterprise</td>
-          <td>Mặc định OFF cho API</td>
-          <td>Enterprise: custom DPA, ZDR, HIPAA BAA</td>
+          <td>7 ngày (từ 14/9/2025; trước đó 30 ngày)</td>
+          <td>Có — ZDR qua enterprise agreement</td>
+          <td>OFF mặc định cho API &amp; Enterprise. Consumer (Free/Pro/Max): opt-in training từ 28/9/2025 — phải tự opt-out</td>
+          <td>Enterprise: custom DPA, ZDR, HIPAA BAA; API data không bao giờ dùng để train</td>
         </tr>
         <tr>
           <td><strong>Azure OpenAI</strong></td>
@@ -667,11 +677,16 @@ qdrant = QdrantClient(url=<span class="str">"..."</span>)
   <div class="callout warn">
     <div class="icon">⚠</div>
     <div>
-      <div class="title">Fine-tuned model và Right to Erasure</div>
+      <div class="title">Fine-tuned model và Right to Erasure — áp lực pháp lý tăng cao 2025–2026</div>
       <p>
         Nếu bạn đã fine-tune model trên dữ liệu của user, right-to-erasure yêu cầu xóa ảnh hưởng của dữ liệu đó khỏi model.
-        Đây là bài toán chưa có giải pháp hoàn chỉnh — <strong>machine unlearning</strong> là area nghiên cứu đang phát triển.
-        Giải pháp thực tế hiện tại: retrain model không có data đó (tốn kém) hoặc tránh fine-tune trên PII ngay từ đầu.
+        Tháng 3/2025, <strong>EDPB ra mắt Coordinated Enforcement Framework 2025</strong> với chủ đề trọng tâm là
+        <em>right to erasure</em> — 30 cơ quan bảo vệ dữ liệu châu Âu đang mở điều tra về cách các tổ chức
+        xử lý yêu cầu xóa dữ liệu, bao gồm dữ liệu trong AI model.
+        <strong>Machine unlearning</strong> chuyển từ area nghiên cứu sang yêu cầu compliance thực tế:
+        "source-free unlearning" (UC Riverside, Sept 2025) cho phép quên dữ liệu mà không cần truy cập lại tập training gốc.
+        Giải pháp thực tế hiện tại vẫn là: retrain không có data đó, hoặc tốt hơn — <strong>tránh fine-tune trên PII ngay từ đầu</strong>.
+        Đến 2026, các enterprise AI platform lớn được kỳ vọng tích hợp "unlearn API" như tính năng chuẩn.
       </p>
     </div>
   </div>
@@ -701,6 +716,10 @@ qdrant = QdrantClient(url=<span class="str">"..."</span>)
     Tháng 6/2024, Apple giới thiệu <strong>Private Cloud Compute (PCC)</strong> — kiến trúc đột phá cho phép
     xử lý AI phức tạp trên server mà vẫn đảm bảo bảo mật dữ liệu người dùng.
     PCC giải quyết tension cơ bản: model AI mạnh cần compute lớn hơn thiết bị, nhưng gửi dữ liệu lên cloud thì mất privacy.
+    Tháng 2/2026, Apple nâng cấp PCC lên chip <strong>M5</strong> (bỏ qua thế hệ M3 Ultra) và giới thiệu kiến trúc
+    <em>PCC Agent Worker</em> — phiên bản iOS chuyên biệt theo mô hình agent-style để phục vụ AI requests.
+    Server model mới dùng kiến trúc <strong>Parallel Track MoE (PT-MoE)</strong>: nhiều transformer nhỏ xử lý token song song,
+    đồng bộ chỉ tại input/output boundary, tối ưu cho Apple Silicon.
   </p>
 
   <svg class="diagram" viewBox="0 0 760 330" role="img" aria-label="Apple Private Cloud Compute architecture">
@@ -962,14 +981,13 @@ memory_store.save(key=<span class="str">f"user:{user_id}"</span>, value=session_
       <strong>Chiến lược tổng thể 2026:</strong> Data minimization → On-device cho sensitive → ZDR vendor → ACL-aware RAG → Output filtering → Audit trail.
     </li>
   </ol>
-
   <nav class="section-footer">
     <a href="32-ai-red-team.html" class="prev">
-      <div class="label">← trước</div>
-      <div class="title">32 — AI Red Teaming</div>
+      <div class="label">← Trước</div>
+      <div class="title">32 — AI Red-teaming</div>
     </a>
     <a href="34-compliance.html" class="next">
-      <div class="label">tiếp theo →</div>
+      <div class="label">Tiếp theo →</div>
       <div class="title">34 — Compliance &amp; Governance</div>
     </a>
   </nav>

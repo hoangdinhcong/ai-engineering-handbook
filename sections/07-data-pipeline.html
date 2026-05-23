@@ -12,7 +12,8 @@
   <div class="brand"><span class="dot"></span> AI Engineering</div>
   <div class="crumbs"><a href="../index.html">Mục lục</a> › Phần 3 · <span>07 — Data Pipeline cho AI</span></div>
   <div class="nav-actions">
-    <a href="06-fine-tuning.html">← 13</a>
+    <a href="06-fine-tuning.html">← Trước</a>
+    <a href="../index.html">Mục lục</a>
     <a href="08-vector-search.html">Tiếp →</a>
   </div>
 </nav>
@@ -20,7 +21,7 @@
 <main class="page">
 
   <section class="hero">
-    <span class="eyebrow">Phần 3 · §07</span>
+    <div class="eyebrow-row"><span class="eyebrow">Phần 3 · §07</span><a class="hero-updated" href="../KNOWLEDGE_UPDATES.md" title="Lịch sử cập nhật kiến thức">↻ 2026-05-23</a></div>
     <h1>Data Pipeline cho AI</h1>
     <p class="lede">
       Từ raw document đến knowledge store sẵn sàng phục vụ RAG: ingestion, parsing, cleaning, enrichment, annotation, và continuous refresh.
@@ -159,7 +160,8 @@
         <tr><td><strong>Unstructured.io</strong></td><td>Multi-format (PDF, DOCX, HTML, email...), layout detection, element classification</td><td>Phụ thuộc nhiều, model detection tốn tài nguyên</td><td>Apache 2 / hosted</td></tr>
         <tr><td><strong>LlamaParse</strong></td><td>LLM-powered parsing, bảng phức tạp, charts → markdown</td><td>Có chi phí API, latency cao hơn</td><td>Commercial API</td></tr>
         <tr><td><strong>Apache Tika</strong></td><td>Hàng trăm format, Java ecosystem</td><td>Java dependency, khó containerise nhẹ</td><td>Apache 2</td></tr>
-        <tr><td><strong>Docling (IBM)</strong></td><td>Layout-aware PDF, bảng → JSON chuẩn</td><td>Còn mới, community nhỏ</td><td>MIT</td></tr>
+        <tr><td><strong>Docling (IBM)</strong></td><td>Layout-aware PDF, bảng → JSON/Markdown chuẩn, Granite-Docling vision model 258M</td><td>Tài nguyên tính toán cao hơn khi dùng vision pipeline</td><td>MIT (Linux Foundation)</td></tr>
+        <tr><td><strong>Reducto</strong></td><td>Hybrid vision-first + Agentic OCR, accuracy cao trên tài liệu tài chính/pháp lý phức tạp</td><td>Commercial API, chi phí cao hơn; on-prem phải liên hệ enterprise</td><td>Commercial</td></tr>
       </tbody>
     </table>
   </div>
@@ -183,7 +185,24 @@
     <li><strong>Serialization strategy</strong>: chuyển bảng thành Markdown hoặc JSON trước khi chunk — đừng để bảng bị cắt ngang giữa chunk</li>
   </ul>
 
+  <h3>Vision-LLM parsing và ColPali</h3>
+  <p>
+    Một hướng tiếp cận khác hoàn toàn: thay vì extract text rồi embed, hãy embed trực tiếp <strong>image của trang tài liệu</strong>. <strong>ColPali</strong> (ICLR 2025) là vision-language model tạo ra multi-vector embeddings từ ảnh trang — bao gồm cả layout, bảng, biểu đồ, font — mà không cần bước OCR hay text extraction riêng. ColPali dùng late interaction (kiểu ColBERT) ở patch level, cho phép so khớp chi tiết giữa query token và vùng cụ thể trên trang.
+  </p>
+  <p>
+    Ưu điểm: loại bỏ toàn bộ parsing pipeline, handle tốt tài liệu phức tạp (annual report, slide deck). Nhược điểm: index nặng hơn, infra vector store phải hỗ trợ multi-vector. Phù hợp nhất với corpus tài liệu dày đặc hình ảnh hoặc khi OCR accuracy là bottleneck.
+  </p>
+
   <h3>Chunking strategy</h3>
+  <p>
+    Có nhiều chiến lược chunking, mỗi loại phù hợp với corpus khác nhau:
+  </p>
+  <ul>
+    <li><strong>Fixed-size / Recursive character splitting</strong>: đơn giản, tốc độ cao, baseline tốt cho prose thông thường</li>
+    <li><strong>Semantic chunking</strong>: nhóm các câu có embedding tương đồng vào cùng chunk — tăng 2–9 pp recall so với fixed-size nhưng tốn kém embedding tại chunking time; NAACL 2025 cho thấy gains không nhất quán</li>
+    <li><strong>Late chunking</strong>: embed toàn bộ document với long-context model trước, sau đó tách token embeddings thành chunks — giữ được context xung quanh mà không cần prepend header; phù hợp khi chunk có nhiều pronoun/cross-reference</li>
+    <li><strong>Hierarchical chunking</strong>: pattern phổ biến nhất trong production 2025–2026 — chunk nhỏ để retrieve chính xác, chunk lớn (parent) để cung cấp đủ context cho model; giải quyết precision-context trade-off</li>
+  </ul>
 
   <pre><code><span class="cm"># Example: recursive character splitter với metadata preservation</span>
 <span class="kw">from</span> langchain.text_splitter <span class="kw">import</span> RecursiveCharacterTextSplitter
@@ -214,7 +233,7 @@ splitter = RecursiveCharacterTextSplitter(
     <div class="icon">★</div>
     <div>
       <div class="title">Chunk size không phải one-size-fits-all</div>
-      <p>512 tokens phù hợp với prose thông thường. Code nên giữ nguyên function-level (không cắt ngang function). FAQ/Q&amp;A nên giữ nguyên cặp Q&amp;A. Bảng tài chính nên giữ nguyên table. Rule: chunk phải có ý nghĩa khi đứng một mình.</p>
+      <p>512 tokens phù hợp với prose thông thường. Code nên giữ nguyên function-level (không cắt ngang function). FAQ/Q&amp;A nên giữ nguyên cặp Q&amp;A. Bảng tài chính nên giữ nguyên table. Rule: chunk phải có ý nghĩa khi đứng một mình. Trong production, hierarchical chunking (chunk nhỏ + parent chunk) đang là pattern được adopt rộng nhất vì giải quyết đồng thời precision và context.</p>
     </div>
   </div>
 
@@ -308,9 +327,31 @@ Text: {chunk.text[:1000]}"""</span>
     <div class="icon">★</div>
     <div>
       <div class="title">Contextual chunk headers (Anthropic pattern)</div>
-      <p>Prepend một header ngắn vào mỗi chunk trước khi embed: <code>"[Doc: Q3 Report 2024 | Section: Revenue]"</code>. Giúp embedding capture context của chunk thay vì chỉ content. Kỹ thuật này được Anthropic gọi là "Contextual Retrieval" — cải thiện recall ~35% theo benchmark của họ.</p>
+      <p>Prepend một header ngắn vào mỗi chunk trước khi embed: <code>"[Doc: Q3 Report 2024 | Section: Revenue]"</code>. Giúp embedding capture context của chunk thay vì chỉ content. Kỹ thuật này được Anthropic gọi là <strong>Contextual Retrieval</strong> (ra mắt tháng 9/2024) — kết hợp contextual embeddings với BM25 để cải thiện retrieval failure rate ~67% theo benchmark của Anthropic. AWS Bedrock Knowledge Bases đã tích hợp pattern này natively.</p>
     </div>
   </div>
+
+  <h3>Embedding models cho RAG (tóm tắt)</h3>
+  <p>
+    Chọn embedding model ảnh hưởng trực tiếp đến retrieval quality. Các lựa chọn phổ biến năm 2025–2026:
+  </p>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Model</th><th>Điểm mạnh</th><th>Ghi chú</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><strong>OpenAI text-embedding-3-large</strong></td><td>General-purpose, mạnh về tiếng Anh, MTEB cao</td><td>Commercial API; matryoshka dimensions (giảm dim không mất nhiều quality)</td></tr>
+        <tr><td><strong>Voyage AI voyage-3-large / voyage-4</strong></td><td>Tốt nhất cho retrieval-focused metrics; domain models (law, finance, code)</td><td>Voyage AI được MongoDB mua lại 2/2025; voyage-4 ra đầu 2026</td></tr>
+        <tr><td><strong>Cohere embed-v4</strong></td><td>Multimodal (text + image), MTEB 65.2; multilingual tốt</td><td>Commercial API</td></tr>
+        <tr><td><strong>BGE-M3 (BAAI)</strong></td><td>Open-source; dense + sparse + multi-vector trong 1 model; multilingual</td><td>Self-hosted; best quality-cost ratio cho on-prem</td></tr>
+        <tr><td><strong>Gemini Embedding 2</strong></td><td>Multimodal 5 modalities (text, image, video, audio, PDF); 100+ ngôn ngữ; 3072 dims</td><td>Ra 3/2026; tốt nhất cho multimodal search</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>
+    Chi tiết benchmark và so sánh: xem <a href="08-vector-search.html">§08 Vector Search &amp; Knowledge Stores</a>.
+  </p>
 
   <h2 id="synthetic">14.6 Synthetic data generation</h2>
   <p>
@@ -323,7 +364,7 @@ Text: {chunk.text[:1000]}"""</span>
   </p>
   <ol>
     <li>Lấy tài liệu domain làm "seed"</li>
-    <li>Dùng strong model (GPT-4o, Claude 3.5 Sonnet) để generate diverse questions từ tài liệu</li>
+    <li>Dùng strong model (GPT-4.1, Claude 3.7 Sonnet, Gemini 2.5 Pro) để generate diverse questions từ tài liệu</li>
     <li>Generate câu trả lời lý tưởng cho mỗi câu hỏi, có citation</li>
     <li>Human review sample (không cần review 100%) để catch hallucination</li>
     <li>Format thành instruction dataset (Alpaca, ShareGPT format)</li>
@@ -395,6 +436,20 @@ Text: {chunk.text[:1000]}"""</span>
   <h3>Event-driven ingestion</h3>
   <p>
     Với sources có webhook (Confluence, Notion, Google Drive), trigger ingestion ngay khi document thay đổi — latency từ edit đến searchable có thể dưới 1 phút. Dùng message queue (Kafka, SQS, RabbitMQ) để buffer và đảm bảo at-least-once processing.
+  </p>
+
+  <h3>Pipeline orchestration</h3>
+  <p>
+    Khi pipeline phức tạp (nhiều bước phụ thuộc, retry logic, monitoring), cần một orchestration layer. Các lựa chọn phổ biến:
+  </p>
+  <ul>
+    <li><strong>Dagster</strong>: asset-centric, lineage và data quality là first-class — phù hợp khi cần track "chunk nào được tạo từ document nào". Dagster 1.13 (2025) thêm Components và dg CLI. Tốt nhất cho teams muốn observability đầy đủ.</li>
+    <li><strong>Prefect</strong>: Python-native, dynamic workflows, nhẹ hơn Airflow về ops overhead. Prefect Marvin (2025) tích hợp agent framework cho human-in-the-loop approval.</li>
+    <li><strong>Apache Airflow 3</strong> (GA 2025): thêm asset-aware scheduling, Human-in-the-Loop Operators — phù hợp nếu team đã quen Airflow.</li>
+    <li><strong>Flyte</strong>: Kubernetes-native, phù hợp ML/AI pipeline phức tạp có GPU tasks.</li>
+  </ul>
+  <p>
+    Với pipeline AI/RAG nhỏ, cron job đơn giản + structured logging thường đủ. Chỉ thêm orchestrator khi cần retry logic, dependency tracking, hoặc nhiều team dùng chung pipeline.
   </p>
 
   <div class="tabs" data-tabs>
@@ -503,22 +558,22 @@ anonymizer = AnonymizerEngine()
   <h2 id="tom-tat">Tóm tắt</h2>
   <ol>
     <li><strong>Data pipeline cho LLM apps</strong> ưu tiên semantic fidelity, chunking strategy, và metadata — khác với pipeline truyền thống tập trung vào structured data transforms.</li>
-    <li><strong>Parsing</strong> là bước khó nhất — chọn tool phù hợp với source type (Unstructured cho đa dạng, LlamaParse cho bảng phức tạp, PyMuPDF cho speed).</li>
+    <li><strong>Parsing</strong> là bước khó nhất — chọn tool phù hợp: Unstructured cho đa dạng, LlamaParse Agentic cho bảng phức tạp, PyMuPDF cho speed, Docling (MIT, Linux Foundation) cho self-hosted quality, Reducto cho enterprise accuracy. ColPali là hướng mới: embed trực tiếp page image, bỏ qua OCR.</li>
+    <li><strong>Chunking</strong>: hierarchical chunking (chunk nhỏ + parent) là pattern phổ biến nhất 2025–2026. Late chunking và semantic chunking có use case riêng nhưng không phải mặc định tốt hơn.</li>
     <li><strong>Cleaning</strong> bao gồm HTML strip, dedup (MinHash cho near-dup, embedding-based cho semantic dup), normalize, và language filter.</li>
-    <li><strong>Enrichment</strong> — metadata extraction, LLM-generated summaries, và contextual chunk headers — cải thiện retrieval recall đáng kể.</li>
-    <li><strong>Synthetic data</strong> hữu ích cho fine-tuning và eval, nhưng không thay thế real data hoàn toàn.</li>
-    <li><strong>Refresh strategy</strong>: event-driven cho realtime sources, scheduled batch cho bulk, hybrid cho production thực tế.</li>
+    <li><strong>Enrichment</strong> — metadata extraction, LLM-generated summaries, và Contextual Retrieval (Anthropic, Sep 2024) — cải thiện retrieval failure rate ~67%. Embedding model quan trọng: Voyage voyage-4, OpenAI text-3-large, BGE-M3, Gemini Embedding 2 tùy use case.</li>
+    <li><strong>Synthetic data</strong> hữu ích cho fine-tuning và eval (dùng GPT-4.1, Claude 3.7 Sonnet, Gemini 2.5 Pro làm teacher), nhưng không thay thế real data hoàn toàn.</li>
+    <li><strong>Refresh strategy</strong>: event-driven cho realtime sources, scheduled batch cho bulk, hybrid cho production. Khi pipeline phức tạp: Dagster (observability), Prefect (Python-native), Airflow 3 (established teams).</li>
     <li><strong>PII redaction</strong> (Presidio + custom regex) phải là bước bắt buộc trước khi data vào vector store.</li>
     <li><strong>Monitor</strong> parse error rate, dedup rate, chunk stats, và retrieval quality metrics liên tục để detect data degradation sớm.</li>
   </ol>
-
   <nav class="section-footer">
     <a href="06-fine-tuning.html" class="prev">
-      <div class="label">← trước</div>
+      <div class="label">← Trước</div>
       <div class="title">06 — Fine-tuning &amp; Customization</div>
     </a>
     <a href="08-vector-search.html" class="next">
-      <div class="label">tiếp theo →</div>
+      <div class="label">Tiếp theo →</div>
       <div class="title">08 — Vector Search &amp; Knowledge Stores</div>
     </a>
   </nav>

@@ -13,6 +13,7 @@
   <div class="crumbs"><a href="../index.html">Mục lục</a> › Phần 9 · <span>25 — Agent Memory Architectures</span></div>
   <div class="nav-actions">
     <a href="24-agent-harness.html">← Trước</a>
+    <a href="../index.html">Mục lục</a>
     <a href="26-durable-agents.html">Tiếp →</a>
   </div>
 </nav>
@@ -20,7 +21,7 @@
 <main class="page">
 
   <section class="hero">
-    <span class="eyebrow">Phần 9 · §25</span>
+    <div class="eyebrow-row"><span class="eyebrow">Phần 9 · §25</span><a class="hero-updated" href="../KNOWLEDGE_UPDATES.md" title="Lịch sử cập nhật kiến thức">↻ 2026-05-23</a></div>
     <h1>Agent Memory Architectures</h1>
     <p class="lede">
       Context window chỉ là RAM tạm thời — agent thực sự cần bộ nhớ dài hạn, phân tầng, có khả năng viết và truy xuất thông minh. Khám phá toàn bộ memory taxonomy, MemGPT/Letta pattern, và cách xây dựng memory layer production-ready.
@@ -623,7 +624,7 @@ SYSTEM_TEMPLATE = <span class="str">"""
   <h2 id="tools-comparison">25.7 Letta / mem0 / Zep / cognee — so sánh</h2>
   <p>
     MemGPT được rebrand thành <strong>Letta</strong> (2024) với production-ready platform.
-    Cùng lúc đó, nhiều open-source và commercial alternatives xuất hiện:
+    Cùng lúc đó, nhiều open-source và commercial alternatives xuất hiện và liên tục phát triển mạnh trong 2025–2026:
   </p>
 
   <div class="table-wrap">
@@ -634,27 +635,27 @@ SYSTEM_TEMPLATE = <span class="str">"""
       <tbody>
         <tr>
           <td><strong>Letta</strong> (MemGPT)</td>
-          <td>OS-style memory management; agent-as-stateful-OS-process; self-managing memory tools</td>
-          <td>PostgreSQL + pgvector (archival), Chroma, SQLite</td>
+          <td>OS-style memory management; agent-as-stateful-OS-process; self-managing memory tools. 2025: thêm <em>Context Repositories</em> (MemFS — git-backed markdown files), <em>Conversations API</em> (shared memory across parallel conversations), và <em>Letta Code</em> (memory-first coding agent)</td>
+          <td>PostgreSQL + pgvector (archival), Chroma, SQLite; MemFS (git-backed markdown)</td>
           <td>Yes (Apache 2.0)</td>
-          <td>Long-running personal agents; MemGPT-style self-management</td>
-          <td>Heavy setup; overkill cho simple chatbots; niche API design</td>
+          <td>Long-running personal agents; coding agents cần memory persistence; MemGPT-style self-management</td>
+          <td>Heavy setup; overkill cho simple chatbots; evolving API (đang thay đổi nhanh)</td>
         </tr>
         <tr>
           <td><strong>mem0</strong></td>
-          <td>Auto-extract + deduplicate memories từ conversations; layer on top of any LLM</td>
-          <td>Qdrant, Chroma, PGVector + Redis + Neo4j (graph)</td>
+          <td>Auto-extract + deduplicate memories; multi-signal retrieval (vector + BM25 + entity links). SDK v2.0 (Apr 2026): built-in entity linking thay thế Neo4j; token-efficient algorithm (6.8K tokens/op). <em>OpenMemory MCP</em> (May 2025): local-first MCP server cho Claude Desktop, Cursor, Windsurf</td>
+          <td>Qdrant, Chroma, PGVector + Redis; entity collection tích hợp (không cần Neo4j từ v2)</td>
           <td>Yes (Apache 2.0)</td>
-          <td>Quick integration vào existing apps; personalization use cases</td>
-          <td>Auto-extraction có thể noisy; less control over what's stored</td>
+          <td>Quick integration vào MCP-compatible tools; personalization; production apps</td>
+          <td>Auto-extraction có thể noisy; entity linking mới — cần migrate từ v1</td>
         </tr>
         <tr>
           <td><strong>Zep</strong></td>
-          <td>Temporal knowledge graph; auto-extract entities, facts, summaries; time-aware retrieval</td>
-          <td>PostgreSQL + custom graph layer</td>
+          <td>Temporal knowledge graph (<em>Graphiti</em> engine); auto-extract entities, facts, summaries từ conversations + business data; time-aware retrieval. Paper: arXiv 2501.13956 (Jan 2025) — 94.8% trên DMR benchmark, cải thiện 18.5% và giảm latency 90% trên LongMemEval vs baseline</td>
+          <td>PostgreSQL + Graphiti graph layer (proprietary)</td>
           <td>Partially (Community + Cloud)</td>
-          <td>Conversational apps cần temporal awareness; entity tracking</td>
-          <td>Cloud version có cost; Community version limited features</td>
+          <td>Enterprise apps cần temporal + entity awareness; multi-source knowledge integration</td>
+          <td>Cloud version có cost; Graphiti engine proprietary; Community version limited</td>
         </tr>
         <tr>
           <td><strong>cognee</strong></td>
@@ -662,7 +663,7 @@ SYSTEM_TEMPLATE = <span class="str">"""
           <td>Multiple (Neo4j, Qdrant, Weaviate, PG)</td>
           <td>Yes (Apache 2.0)</td>
           <td>Knowledge-heavy agents; complex relationship reasoning</td>
-          <td>Mới (2024); community nhỏ; complex setup</td>
+          <td>Community nhỏ hơn so với mem0/Zep; complex setup</td>
         </tr>
         <tr>
           <td><strong>Custom</strong></td>
@@ -679,13 +680,26 @@ SYSTEM_TEMPLATE = <span class="str">"""
   <div class="callout tip">
     <div class="icon">★</div>
     <div>
-      <div class="title">Heuristic chọn tool</div>
+      <div class="title">Heuristic chọn tool (2026)</div>
       <p>
-        <strong>Prototype/startup:</strong> mem0 — dễ integrate, tự động extract memories, hoạt động ngay.<br>
-        <strong>Production personal agent cần temporal/entity awareness:</strong> Zep.<br>
-        <strong>Long-running stateful agent (vWeeks/months):</strong> Letta.<br>
+        <strong>Prototype/startup hoặc MCP tools (Claude Desktop, Cursor):</strong> mem0 + OpenMemory MCP — dễ integrate, tự động extract, chạy local.<br>
+        <strong>Production personal agent cần temporal/entity awareness:</strong> Zep + Graphiti.<br>
+        <strong>Long-running stateful coding agent (weeks/months):</strong> Letta + Context Repositories.<br>
         <strong>Knowledge-intensive với complex relationships:</strong> cognee.<br>
         <strong>Full control + existing infra:</strong> Build custom với Qdrant + Redis + PostgreSQL.
+      </p>
+    </div>
+  </div>
+
+  <div class="callout note">
+    <div class="icon">≡</div>
+    <div>
+      <div class="title">First-party memory: ChatGPT, Claude, và coding agents</div>
+      <p>
+        Ngoài thư viện open-source, <strong>first-party memory</strong> của các sản phẩm lớn đã tiến xa trong 2025:<br>
+        — <strong>ChatGPT</strong> (Apr 2025): memory revamp — ngoài "saved memories" thủ công, ChatGPT giờ tự tổng hợp insights từ toàn bộ lịch sử chat để cá nhân hóa câu trả lời. Free users có short-term; Plus/Pro có long-term memory đầy đủ hơn.<br>
+        — <strong>Claude Code</strong>: CLAUDE.md là memory file rõ ràng nhất — project instructions persist qua mọi session. Bổ sung: <em>auto-memory</em> (Claude tự ghi notes về build commands, code style, debugging insights). Cline Memory Bank cũng dùng pattern tương tự (projectbrief.md, systemPatterns.md). Đây là <strong>"memory-as-markdown-files" pattern</strong> — đơn giản, human-readable, git-trackable.<br>
+        — Anthropic cũng cung cấp <em>Memory tool</em> trong Claude API (beta) để agent tự lưu key-value facts ra external store.
       </p>
     </div>
   </div>
@@ -802,6 +816,11 @@ Produce a brief update to the user's persistent profile."""</span>
             tools=[<span class="str">"core_memory_update"</span>, <span class="str">"archival_memory_insert"</span>, <span class="str">"memory_delete"</span>]
         )
         <span class="cm"># Agent calls memory tools during reflection → memory updates happen</span></code></pre>
+      <div class="callout note" style="margin-top:10px">
+        <div class="icon">≡</div>
+        <div><div class="title">Letta Context Repositories (2025) — MemFS pattern</div>
+        <p>Letta nâng cấp sleeptime compute thành <strong>Context Repositories</strong>: memory agent lưu vào một git-backed filesystem (MemFS) dưới dạng markdown files, commit sau mỗi reflection session — full version history, branch/merge safe, human-readable. Background reflection agent chạy trong git worktree riêng để tránh conflict với running agent. Đây là evolution từ "memory trong vector DB" sang "memory như source code — có thể review diff, revert, và branch."</p></div>
+      </div>
     </div>
   </div>
 
@@ -1110,7 +1129,7 @@ memories = <span class="kw">await</span> vector_db.<span class="fn">search</span
     <!-- Divider -->
     <line x1="380" y1="10" x2="380" y2="390" stroke="#2a3140" stroke-width="2" stroke-dasharray="6,4"/>
     <text x="190" y="28" text-anchor="middle" font-size="14" font-weight="700" fill="#ff8a8a">❌ Cách cũ (2022–2023)</text>
-    <text x="570" y="28" text-anchor="middle" font-size="14" font-weight="700" fill="#b4e07a">✓ Cách hiện tại (2024–2026)</text>
+    <text x="570" y="28" text-anchor="middle" font-size="14" font-weight="700" fill="#b4e07a">✓ Cách hiện tại (2025–2026)</text>
 
     <!-- OLD WAY -->
     <!-- Giant prompt box -->
@@ -1244,6 +1263,20 @@ memories = <span class="kw">await</span> vector_db.<span class="fn">search</span
     </div>
   </div>
 
+  <div class="callout tip">
+    <div class="icon">★</div>
+    <div>
+      <div class="title">Memory evals — đo lường chất lượng memory (2025–2026)</div>
+      <p>
+        Trước 2025, chưa có benchmark chuẩn cho agent memory. Nay đã có ba benchmark được cộng đồng dùng rộng rãi:<br>
+        — <strong>LongMemEval</strong>: 500 câu hỏi, kiểm tra knowledge updates và multi-session recall. Zep đạt cải thiện 18.5%, mem0 v2 đạt 94.8 (cải thiện +27 điểm so với v1).<br>
+        — <strong>LoCoMo</strong>: 1,540 câu hỏi — single-hop, multi-hop, open-domain, và temporal recall. mem0 v2 đạt 91.6 (+20 điểm).<br>
+        — <strong>MemoryAgentBench</strong> (ICLR 2026): benchmark toàn diện nhất — kiểm tra information retention, update, retrieval, và conflict resolution trong multi-turn/multi-session scenarios.<br>
+        Khi chọn memory library, hãy so sánh theo các benchmark này thay vì chỉ dùng demo.
+      </p>
+    </div>
+  </div>
+
   <!-- ═══════════════════════════════════════════════
        Summary
   ════════════════════════════════════════════════ -->
@@ -1273,7 +1306,13 @@ memories = <span class="kw">await</span> vector_db.<span class="fn">search</span
     </li>
     <li>
       <strong>mem0, Zep, Letta, cognee</strong> là 4 leading open-source tools cho managed memory.
-      mem0 dễ integrate nhất; Zep tốt cho temporal/entity; Letta cho long-running agents; cognee cho knowledge graphs.
+      mem0 v2 (Apr 2026) dùng entity linking built-in + multi-signal retrieval, không cần Neo4j, có <em>OpenMemory MCP</em> cho local-first memory trong Claude Desktop/Cursor.
+      Zep dùng <em>Graphiti</em> temporal knowledge graph, 94.8% DMR accuracy.
+      Letta thêm <em>Context Repositories</em> (MemFS — memory dưới dạng git-backed markdown).
+    </li>
+    <li>
+      <strong>Memory-as-markdown-files pattern</strong>: Claude Code's CLAUDE.md + auto-memory, Cline Memory Bank, Letta MemFS — xu hướng lưu memory trong human-readable markdown files có git history thay vì chỉ trong vector DB.
+      <strong>Memory evals</strong>: dùng LongMemEval, LoCoMo, MemoryAgentBench (ICLR 2026) để so sánh chất lượng memory systems trong production.
     </li>
     <li>
       <strong>Write strategies</strong>: Explicit (agent tự gọi tool), Implicit (auto-extraction after turn),
@@ -1296,15 +1335,14 @@ memories = <span class="kw">await</span> vector_db.<span class="fn">search</span
       unlimited scale, cross-session persistence. Nhưng cũng phức tạp hơn — chỉ build khi thực sự cần.
     </li>
   </ol>
-
   <nav class="section-footer">
     <a href="24-agent-harness.html" class="prev">
-      <div class="label">← trước</div>
-      <div class="title">24 — Agent Harness</div>
+      <div class="label">← Trước</div>
+      <div class="title">24 — Agent Harness là gì</div>
     </a>
     <a href="26-durable-agents.html" class="next">
-      <div class="label">tiếp theo →</div>
-      <div class="title">26 — Durable Agents</div>
+      <div class="label">Tiếp theo →</div>
+      <div class="title">26 — Long-running &amp; Durable Agents</div>
     </a>
   </nav>
 
