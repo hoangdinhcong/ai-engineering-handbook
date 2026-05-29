@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Timeline 2024–2026 — AI Engineering</title>
+<meta name="description" content="Timeline trực quan các cột mốc AI quan trọng 2024–2026: model releases, regulation, security incidents, agentic milestones.">
+<link rel="stylesheet" href="assets/style.css">
+<style>
+  .tl-page { max-width: 980px; margin: 0 auto; padding: 32px 24px 96px; }
+
+  .tl-legend {
+    display: flex;
+    gap: 18px;
+    flex-wrap: wrap;
+    padding: 14px 18px;
+    background: var(--bg-elev);
+    border: 1px solid var(--line-soft);
+    border-radius: var(--radius);
+    margin: 24px 0;
+    font-size: 13px;
+  }
+  .tl-legend-item { display: flex; align-items: center; gap: 8px; }
+  .tl-dot {
+    display: inline-block;
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .tl-dot.model { background: var(--accent); }
+  .tl-dot.regulation { background: var(--accent-2); }
+  .tl-dot.security { background: #e06363; }
+  .tl-dot.agent { background: #7bb6ff; }
+  .tl-dot.eval { background: #b58eff; }
+
+  /* Year sections */
+  .tl-year {
+    margin: 48px 0 0;
+    position: relative;
+  }
+  .tl-year-header {
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
+    padding: 16px 0 12px;
+    border-bottom: 1px solid var(--line);
+    margin-bottom: 24px;
+  }
+  .tl-year-num {
+    font-family: var(--font-mono);
+    font-size: 28px;
+    color: var(--accent);
+    font-weight: 700;
+  }
+  .tl-year-tagline {
+    color: var(--text-soft);
+    font-size: 14px;
+    font-style: italic;
+  }
+
+  /* Quarter row */
+  .tl-quarter {
+    margin: 24px 0;
+  }
+  .tl-quarter-label {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-mute);
+    margin-bottom: 8px;
+  }
+  .tl-events {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 10px;
+  }
+  .tl-event {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    padding: 12px 14px;
+    background: var(--bg-card);
+    border: 1px solid var(--line-soft);
+    border-left: 3px solid var(--line);
+    border-radius: 6px;
+    font-size: 13.5px;
+    line-height: 1.45;
+    color: var(--text);
+  }
+  .tl-event.model       { border-left-color: var(--accent); }
+  .tl-event.regulation  { border-left-color: var(--accent-2); }
+  .tl-event.security    { border-left-color: #e06363; }
+  .tl-event.agent       { border-left-color: #7bb6ff; }
+  .tl-event.eval        { border-left-color: #b58eff; }
+  .tl-event-date {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-mute);
+    white-space: nowrap;
+    padding-top: 2px;
+  }
+  .tl-event-body { flex: 1; }
+  .tl-event-title { font-weight: 600; color: var(--text); }
+  .tl-event-desc { font-size: 12.5px; color: var(--text-soft); margin-top: 3px; }
+  .tl-event-ref {
+    display: inline-block;
+    margin-top: 4px;
+    font-size: 11px;
+    color: var(--accent-2);
+    font-family: var(--font-mono);
+    border-bottom: 1px dotted var(--accent-2);
+  }
+  .tl-event-ref:hover { color: var(--accent); border-bottom-color: var(--accent); }
+
+  @media (max-width: 600px) {
+    .tl-events { grid-template-columns: 1fr; }
+    .tl-event { flex-direction: column; gap: 4px; }
+  }
+</style>
+</head>
+<body>
+
+<nav class="top-nav">
+  <div class="brand"><span class="dot"></span> AI Engineering</div>
+  <div class="crumbs"><a href="/">Mục lục</a> › <span>Timeline 2024–2026</span></div>
+  <div class="nav-actions"></div>
+</nav>
+
+<main class="page tl-page">
+
+  <section class="hero">
+    <span class="eyebrow">Phụ lục · Timeline</span>
+    <h1>Timeline AI Engineering 2024–2026</h1>
+    <p class="lede">
+      Các cột mốc quan trọng đã định hình ngành AI Engineering trong 3 năm qua —
+      model releases, regulation, security incidents, agentic milestones. Dùng để
+      orient người mới hoặc tra cứu nhanh "lúc đó cái gì xảy ra".
+    </p>
+  </section>
+
+  <div class="tl-legend">
+    <div class="tl-legend-item"><span class="tl-dot model"></span> Model release</div>
+    <div class="tl-legend-item"><span class="tl-dot agent"></span> Agent / Infra</div>
+    <div class="tl-legend-item"><span class="tl-dot security"></span> Security / Incident</div>
+    <div class="tl-legend-item"><span class="tl-dot regulation"></span> Regulation</div>
+    <div class="tl-legend-item"><span class="tl-dot eval"></span> Eval / Research</div>
+  </div>
+
+  <!-- ===== 2024 ===== -->
+  <section class="tl-year">
+    <header class="tl-year-header">
+      <span class="tl-year-num">2024</span>
+      <span class="tl-year-tagline">Năm của agent, multimodal, và RAG production</span>
+    </header>
+
+    <div class="tl-quarter">
+      <div class="tl-quarter-label">Q1 2024</div>
+      <div class="tl-events">
+        <div class="tl-event model"><span class="tl-event-date">02-2024</span><div class="tl-event-body"><div class="tl-event-title">Gemini 1.5 Pro · 1M context</div><div class="tl-event-desc">Google ra context window 1M token đầu tiên — mở ra "throw everything in context" pattern.</div></div></div>
+        <div class="tl-event model"><span class="tl-event-date">03-2024</span><div class="tl-event-body"><div class="tl-event-title">Claude 3 family</div><div class="tl-event-desc">Anthropic ra Opus/Sonnet/Haiku 3 — tier-based pricing thành chuẩn ngành.</div></div></div>
+        <div class="tl-event eval"><span class="tl-event-date">01-2024</span><div class="tl-event-body"><div class="tl-event-title">Many-shot jailbreaking paper</div><div class="tl-event-desc">Anthropic công bố long-context attack — context dài là attack surface mới.<a class="tl-event-ref" href="sections/32-ai-red-team.html">§32</a></div></div></div>
+      </div>
+    </div>
+
+    <div class="tl-quarter">
+      <div class="tl-quarter-label">Q2 2024</div>
+      <div class="tl-events">
+        <div class="tl-event model"><span class="tl-event-date">05-2024</span><div class="tl-event-body"><div class="tl-event-title">GPT-4o · multimodal native</div><div class="tl-event-desc">OpenAI ra omni-model — voice/vision/text trong một model, latency thấp.<a class="tl-event-ref" href="sections/17-multimodal.html">§17</a></div></div></div>
+        <div class="tl-event agent"><span class="tl-event-date">05-2024</span><div class="tl-event-body"><div class="tl-event-title">Anthropic Prompt Caching</div><div class="tl-event-desc">Giảm 90% cost cho prefix dài — pattern tiêu chuẩn cho RAG/agent với system prompt lớn.</div></div></div>
+        <div class="tl-event model"><span class="tl-event-date">07-2024</span><div class="tl-event-body"><div class="tl-event-title">Llama 3.1 405B open</div><div class="tl-event-desc">Meta ra weight model 405B miễn phí — đầu tiên open-weight ngang frontier closed.</div></div></div>
+      </div>
+    </div>
+
+    <div class="tl-quarter">
+      <div class="tl-quarter-label">Q3–Q4 2024</div>
+      <div class="tl-events">
+        <div class="tl-event model"><span class="tl-event-date">09-2024</span><div class="tl-event-body"><div class="tl-event-title">OpenAI o1 · reasoning paradigm</div><div class="tl-event-desc">Inference-time compute thay vì train bigger — paradigm shift trong scaling.<a class="tl-event-ref" href="sections/38-inference-compute-scaling.html">§38</a></div></div></div>
+        <div class="tl-event agent"><span class="tl-event-date">10-2024</span><div class="tl-event-body"><div class="tl-event-title">Claude Computer Use beta</div><div class="tl-event-desc">Lần đầu LLM điều khiển desktop qua screenshot + tool — khởi đầu computer-use agents.<a class="tl-event-ref" href="sections/39-computer-use-agents.html">§39</a></div></div></div>
+        <div class="tl-event agent"><span class="tl-event-date">11-2024</span><div class="tl-event-body"><div class="tl-event-title">MCP spec ra mắt</div><div class="tl-event-desc">Anthropic công bố Model Context Protocol — chuẩn open cho tool/data integration.<a class="tl-event-ref" href="sections/10-agents.html">§10</a></div></div></div>
+        <div class="tl-event regulation"><span class="tl-event-date">08-2024</span><div class="tl-event-body"><div class="tl-event-title">EU AI Act có hiệu lực</div><div class="tl-event-desc">Khung pháp lý AI đầu tiên trên thế giới — risk-tier rule cho high-risk system.<a class="tl-event-ref" href="sections/34-compliance.html">§34</a></div></div></div>
+        <div class="tl-event model"><span class="tl-event-date">12-2024</span><div class="tl-event-body"><div class="tl-event-title">Gemini 2.0 · agentic-native</div><div class="tl-event-desc">Google reposition: model thiết kế cho agent loops thay vì single-turn chat.</div></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== 2025 ===== -->
+  <section class="tl-year">
+    <header class="tl-year-header">
+      <span class="tl-year-num">2025</span>
+      <span class="tl-year-tagline">Năm reasoning, MCP-mọi-nơi, và agent harness</span>
+    </header>
+
+    <div class="tl-quarter">
+      <div class="tl-quarter-label">Q1 2025</div>
+      <div class="tl-events">
+        <div class="tl-event model"><span class="tl-event-date">01-2025</span><div class="tl-event-body"><div class="tl-event-title">DeepSeek-R1 · RLVR open</div><div class="tl-event-desc">RL with Verifiable Rewards + GRPO — reasoning model open-weight ngang o1, full paper.<a class="tl-event-ref" href="sections/36-reward-modeling.html">§36</a></div></div></div>
+        <div class="tl-event model"><span class="tl-event-date">02-2025</span><div class="tl-event-body"><div class="tl-event-title">Claude 3.7 Sonnet · extended thinking</div><div class="tl-event-desc">Visible reasoning trace, controllable budget — thinking mode thành mainstream feature.</div></div></div>
+        <div class="tl-event security"><span class="tl-event-date">02-2025</span><div class="tl-event-body"><div class="tl-event-title">Anthropic Constitutional Classifiers</div><div class="tl-event-desc">Output-side filter, bounty $55k không bẻ được — defense in depth thực sự work.<a class="tl-event-ref" href="sections/32-ai-red-team.html">§32</a></div></div></div>
+      </div>
+    </div>
+
+    <div class="tl-quarter">
+      <div class="tl-quarter-label">Q2 2025</div>
+      <div class="tl-events">
+        <div class="tl-event security"><span class="tl-event-date">04-2025</span><div class="tl-event-body"><div class="tl-event-title">EchoLeak CVE-2025-32711</div><div class="tl-event-desc">Zero-click indirect prompt injection đầu tiên trong production (Microsoft 365 Copilot).<a class="tl-event-ref" href="sections/29-prompt-injection-deep.html">§29</a></div></div></div>
+        <div class="tl-event regulation"><span class="tl-event-date">04-2025</span><div class="tl-event-body"><div class="tl-event-title">OWASP LLM Top 10 (2025)</div><div class="tl-event-desc">Bản v2025 thêm LLM07 System Prompt Leakage, LLM08 Vector Weaknesses.<a class="tl-event-ref" href="sections/15-security.html">§15</a></div></div></div>
+        <div class="tl-event model"><span class="tl-event-date">05-2025</span><div class="tl-event-body"><div class="tl-event-title">GPT-5 · reasoning default</div><div class="tl-event-desc">OpenAI hợp nhất chat + reasoning thành một model, `reasoning_effort` parameter.</div></div></div>
+        <div class="tl-event agent"><span class="tl-event-date">05-2025</span><div class="tl-event-body"><div class="tl-event-title">OpenAI Agents SDK</div><div class="tl-event-desc">Thay Swarm bằng framework chính thức — handoff pattern, traces, evals built-in.<a class="tl-event-ref" href="sections/28-multi-agent-orchestration.html">§28</a></div></div></div>
+      </div>
+    </div>
+
+    <div class="tl-quarter">
+      <div class="tl-quarter-label">Q3 2025</div>
+      <div class="tl-events">
+        <div class="tl-event model"><span class="tl-event-date">07-2025</span><div class="tl-event-body"><div class="tl-event-title">Anthropic mua Humanloop</div><div class="tl-event-desc">Eval/prompt management tooling consolidate — Humanloop tắt 9/2025.<a class="tl-event-ref" href="sections/19-mlops-llmops.html">§19</a></div></div></div>
+        <div class="tl-event security"><span class="tl-event-date">09-2025</span><div class="tl-event-body"><div class="tl-event-title">postmark-mcp incident</div><div class="tl-event-desc">MCP tool poisoning đầu tiên trong production — backdoor trong package npm.<a class="tl-event-ref" href="sections/30-agent-threats.html">§30</a></div></div></div>
+        <div class="tl-event regulation"><span class="tl-event-date">09-2025</span><div class="tl-event-body"><div class="tl-event-title">California SB 53 signed</div><div class="tl-event-desc">Bang California ký luật transparency cho frontier model — preempt federal.<a class="tl-event-ref" href="sections/34-compliance.html">§34</a></div></div></div>
+        <div class="tl-event agent"><span class="tl-event-date">09-2025</span><div class="tl-event-body"><div class="tl-event-title">A2A Protocol (Linux Foundation)</div><div class="tl-event-desc">Google + 150+ orgs chuẩn hoá agent-to-agent communication — interop với MCP.<a class="tl-event-ref" href="sections/41-distributed-agent-runtimes.html">§41</a></div></div></div>
+      </div>
+    </div>
+
+    <div class="tl-quarter">
+      <div class="tl-quarter-label">Q4 2025</div>
+      <div class="tl-events">
+        <div class="tl-event model"><span class="tl-event-date">10-2025</span><div class="tl-event-body"><div class="tl-event-title">Claude Sonnet 4.5 + Code Execution beta</div><div class="tl-event-desc">First-party sandboxed Python — 98.7% token reduction vs in-context code.<a class="tl-event-ref" href="sections/40-code-execution-tool.html">§40</a></div></div></div>
+        <div class="tl-event agent"><span class="tl-event-date">10-2025</span><div class="tl-event-body"><div class="tl-event-title">Apple Foundation Models (iOS 26)</div><div class="tl-event-desc">3B model trên device, Swift API mở cho dev — on-device agent thành mass-market.<a class="tl-event-ref" href="sections/42-edge-on-device.html">§42</a></div></div></div>
+        <div class="tl-event eval"><span class="tl-event-date">11-2025</span><div class="tl-event-body"><div class="tl-event-title">Anthropic Structured Outputs native</div><div class="tl-event-desc">Beta header, constrained decoding — guaranteed JSON schema compliance.</div></div></div>
+        <div class="tl-event eval"><span class="tl-event-date">12-2025</span><div class="tl-event-body"><div class="tl-event-title">Agent S2 vượt human OSWorld</div><div class="tl-event-desc">Computer-use agent đạt 82% — vượt human baseline lần đầu.<a class="tl-event-ref" href="sections/39-computer-use-agents.html">§39</a></div></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== 2026 ===== -->
+  <section class="tl-year">
+    <header class="tl-year-header">
+      <span class="tl-year-num">2026</span>
+      <span class="tl-year-tagline">Năm của adaptive thinking, durable agent, và edge AI</span>
+    </header>
+
+    <div class="tl-quarter">
+      <div class="tl-quarter-label">Q1 2026</div>
+      <div class="tl-events">
+        <div class="tl-event agent"><span class="tl-event-date">01-2026</span><div class="tl-event-body"><div class="tl-event-title">Anthropic Code Execution GA</div><div class="tl-event-desc">Cùng nhánh: code-execution-as-tool thành pattern chuẩn, E2B P50 78ms.<a class="tl-event-ref" href="sections/40-code-execution-tool.html">§40</a></div></div></div>
+        <div class="tl-event security"><span class="tl-event-date">01-2026</span><div class="tl-event-body"><div class="tl-event-title">Constitutional Classifiers++</div><div class="tl-event-desc">Iteration 2 với multimodal coverage — defense-in-depth chuẩn cho frontier deploy.</div></div></div>
+        <div class="tl-event model"><span class="tl-event-date">02-2026</span><div class="tl-event-body"><div class="tl-event-title">Claude 4 family</div><div class="tl-event-desc">Adaptive thinking thay `budget_tokens` — model tự điều chỉnh độ sâu reasoning.</div></div></div>
+        <div class="tl-event eval"><span class="tl-event-date">03-2026</span><div class="tl-event-body"><div class="tl-event-title">SWE-bench Verified bão hoà</div><div class="tl-event-desc">Top model >93% — community chuyển sang SWE-bench Pro (best ~57%).<a class="tl-event-ref" href="sections/27-agent-eval.html">§27</a></div></div></div>
+      </div>
+    </div>
+
+    <div class="tl-quarter">
+      <div class="tl-quarter-label">Q2 2026 — đến nay</div>
+      <div class="tl-events">
+        <div class="tl-event model"><span class="tl-event-date">04-2026</span><div class="tl-event-body"><div class="tl-event-title">Claude Opus 4.7 + Sonnet 4.6</div><div class="tl-event-desc">Adaptive thinking GA, context 1M, prompt cache TTL 5min default.</div></div></div>
+        <div class="tl-event regulation"><span class="tl-event-date">05-2026</span><div class="tl-event-body"><div class="tl-event-title">EU AI Act High-Risk dời 2027/2028</div><div class="tl-event-desc">Implementation timeline delay — GPAI rules vẫn áp 8/2025.<a class="tl-event-ref" href="sections/34-compliance.html">§34</a></div></div></div>
+        <div class="tl-event agent"><span class="tl-event-date">05-2026</span><div class="tl-event-body"><div class="tl-event-title">Anthropic Managed Agents API</div><div class="tl-event-desc">Hosted agent runtime với 12 hooks, subagents — alternative cho Agent SDK self-host.<a class="tl-event-ref" href="sections/24-agent-harness.html">§24</a></div></div></div>
+        <div class="tl-event model"><span class="tl-event-date">05-2026</span><div class="tl-event-body"><div class="tl-event-title">Sổ tay này refresh toàn bộ</div><div class="tl-event-desc">42 bài cập nhật song song bởi Opus 4.7 — accuracy &gt; coverage.<a class="tl-event-ref" href="KNOWLEDGE_UPDATES.md">Nhật ký</a></div></div></div>
+      </div>
+    </div>
+  </section>
+
+  <nav class="section-footer">
+    <a href="index.html" class="prev">
+      <div class="label">← Mục lục</div>
+      <div class="title">Quay lại mục lục</div>
+    </a>
+    <a href="glossary.html" class="next">
+      <div class="label">Thuật ngữ →</div>
+      <div class="title">Tra cứu nhanh ~50 khái niệm</div>
+    </a>
+  </nav>
+
+</main>
+
+<script src="assets/glossary.js"></script>
+<script src="assets/script.js"></script>
+</body>
+</html>

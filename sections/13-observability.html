@@ -31,20 +31,20 @@
   <aside class="toc">
     <div class="toc-title">Trong trang này</div>
     <ul>
-      <li><a href="#why-different">11.1 Tại sao LLM observability khác biệt</a></li>
-      <li><a href="#tracing">11.2 Tracing với OpenTelemetry</a></li>
-      <li><a href="#tools">11.3 Tooling landscape</a></li>
-      <li><a href="#logging">11.4 Logging strategy</a></li>
-      <li><a href="#online-eval">11.5 Online evaluation</a></li>
-      <li><a href="#drift">11.6 Drift detection</a></li>
-      <li><a href="#feedback">11.7 User feedback loops</a></li>
-      <li><a href="#slo">11.8 Dashboards &amp; SLOs</a></li>
-      <li><a href="#debugging">11.9 Debugging với traces</a></li>
+      <li><a href="#why-different">13.1 Tại sao LLM observability khác biệt</a></li>
+      <li><a href="#tracing">13.2 Tracing với OpenTelemetry</a></li>
+      <li><a href="#tools">13.3 Tooling landscape</a></li>
+      <li><a href="#logging">13.4 Logging strategy</a></li>
+      <li><a href="#online-eval">13.5 Online evaluation</a></li>
+      <li><a href="#drift">13.6 Drift detection</a></li>
+      <li><a href="#feedback">13.7 User feedback loops</a></li>
+      <li><a href="#slo">13.8 Dashboards &amp; SLOs</a></li>
+      <li><a href="#debugging">13.9 Debugging với traces</a></li>
       <li><a href="#tom-tat">Tóm tắt</a></li>
     </ul>
   </aside>
 
-  <h2 id="why-different">11.1 Tại sao LLM observability khác monitoring truyền thống</h2>
+  <h2 id="why-different">13.1 Tại sao LLM observability khác monitoring truyền thống</h2>
   <p>
     Với một REST API bình thường, observability tương đối đơn giản: đo latency, đếm error 4xx/5xx,
     trace request qua các service. Hệ thống <em>đúng</em> khi không có exception và response đúng schema.
@@ -85,7 +85,7 @@
     </div>
   </div>
 
-  <h2 id="tracing">11.2 Tracing — OpenTelemetry semantics cho LLM</h2>
+  <h2 id="tracing">13.2 Tracing — OpenTelemetry semantics cho LLM</h2>
   <p>
     OpenTelemetry (OTel) là tiêu chuẩn vendor-neutral cho distributed tracing. LLM ecosystem đã
     bổ sung semantic conventions riêng cho AI workloads thông qua <strong>GenAI SIG</strong> — bắt đầu
@@ -179,7 +179,7 @@ span.set_attributes({
   <span class="str">"llm.eval.faithfulness"</span>: <span class="num">0.92</span>,
 })</code></pre>
 
-  <h2 id="tools">11.3 Tools — Tooling landscape</h2>
+  <h2 id="tools">13.3 Tools — Tooling landscape</h2>
   <p>
     Có nhiều tools chuyên biệt cho LLM observability, từ open-source đến SaaS.
     Mỗi tool có trade-off riêng:
@@ -299,7 +299,7 @@ span.set_attributes({
     <text x="380" y="300" text-anchor="middle" font-size="12" fill="#6f7c92">LLM API calls · Tool calls · Embeddings · Vector DB queries</text>
   </svg>
 
-  <h2 id="logging">11.4 Logging strategy</h2>
+  <h2 id="logging">13.4 Logging strategy</h2>
   <p>
     Log toàn bộ prompt và completion là công cụ debugging mạnh nhất — nhưng cũng tốn kém và rủi ro privacy.
     Cần chiến lược cân bằng giữa observability và cost/compliance.
@@ -350,7 +350,7 @@ PII_PATTERNS = {
     </div>
   </div>
 
-  <h2 id="online-eval">11.5 Online Evaluation — score production traffic</h2>
+  <h2 id="online-eval">13.5 Online Evaluation — score production traffic</h2>
   <p>
     Online eval là đánh giá quality trên traffic thực, theo thời gian thực hoặc near-real-time.
     Không như offline eval (chạy trên dataset cố định), online eval phản ánh distribution thực của user queries.
@@ -397,7 +397,7 @@ Output JSON: {{"relevance": X, "faithfulness": X, "helpfulness": X, "reasoning":
     </div>
   </div>
 
-  <h2 id="drift">11.6 Drift Detection</h2>
+  <h2 id="drift">13.6 Drift Detection</h2>
   <p>
     Drift xảy ra khi hành vi của hệ thống thay đổi theo thời gian — có thể do model update,
     distribution shift của user queries, hay thay đổi prompt. 3 loại drift cần theo dõi:
@@ -433,7 +433,7 @@ Output JSON: {{"relevance": X, "faithfulness": X, "helpfulness": X, "reasoning":
   z_score = (current - mean) / (std + <span class="num">1e-9</span>)
   <span class="kw">return</span> z_score &gt; <span class="num">3.0</span>  <span class="cm"># 3-sigma threshold → alert</span></code></pre>
 
-  <h2 id="feedback">11.7 User Feedback Loops</h2>
+  <h2 id="feedback">13.7 User Feedback Loops</h2>
   <p>
     Feedback từ users là signal quality quý giá nhất — nhưng cũng khó thu thập.
     Có 3 loại feedback signal:
@@ -474,7 +474,7 @@ Output JSON: {{"relevance": X, "faithfulness": X, "helpfulness": X, "reasoning":
     </div>
   </div>
 
-  <h2 id="slo">11.8 Dashboards &amp; SLOs cho LLM</h2>
+  <h2 id="slo">13.8 Dashboards &amp; SLOs cho LLM</h2>
   <p>
     SLO (Service Level Objective) là cam kết về chất lượng dịch vụ đo được. Với LLM, cần define
     cả infrastructure SLOs và semantic SLOs:
@@ -593,7 +593,7 @@ Output JSON: {{"relevance": X, "faithfulness": X, "helpfulness": X, "reasoning":
     </table>
   </div>
 
-  <h2 id="debugging">11.9 Debugging với Traces</h2>
+  <h2 id="debugging">13.9 Debugging với Traces</h2>
   <p>
     Traces là công cụ chính để debug khi hệ thống hoạt động kém. Flow điển hình:
   </p>

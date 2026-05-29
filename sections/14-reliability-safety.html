@@ -31,21 +31,21 @@
   <aside class="toc">
     <div class="toc-title">Trong trang này</div>
     <ul>
-      <li><a href="#hallucination">12.1 Hallucination — nguồn gốc &amp; mitigation</a></li>
-      <li><a href="#guardrails">12.2 Guardrails</a></li>
-      <li><a href="#guardrail-tools">12.3 Guardrail tools</a></li>
-      <li><a href="#content-mod">12.4 Content moderation</a></li>
-      <li><a href="#refusals">12.5 Refusals &amp; graceful degradation</a></li>
-      <li><a href="#retries">12.6 Retries, timeouts, circuit breakers</a></li>
-      <li><a href="#fallback">12.7 Fallback chains</a></li>
-      <li><a href="#output-validation">12.8 Output validation</a></li>
-      <li><a href="#rate-limit">12.9 Rate limit &amp; backoff</a></li>
-      <li><a href="#red-team">12.10 Testing for safety</a></li>
+      <li><a href="#hallucination">14.1 Hallucination — nguồn gốc &amp; mitigation</a></li>
+      <li><a href="#guardrails">14.2 Guardrails</a></li>
+      <li><a href="#guardrail-tools">14.3 Guardrail tools</a></li>
+      <li><a href="#content-mod">14.4 Content moderation</a></li>
+      <li><a href="#refusals">14.5 Refusals &amp; graceful degradation</a></li>
+      <li><a href="#retries">14.6 Retries, timeouts, circuit breakers</a></li>
+      <li><a href="#fallback">14.7 Fallback chains</a></li>
+      <li><a href="#output-validation">14.8 Output validation</a></li>
+      <li><a href="#rate-limit">14.9 Rate limit &amp; backoff</a></li>
+      <li><a href="#red-team">14.10 Testing for safety</a></li>
       <li><a href="#tom-tat">Tóm tắt</a></li>
     </ul>
   </aside>
 
-  <h2 id="hallucination">12.1 Hallucination — nguồn gốc &amp; mitigation</h2>
+  <h2 id="hallucination">14.1 Hallucination — nguồn gốc &amp; mitigation</h2>
   <p>
     <strong>Hallucination</strong> là khi LLM tạo ra thông tin tự tin nhưng không đúng với thực tế hoặc
     không có trong context. Đây là rủi ro lớn nhất trong ứng dụng production.
@@ -102,7 +102,7 @@ support bởi context?"</span></code></pre>
     </div>
   </div>
 
-  <h2 id="guardrails">12.2 Guardrails — lớp bảo vệ đa tầng</h2>
+  <h2 id="guardrails">14.2 Guardrails — lớp bảo vệ đa tầng</h2>
   <p>
     Guardrails là hệ thống kiểm tra và lọc input/output của LLM để đảm bảo behavior trong phạm vi
     chấp nhận được. Giống như middleware trong web framework, nhưng cho AI.
@@ -178,7 +178,7 @@ support bởi context?"</span></code></pre>
     <text x="380" y="300" text-anchor="middle" font-size="12">Output format requirements · Citation requirements · Disclaimer injection</text>
   </svg>
 
-  <h2 id="guardrail-tools">12.3 Guardrail Tools</h2>
+  <h2 id="guardrail-tools">14.3 Guardrail Tools</h2>
 
   <div class="table-wrap">
     <table>
@@ -260,7 +260,7 @@ result = guard(
   max_retries=<span class="num">2</span>  <span class="cm"># retry nếu validation fail</span>
 )</code></pre>
 
-  <h2 id="content-mod">12.4 Content Moderation</h2>
+  <h2 id="content-mod">14.4 Content Moderation</h2>
   <p>
     Content moderation áp dụng cho cả input (user gửi content có hại) và output (model generate content không phù hợp).
   </p>
@@ -302,7 +302,7 @@ result = guard(
     </div>
   </div>
 
-  <h2 id="refusals">12.5 Refusals &amp; Graceful Degradation</h2>
+  <h2 id="refusals">14.5 Refusals &amp; Graceful Degradation</h2>
   <p>
     Model từ chối trả lời (refusal) là behavior có chủ đích của provider để ngăn harmful output.
     Nhưng refusal thường không phải là response tốt nhất cho user experience.
@@ -393,7 +393,7 @@ result = guard(
   <span class="str">"content_policy"</span>: <span class="str">"Câu hỏi vi phạm chính sách nội dung. Xem thêm: [link]"</span>,
 }</code></pre>
 
-  <h2 id="retries">12.6 Retries, Timeouts, Circuit Breakers</h2>
+  <h2 id="retries">14.6 Retries, Timeouts, Circuit Breakers</h2>
   <p>
     LLM APIs không đáng tin tuyệt đối: rate limits, timeouts, transient 500s đều xảy ra.
     Cần 3 lớp resilience patterns.
@@ -459,10 +459,10 @@ httpx.AsyncClient(
     <span class="kw">if</span> self.failure_count &gt;= self.failure_threshold:
       self.state = State.OPEN</code></pre>
 
-  <h2 id="fallback">12.7 Fallback Chains</h2>
+  <h2 id="fallback">14.7 Fallback Chains</h2>
   <p>
     Fallback chain là danh sách providers/models theo thứ tự ưu tiên. Khi provider đầu fail,
-    tự động thử provider tiếp theo. Đã được minh họa trong SVG ở §12.5.
+    tự động thử provider tiếp theo. Đã được minh họa trong SVG ở §14.5.
     Thêm một vài điểm triển khai thực tế:
   </p>
   <ul>
@@ -471,7 +471,7 @@ httpx.AsyncClient(
     <li><strong>Không fallback khi output validation fail nhiều lần:</strong> nếu prompt bị sai (không phải provider bị lỗi), fallback sang provider khác cũng không giúp.</li>
   </ul>
 
-  <h2 id="output-validation">12.8 Output Validation</h2>
+  <h2 id="output-validation">14.8 Output Validation</h2>
   <p>
     LLM không đảm bảo output format. Ngay cả khi prompt nói "return JSON", model có thể trả về
     JSON bọc trong markdown code block, hoặc JSON thiếu field. Cần validation layer.
@@ -516,7 +516,7 @@ httpx.AsyncClient(
 Output: {{"is_valid": true/false, "issues": ["..."]}}
 """</span></code></pre>
 
-  <h2 id="rate-limit">12.9 Rate Limit Handling — Exponential Backoff với Jitter</h2>
+  <h2 id="rate-limit">14.9 Rate Limit Handling — Exponential Backoff với Jitter</h2>
 
   <div class="callout warn">
     <div class="icon">⚠</div>
@@ -561,7 +561,7 @@ Output: {{"is_valid": true/false, "issues": ["..."]}}
     <span class="kw">except</span> (ContentPolicyViolationError, InvalidRequestError):
       <span class="kw">raise</span>  <span class="cm"># Không retry các lỗi "deterministic"</span></code></pre>
 
-  <h2 id="red-team">12.10 Testing for Safety — Red-teaming &amp; Adversarial Evals</h2>
+  <h2 id="red-team">14.10 Testing for Safety — Red-teaming &amp; Adversarial Evals</h2>
   <p>
     Safety không test được bằng unit tests thông thường. Cần proactive adversarial testing
     trước khi deployment.

@@ -82,6 +82,35 @@
   }
   .section-card-tags { margin-top: 8px; }
 
+  /* Refresh banner */
+  .refresh-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 12px 18px;
+    margin: 24px 0 8px;
+    background: var(--bg-elev);
+    border: 1px solid var(--line-soft);
+    border-left: 3px solid var(--accent);
+    border-radius: var(--radius);
+    font-size: 13px;
+    color: var(--text-soft);
+  }
+  .refresh-banner .rb-left { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .refresh-banner .rb-icon { font-family: var(--font-mono); color: var(--accent); font-weight: 600; }
+  .refresh-banner .rb-date { font-family: var(--font-mono); color: var(--text); font-weight: 600; }
+  .refresh-banner a {
+    color: var(--accent-2);
+    border-bottom: 1px dotted var(--accent-2);
+    font-size: 12px;
+    white-space: nowrap;
+  }
+  .refresh-banner a:hover { color: var(--accent); border-bottom-color: var(--accent); }
+  @media (max-width: 600px) {
+    .refresh-banner { flex-direction: column; align-items: flex-start; }
+  }
+
   /* Intro section */
   .intro-block {
     background: var(--bg-elev);
@@ -188,6 +217,8 @@
   <div class="brand"><span class="dot"></span> AI Engineering</div>
   <div class="crumbs"><span>Mục lục · 2026 Edition</span></div>
   <div class="nav-actions">
+    <a href="timeline.html">Timeline</a>
+    <a href="glossary.html">Thuật ngữ</a>
     <a href="sections/01-what-is-ai-engineering.html">Bắt đầu →</a>
   </div>
 </nav>
@@ -205,11 +236,20 @@
     </p>
     <div class="stats-bar">
       <div class="stat"><span class="stat-value">12</span><span class="stat-label">Phần chủ đề</span></div>
-      <div class="stat"><span class="stat-value">42</span><span class="stat-label">Bài viết</span></div>
+      <div class="stat"><span class="stat-value">43</span><span class="stat-label">Bài viết</span></div>
       <div class="stat"><span class="stat-value">2026</span><span class="stat-label">Cập nhật</span></div>
     </div>
     <img class="hero-image" src="images/cover.png" alt="AI Engineering cover" onerror="this.style.display='none'">
   </section>
+
+  <!-- Knowledge refresh banner -->
+  <div class="refresh-banner">
+    <div class="rb-left">
+      <span class="rb-icon">↻</span>
+      <span>42/43 bài cập nhật tới <span class="rb-date">2026-05-23</span> · §43 thêm mới <span class="rb-date">2026-05-29</span> · model: Claude Opus 4.7</span>
+    </div>
+    <a href="KNOWLEDGE_UPDATES.md">Nhật ký refresh →</a>
+  </div>
 
   <!-- Introduction -->
   <div class="intro-block">
@@ -759,6 +799,16 @@
         <span class="section-card-desc">Apple Intelligence + PCC, Phi-4, Gemini Nano, Llama 3.2; MLX, Core ML, hybrid edge-cloud routing.</span>
         <div class="section-card-tags">
           <span class="tag lilac">edge</span>
+        </div>
+      </a>
+
+      <a href="sections/43-voice-realtime-agents.html" class="section-card">
+        <span class="section-card-num">§ 43</span>
+        <span class="section-card-title">Voice &amp; Realtime Agents</span>
+        <span class="section-card-desc">Pipeline vs speech-to-speech, Realtime API (OpenAI/Gemini Live), latency budget &lt;800ms, barge-in.</span>
+        <div class="section-card-tags">
+          <span class="tag lilac">voice</span>
+          <span class="tag lilac">realtime</span>
         </div>
       </a>
 

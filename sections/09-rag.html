@@ -31,26 +31,26 @@
   <aside class="toc">
     <div class="toc-title">Trong trang này</div>
     <ul>
-      <li><a href="#rag-la-gi">7.1 RAG là gì, tại sao cần</a></li>
-      <li><a href="#kien-truc">7.2 Kiến trúc cơ bản</a></li>
-      <li><a href="#chunking">7.3 Chunking strategies</a></li>
-      <li><a href="#embedding">7.4 Embedding models</a></li>
-      <li><a href="#vector-db">7.5 Vector databases</a></li>
-      <li><a href="#search">7.6 Search & Reranking</a></li>
-      <li><a href="#metadata">7.7 Metadata & Multitenancy</a></li>
-      <li><a href="#advanced">7.8 Advanced RAG</a></li>
-      <li><a href="#graphrag">7.9 GraphRAG</a></li>
-      <li><a href="#agentic-rag">7.10 Agentic RAG</a></li>
-      <li><a href="#eval">7.11 RAG Evaluation</a></li>
-      <li><a href="#traps">7.12 Production traps</a></li>
+      <li><a href="#rag-la-gi">9.1 RAG là gì, tại sao cần</a></li>
+      <li><a href="#kien-truc">9.2 Kiến trúc cơ bản</a></li>
+      <li><a href="#chunking">9.3 Chunking strategies</a></li>
+      <li><a href="#embedding">9.4 Embedding models</a></li>
+      <li><a href="#vector-db">9.5 Vector databases</a></li>
+      <li><a href="#search">9.6 Search & Reranking</a></li>
+      <li><a href="#metadata">9.7 Metadata & Multitenancy</a></li>
+      <li><a href="#advanced">9.8 Advanced RAG</a></li>
+      <li><a href="#graphrag">9.9 GraphRAG</a></li>
+      <li><a href="#agentic-rag">9.10 Agentic RAG</a></li>
+      <li><a href="#eval">9.11 RAG Evaluation</a></li>
+      <li><a href="#traps">9.12 Production traps</a></li>
       <li><a href="#tom-tat">Tóm tắt</a></li>
     </ul>
   </aside>
 
   <!-- ═══════════════════════════════════════════════
-       7.1 RAG là gì
+       9.1 RAG là gì
   ════════════════════════════════════════════════ -->
-  <h2 id="rag-la-gi">7.1 RAG là gì, tại sao cần</h2>
+  <h2 id="rag-la-gi">9.1 RAG là gì, tại sao cần</h2>
   <p>
     <strong>RAG (Retrieval-Augmented Generation)</strong> là kỹ thuật bổ sung thông tin bên ngoài vào
     context của LLM ngay tại thời điểm inference, thay vì bake kiến thức đó vào weights thông qua training.
@@ -98,9 +98,9 @@
   </div>
 
   <!-- ═══════════════════════════════════════════════
-       7.2 Kiến trúc cơ bản
+       9.2 Kiến trúc cơ bản
   ════════════════════════════════════════════════ -->
-  <h2 id="kien-truc">7.2 Kiến trúc cơ bản</h2>
+  <h2 id="kien-truc">9.2 Kiến trúc cơ bản</h2>
   <p>
     RAG gồm hai pipeline chính chạy độc lập: <strong>Ingestion pipeline</strong> (chạy offline, chuẩn bị dữ liệu)
     và <strong>Query pipeline</strong> (chạy online, xử lý mỗi request).
@@ -223,9 +223,9 @@
     <line class="arrow" x1="175" y1="308" x2="200" y2="220" marker-end="url(#arrowhead)"/>
 
     <!-- ── Chunking detail ─────────────────── -->
-    <text x="20" y="400" font-size="12" fill="#6f7c92">* Chunk size, overlap và strategy ảnh hưởng trực tiếp đến chất lượng retrieval — xem §7.3</text>
-    <text x="20" y="420" font-size="12" fill="#6f7c92">* Embedding model phải GIỐNG NHAU ở cả ingestion và query — xem §7.4</text>
-    <text x="20" y="440" font-size="12" fill="#6f7c92">* Reranker là optional nhưng tăng precision đáng kể với chi phí nhỏ — xem §7.6</text>
+    <text x="20" y="400" font-size="12" fill="#6f7c92">* Chunk size, overlap và strategy ảnh hưởng trực tiếp đến chất lượng retrieval — xem §9.3</text>
+    <text x="20" y="420" font-size="12" fill="#6f7c92">* Embedding model phải GIỐNG NHAU ở cả ingestion và query — xem §9.4</text>
+    <text x="20" y="440" font-size="12" fill="#6f7c92">* Reranker là optional nhưng tăng precision đáng kể với chi phí nhỏ — xem §9.6</text>
   </svg>
 
   <h3>Ingestion Pipeline chi tiết</h3>
@@ -245,9 +245,9 @@
   </ol>
 
   <!-- ═══════════════════════════════════════════════
-       7.3 Chunking
+       9.3 Chunking
   ════════════════════════════════════════════════ -->
-  <h2 id="chunking">7.3 Chunking Strategies</h2>
+  <h2 id="chunking">9.3 Chunking Strategies</h2>
   <p>
     Chunking là bước có ảnh hưởng lớn nhất đến chất lượng retrieval, nhưng thường bị underestimate.
     Chunk quá lớn → nhiều noise, tốn token. Chunk quá nhỏ → mất context, câu trả lời thiếu coherent.
@@ -400,9 +400,9 @@ token_embeddings = <span class="fn">embed_full_doc</span>(document)  <span class
   </div>
 
   <!-- ═══════════════════════════════════════════════
-       7.4 Embedding Models
+       9.4 Embedding Models
   ════════════════════════════════════════════════ -->
-  <h2 id="embedding">7.4 Embedding Models</h2>
+  <h2 id="embedding">9.4 Embedding Models</h2>
   <p>
     Embedding model chuyển text thành dense vector trong không gian high-dimensional. Chất lượng model
     ảnh hưởng trực tiếp đến retrieval quality — đây là single biggest lever sau chunking.
@@ -516,9 +516,9 @@ token_embeddings = <span class="fn">embed_full_doc</span>(document)  <span class
   </p>
 
   <!-- ═══════════════════════════════════════════════
-       7.5 Vector Databases
+       9.5 Vector Databases
   ════════════════════════════════════════════════ -->
-  <h2 id="vector-db">7.5 Vector Databases</h2>
+  <h2 id="vector-db">9.5 Vector Databases</h2>
   <p>
     Vector database lưu trữ embeddings và cho phép ANN (Approximate Nearest Neighbor) search
     với tốc độ cao. Chọn sai database có thể gây vấn đề về latency, cost, hoặc multitenancy ở scale.
@@ -608,9 +608,9 @@ token_embeddings = <span class="fn">embed_full_doc</span>(document)  <span class
   </div>
 
   <!-- ═══════════════════════════════════════════════
-       7.6 Search & Reranking
+       9.6 Search & Reranking
   ════════════════════════════════════════════════ -->
-  <h2 id="search">7.6 Search Methods và Reranking</h2>
+  <h2 id="search">9.6 Search Methods và Reranking</h2>
 
   <h3>Dense Vector Search</h3>
   <p>
@@ -681,9 +681,9 @@ fused = {}
   </div>
 
   <!-- ═══════════════════════════════════════════════
-       7.7 Metadata & Multitenancy
+       9.7 Metadata & Multitenancy
   ════════════════════════════════════════════════ -->
-  <h2 id="metadata">7.7 Metadata Filtering và Multitenancy</h2>
+  <h2 id="metadata">9.7 Metadata Filtering và Multitenancy</h2>
 
   <h3>Metadata Filtering</h3>
   <p>
@@ -753,9 +753,9 @@ results = qdrant.<span class="fn">search</span>(
   </div>
 
   <!-- ═══════════════════════════════════════════════
-       7.8 Advanced RAG
+       9.8 Advanced RAG
   ════════════════════════════════════════════════ -->
-  <h2 id="advanced">7.8 Advanced RAG Techniques</h2>
+  <h2 id="advanced">9.8 Advanced RAG Techniques</h2>
   <p>
     Naive RAG (embed → retrieve → generate) thường đủ cho demo nhưng fail trong production
     khi queries phức tạp, corpus lớn, hoặc multi-hop reasoning cần thiết.
@@ -904,9 +904,9 @@ RESPONSE: {
   </div>
 
   <!-- ═══════════════════════════════════════════════
-       7.9 GraphRAG
+       9.9 GraphRAG
   ════════════════════════════════════════════════ -->
-  <h2 id="graphrag">7.9 GraphRAG</h2>
+  <h2 id="graphrag">9.9 GraphRAG</h2>
   <p>
     <strong>GraphRAG</strong> (Microsoft, ra mắt 2024, cập nhật liên tục 2025) kết hợp <em>knowledge graph</em> với RAG truyền thống.
     Thay vì chỉ chunk và embed, GraphRAG extract <strong>entities và relationships</strong> từ corpus
@@ -970,9 +970,9 @@ RESPONSE: {
   </div>
 
   <!-- ═══════════════════════════════════════════════
-       7.10 Agentic RAG
+       9.10 Agentic RAG
   ════════════════════════════════════════════════ -->
-  <h2 id="agentic-rag">7.10 Agentic RAG</h2>
+  <h2 id="agentic-rag">9.10 Agentic RAG</h2>
   <p>
     <strong>Agentic RAG</strong> nâng RAG lên một bậc: thay vì pipeline cố định (retrieve một lần → generate),
     agent tự quyết định <em>khi nào</em> retrieve, <em>từ đâu</em>, và <em>có cần lặp lại</em> không.
@@ -1031,9 +1031,9 @@ RESPONSE: {
   </div>
 
   <!-- ═══════════════════════════════════════════════
-       7.11 RAG Evaluation
+       9.11 RAG Evaluation
   ════════════════════════════════════════════════ -->
-  <h2 id="eval">7.11 RAG Evaluation — RAGAS, TruLens và các metrics</h2>
+  <h2 id="eval">9.11 RAG Evaluation — RAGAS, TruLens và các metrics</h2>
   <p>
     RAG evaluation phức tạp hơn truyền thống vì cần đánh giá cả <em>retrieval quality</em>
     và <em>generation quality</em> cùng lúc. Ba framework phổ biến nhất: <strong>RAGAS</strong> (reference-free, LLM-as-judge), <strong>TruLens</strong> (Snowflake-backed, monitoring production), và <strong>ARES</strong> (Stanford, tạo LLM judge riêng cho từng pipeline).
@@ -1099,9 +1099,9 @@ result = <span class="fn">evaluate</span>(dataset, metrics=[
   </ol>
 
   <!-- ═══════════════════════════════════════════════
-       7.11 Production Traps
+       9.11 Production Traps
   ════════════════════════════════════════════════ -->
-  <h2 id="traps">7.12 Production Traps</h2>
+  <h2 id="traps">9.12 Production Traps</h2>
 
   <div class="callout danger">
     <div class="icon">!</div>

@@ -31,20 +31,20 @@
   <aside class="toc">
     <div class="toc-title">Trong trang này</div>
     <ul>
-      <li><a href="#dinh-nghia">9.1 Định nghĩa</a></li>
-      <li><a href="#workflow-khi-nao">9.2 Khi nào dùng Workflow</a></li>
-      <li><a href="#agent-khi-nao">9.3 Khi nào dùng Agent</a></li>
-      <li><a href="#anthropic-patterns">9.4 Anthropic's 5 Patterns</a></li>
-      <li><a href="#hybrid">9.5 Hybrid approach</a></li>
-      <li><a href="#migration">9.6 Migration path</a></li>
+      <li><a href="#dinh-nghia">11.1 Định nghĩa</a></li>
+      <li><a href="#workflow-khi-nao">11.2 Khi nào dùng Workflow</a></li>
+      <li><a href="#agent-khi-nao">11.3 Khi nào dùng Agent</a></li>
+      <li><a href="#anthropic-patterns">11.4 Anthropic's 5 Patterns</a></li>
+      <li><a href="#hybrid">11.5 Hybrid approach</a></li>
+      <li><a href="#migration">11.6 Migration path</a></li>
       <li><a href="#tom-tat">Tóm tắt</a></li>
     </ul>
   </aside>
 
   <!-- ═══════════════════════════════════════════════
-       9.1 Định nghĩa
+       11.1 Định nghĩa
   ════════════════════════════════════════════════ -->
-  <h2 id="dinh-nghia">9.1 Định nghĩa: Workflow vs Agent</h2>
+  <h2 id="dinh-nghia">11.1 Định nghĩa: Workflow vs Agent</h2>
 
   <div class="grid-2">
     <div class="card">
@@ -133,9 +133,9 @@
   </div>
 
   <!-- ═══════════════════════════════════════════════
-       9.2 Khi nào dùng Workflow
+       11.2 Khi nào dùng Workflow
   ════════════════════════════════════════════════ -->
-  <h2 id="workflow-khi-nao">9.2 Khi nào dùng Workflow</h2>
+  <h2 id="workflow-khi-nao">11.2 Khi nào dùng Workflow</h2>
   <p>
     Workflow là lựa chọn đúng khi task có thể được decompose thành các steps cố định,
     và mỗi step có thể được viết thành code rõ ràng.
@@ -160,9 +160,9 @@
   </ul>
 
   <!-- ═══════════════════════════════════════════════
-       9.3 Khi nào dùng Agent
+       11.3 Khi nào dùng Agent
   ════════════════════════════════════════════════ -->
-  <h2 id="agent-khi-nao">9.3 Khi nào dùng Agent</h2>
+  <h2 id="agent-khi-nao">11.3 Khi nào dùng Agent</h2>
   <p>
     Agent đúng khi task mở, không biết trước cần bao nhiêu bước, và sự flexible của LLM thực sự tạo value.
   </p>
@@ -217,9 +217,9 @@
   </div>
 
   <!-- ═══════════════════════════════════════════════
-       9.4 Anthropic Patterns
+       11.4 Anthropic Patterns
   ════════════════════════════════════════════════ -->
-  <h2 id="anthropic-patterns">9.4 Anthropic's 5 Building Blocks</h2>
+  <h2 id="anthropic-patterns">11.4 Anthropic's 5 Building Blocks</h2>
   <p>
     Từ bài viết <em>"Building effective agents"</em> của Anthropic, 5 patterns cốt lõi để compose
     LLM applications — từ đơn giản đến phức tạp. Hiểu 5 patterns này = hiểu phần lớn production AI systems.
@@ -533,9 +533,9 @@
   </div>
 
   <!-- ═══════════════════════════════════════════════
-       9.5 Hybrid Approach
+       11.5 Hybrid Approach
   ════════════════════════════════════════════════ -->
-  <h2 id="hybrid">9.5 Hybrid Approach — Workflow với Agent Steps bên trong</h2>
+  <h2 id="hybrid">11.5 Hybrid Approach — Workflow với Agent Steps bên trong</h2>
   <p>
     Không cần chọn hoàn toàn workflow hay agent. Pattern phổ biến nhất trong production:
     <strong>deterministic workflow ở outer level, agent capabilities ở specific steps</strong> cần flexibility.
@@ -578,9 +578,9 @@
   </ul>
 
   <!-- ═══════════════════════════════════════════════
-       9.6 Migration Path
+       11.6 Migration Path
   ════════════════════════════════════════════════ -->
-  <h2 id="migration">9.6 Migration Path: Workflow → Agent</h2>
+  <h2 id="migration">11.6 Migration Path: Workflow → Agent</h2>
   <p>
     Không nên "just build an agent" từ đầu. Path chuẩn là tăng dần autonomy khi trust được xây dựng.
   </p>

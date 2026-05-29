@@ -4,7 +4,7 @@ Theo dõi lịch sử cập nhật kiến thức của từng bài trong handboo
 
 - **Mục đích**: biết bài nào đã được refresh, tới ngày nào, bởi model nào, và những gì đã thay đổi.
 - **Cách hoạt động**: mỗi lần refresh, ghi đè dòng tương ứng trong bảng tổng + thêm entry vào "Nhật ký chi tiết".
-- **Marker trong từng bài**: cuối mỗi bài có khối `.knowledge-stamp` hiển thị "Kiến thức cập nhật tới: YYYY-MM-DD".
+- **Marker trong từng bài**: ngay trong hero có link `.hero-updated` dạng `↻ YYYY-MM-DD` trỏ về file này.
 
 ## Refresh gần nhất
 
@@ -18,6 +18,7 @@ Theo dõi lịch sử cập nhật kiến thức của từng bài trong handboo
 
 | # | Bài | Cập nhật tới | Model | Tóm tắt thay đổi |
 |---|-----|--------------|-------|------------------|
+| 43 | Voice &amp; Realtime Agents | 2026-05-29 | Opus 4.7 | Bài mới: pipeline vs S2S, Realtime API, STT/TTS modern, latency &lt;800ms, barge-in, eval 6 dimensions, voice cloning compliance |
 | 01 | AI Engineering là gì? | 2026-05-23 | Opus 4.7 | Thêm Agent Engineer + AI Evals Engineer vào role table, bullet agentic workflows, cập nhật tab 2024–2026 |
 | 02 | Foundation Models cơ bản | 2026-05-23 | Opus 4.7 | Major refresh: GPT-5.x, Claude 4.7, Gemini 3.x, Grok 4.3, Llama 4 MoE, Mistral Large 3, DeepSeek V4, Qwen 3.7, Gemma 4, Phi-4 |
 | 03 | Cách LLM hoạt động | 2026-05-23 | Opus 4.7 | Thêm §3.7 Reasoning Models + Test-Time Compute, MoE (DeepSeek-V3/Llama 4), speculative decoding, YaRN, context window history |
@@ -63,6 +64,23 @@ Theo dõi lịch sử cập nhật kiến thức của từng bài trong handboo
 
 ## Nhật ký chi tiết
 
+### 2026-05-29 · §43 mới: Voice &amp; Realtime Agents (Opus 4.7)
+
+Phần 12 thêm bài §43 — voice/realtime agents tách riêng khỏi §17 Multimodal:
+
+- Hai kiến trúc: Pipeline (STT → LLM → TTS) vs Speech-to-Speech native (Realtime API)
+- OpenAI Realtime API + Gemini Live, pricing audio token 10–20× text
+- STT (Whisper v3-turbo, Deepgram Nova-3, AssemblyAI), TTS (ElevenLabs v3, Cartesia Sonic 2, Sesame CSM)
+- Latency budget &lt;800ms, barge-in handling, speculative TTS
+- Eval voice 6 dimension độc lập (WER, MOS, latency, barge-in, safety…)
+- Voice cloning consent + EU AI Act Article 50
+
+Cũng cập nhật trong cùng commit:
+- 7 thuật ngữ mới trong glossary (Prompt Caching, Hallucination, Extended Thinking, ReAct, TTFT/TPOT, Jailbreak, Guardrails)
+- Timeline page `/timeline` — 2024–2026 cột mốc model/regulation/security/agent/eval
+- Banner "↻ refresh" ở đầu mục lục, link `/timeline` + `/glossary` từ top-nav
+- Sửa numbering h2 sai trong §07–§15 (stale từ thứ tự cũ → match file number)
+
 ### 2026-05-23 · Refresh toàn bộ 42 bài (Opus 4.7)
 
 Refresh đầu tiên sau khi handbook được Sonnet 4.6 viết tháng 5/2026. Dispatch song song 42 Opus 4.7 subagent, mỗi bài 1 subagent với hướng dẫn:
@@ -71,7 +89,7 @@ Refresh đầu tiên sau khi handbook được Sonnet 4.6 viết tháng 5/2026. 
 - WebSearch 3–8 query (date-bias 2025-2026), verify nguồn
 - Chỉ sửa khi có nguồn xác minh (accuracy > coverage)
 - Giữ nguyên tiếng Việt, cấu trúc HTML, CSS, hero image, navigation
-- Thêm `<div class="knowledge-stamp">` ngay trước `<nav class="section-footer">`
+- Stamp ngày refresh vào link `.hero-updated` trong khối `.eyebrow-row` của hero
 
 #### Các chủ đề có thay đổi lớn nhất (heavy refresh)
 

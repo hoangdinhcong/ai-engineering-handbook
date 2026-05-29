@@ -31,25 +31,25 @@
   <aside class="toc">
     <div class="toc-title">Trong trang này</div>
     <ul>
-      <li><a href="#agent-la-gi">8.1 Agent là gì</a></li>
-      <li><a href="#tool-use">8.2 Tool use / Function calling</a></li>
-      <li><a href="#tool-design">8.3 Tool design best practices</a></li>
-      <li><a href="#react">8.4 ReAct pattern</a></li>
-      <li><a href="#planning">8.5 Planning agents</a></li>
-      <li><a href="#reflection">8.6 Reflection / Self-critique</a></li>
-      <li><a href="#multi-agent">8.7 Multi-agent systems</a></li>
-      <li><a href="#memory">8.8 Memory</a></li>
-      <li><a href="#frameworks">8.9 Agent frameworks</a></li>
-      <li><a href="#production">8.10 Production concerns</a></li>
-      <li><a href="#patterns">8.11 Common patterns</a></li>
+      <li><a href="#agent-la-gi">10.1 Agent là gì</a></li>
+      <li><a href="#tool-use">10.2 Tool use / Function calling</a></li>
+      <li><a href="#tool-design">10.3 Tool design best practices</a></li>
+      <li><a href="#react">10.4 ReAct pattern</a></li>
+      <li><a href="#planning">10.5 Planning agents</a></li>
+      <li><a href="#reflection">10.6 Reflection / Self-critique</a></li>
+      <li><a href="#multi-agent">10.7 Multi-agent systems</a></li>
+      <li><a href="#memory">10.8 Memory</a></li>
+      <li><a href="#frameworks">10.9 Agent frameworks</a></li>
+      <li><a href="#production">10.10 Production concerns</a></li>
+      <li><a href="#patterns">10.11 Common patterns</a></li>
       <li><a href="#tom-tat">Tóm tắt</a></li>
     </ul>
   </aside>
 
   <!-- ═══════════════════════════════════════════════
-       8.1 Agent là gì
+       10.1 Agent là gì
   ════════════════════════════════════════════════ -->
-  <h2 id="agent-la-gi">8.1 Agent là gì — và không phải là gì</h2>
+  <h2 id="agent-la-gi">10.1 Agent là gì — và không phải là gì</h2>
   <p>
     <strong>Agent</strong> là hệ thống trong đó LLM tự quyết định hành động tiếp theo, thực thi hành động đó
     (thông qua tools), quan sát kết quả, và lặp lại cho đến khi hoàn thành task hoặc gặp điều kiện dừng.
@@ -151,9 +151,9 @@
   </svg>
 
   <!-- ═══════════════════════════════════════════════
-       8.2 Tool Use / Function Calling
+       10.2 Tool Use / Function Calling
   ════════════════════════════════════════════════ -->
-  <h2 id="tool-use">8.2 Tool Use / Function Calling</h2>
+  <h2 id="tool-use">10.2 Tool Use / Function Calling</h2>
   <p>
     <strong>Function calling</strong> là cơ chế cho phép LLM phát ra structured request để gọi external functions
     thay vì chỉ trả về text. LLM không thực thi code — nó chỉ <em>declare intent</em>; caller (your code) thực thi.
@@ -248,9 +248,9 @@ response.content = [
   </div>
 
   <!-- ═══════════════════════════════════════════════
-       8.3 Tool Design
+       10.3 Tool Design
   ════════════════════════════════════════════════ -->
-  <h2 id="tool-design">8.3 Tool Design Best Practices</h2>
+  <h2 id="tool-design">10.3 Tool Design Best Practices</h2>
   <p>
     LLM quyết định có gọi tool không, và truyền argument gì, dựa <em>chỉ</em> vào
     <strong>name, description, và JSON schema</strong> của tool. Thiết kế tool kém là nguyên nhân #1
@@ -314,9 +314,9 @@ response.content = [
     <span class="cm"># LLM can act on these structured errors</span></code></pre>
 
   <!-- ═══════════════════════════════════════════════
-       8.4 ReAct
+       10.4 ReAct
   ════════════════════════════════════════════════ -->
-  <h2 id="react">8.4 ReAct Pattern — Reason + Act + Observe</h2>
+  <h2 id="react">10.4 ReAct Pattern — Reason + Act + Observe</h2>
   <p>
     <strong>ReAct</strong> (Yao et al., 2022) là pattern đầu tiên và phổ biến nhất cho agent reasoning.
     LLM xen kẽ giữa <em>Thought</em> (nội tâm reasoning) và <em>Action</em> (tool calls),
@@ -356,9 +356,9 @@ Answer: Dân số Việt Nam năm 2024 khoảng 98.2 triệu người.</code></p
   </div>
 
   <!-- ═══════════════════════════════════════════════
-       8.5 Planning Agents
+       10.5 Planning Agents
   ════════════════════════════════════════════════ -->
-  <h2 id="planning">8.5 Planning Agents</h2>
+  <h2 id="planning">10.5 Planning Agents</h2>
   <p>
     ReAct là <em>reactive</em> — decide action step-by-step. Planning agents tách biệt bước
     <strong>"lập kế hoạch"</strong> ra trước, sau đó execute.
@@ -388,13 +388,13 @@ results = []
   <p>
     Với tasks rất phức tạp, chia thành sub-tasks recursively. Orchestrator agent nhận task lớn,
     chia thành sub-tasks, dispatch mỗi sub-task cho worker agents, collect kết quả,
-    synthesize final answer. Xem §8.7 Multi-agent.
+    synthesize final answer. Xem §10.7 Multi-agent.
   </p>
 
   <!-- ═══════════════════════════════════════════════
-       8.6 Reflection
+       10.6 Reflection
   ════════════════════════════════════════════════ -->
-  <h2 id="reflection">8.6 Reflection &amp; Self-Critique</h2>
+  <h2 id="reflection">10.6 Reflection &amp; Self-Critique</h2>
   <p>
     Agent tự evaluate output của mình trước khi trả về user. Có thể loop nhiều lần để refine.
   </p>
@@ -431,9 +431,9 @@ results = []
   </div>
 
   <!-- ═══════════════════════════════════════════════
-       8.7 Multi-agent
+       10.7 Multi-agent
   ════════════════════════════════════════════════ -->
-  <h2 id="multi-agent">8.7 Multi-Agent Systems</h2>
+  <h2 id="multi-agent">10.7 Multi-Agent Systems</h2>
   <p>
     Khi một agent không đủ — context quá dài, task cần specialized expertise, hoặc parallelism cần thiết —
     multi-agent architecture giải quyết bằng cách phân chia công việc.
@@ -548,9 +548,9 @@ results = []
   </div>
 
   <!-- ═══════════════════════════════════════════════
-       8.8 Memory
+       10.8 Memory
   ════════════════════════════════════════════════ -->
-  <h2 id="memory">8.8 Memory Architecture</h2>
+  <h2 id="memory">10.8 Memory Architecture</h2>
   <p>
     Agent "nhớ" bằng nhiều mechanisms khác nhau, mỗi loại có trade-off về persistence, capacity, và recall speed.
   </p>
@@ -625,9 +625,9 @@ results = []
     history = [SystemMessage, HumanMessage(content=f<span class="str">"Previous context: {summary}"</span>)] + history[-<span class="num">5</span>:]</code></pre>
 
   <!-- ═══════════════════════════════════════════════
-       8.9 Frameworks
+       10.9 Frameworks
   ════════════════════════════════════════════════ -->
-  <h2 id="frameworks">8.9 Agent Frameworks (2026)</h2>
+  <h2 id="frameworks">10.9 Agent Frameworks (2026)</h2>
   <div class="table-wrap">
     <table>
       <thead>
@@ -710,9 +710,9 @@ results = []
   </div>
 
   <!-- ═══════════════════════════════════════════════
-       8.10 Production Concerns
+       10.10 Production Concerns
   ════════════════════════════════════════════════ -->
-  <h2 id="production">8.10 Production Concerns</h2>
+  <h2 id="production">10.10 Production Concerns</h2>
 
   <h3>Cost — Agent loops rất tốn kém</h3>
   <p>
@@ -799,9 +799,9 @@ results = []
   </p>
 
   <!-- ═══════════════════════════════════════════════
-       8.11 Common Patterns
+       10.11 Common Patterns
   ════════════════════════════════════════════════ -->
-  <h2 id="patterns">8.11 Common Agent Patterns</h2>
+  <h2 id="patterns">10.11 Common Agent Patterns</h2>
 
   <div class="tabs" data-tabs>
     <div class="tab-buttons">

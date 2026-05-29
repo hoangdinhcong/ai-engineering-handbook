@@ -31,20 +31,20 @@
   <aside class="toc">
     <div class="toc-title">Trong trang này</div>
     <ul>
-      <li><a href="#hosted-vs-self">10.1 Hosted API vs Self-hosted</a></li>
-      <li><a href="#self-host-stacks">10.2 Self-host stacks</a></li>
-      <li><a href="#hardware">10.3 Hardware &amp; GPU memory math</a></li>
-      <li><a href="#quantization">10.4 Quantization cho inference</a></li>
-      <li><a href="#latency">10.5 Tối ưu latency</a></li>
-      <li><a href="#throughput">10.6 Tối ưu throughput</a></li>
-      <li><a href="#cost">10.7 Quản lý chi phí</a></li>
-      <li><a href="#deployment">10.8 Multi-region &amp; auto-scaling</a></li>
-      <li><a href="#patterns">10.9 Các pattern phổ biến</a></li>
+      <li><a href="#hosted-vs-self">12.1 Hosted API vs Self-hosted</a></li>
+      <li><a href="#self-host-stacks">12.2 Self-host stacks</a></li>
+      <li><a href="#hardware">12.3 Hardware &amp; GPU memory math</a></li>
+      <li><a href="#quantization">12.4 Quantization cho inference</a></li>
+      <li><a href="#latency">12.5 Tối ưu latency</a></li>
+      <li><a href="#throughput">12.6 Tối ưu throughput</a></li>
+      <li><a href="#cost">12.7 Quản lý chi phí</a></li>
+      <li><a href="#deployment">12.8 Multi-region &amp; auto-scaling</a></li>
+      <li><a href="#patterns">12.9 Các pattern phổ biến</a></li>
       <li><a href="#tom-tat">Tóm tắt</a></li>
     </ul>
   </aside>
 
-  <h2 id="hosted-vs-self">10.1 Hosted API vs Self-hosted — quyết định quan trọng nhất</h2>
+  <h2 id="hosted-vs-self">12.1 Hosted API vs Self-hosted — quyết định quan trọng nhất</h2>
   <p>
     Câu hỏi đầu tiên khi deploy LLM không phải là chọn framework nào, mà là:
     <strong>bạn có tự chạy model không?</strong> Quyết định này ảnh hưởng đến chi phí, latency,
@@ -94,7 +94,7 @@
     <li><strong>Offline / air-gap:</strong> hệ thống không có internet (quân sự, phòng lab bảo mật)</li>
   </ul>
 
-  <h2 id="self-host-stacks">10.2 Self-host stacks: vLLM, SGLang, TGI, Ollama, llama.cpp, MLX, TensorRT-LLM</h2>
+  <h2 id="self-host-stacks">12.2 Self-host stacks: vLLM, SGLang, TGI, Ollama, llama.cpp, MLX, TensorRT-LLM</h2>
   <p>
     Khi quyết định tự host, bạn phải chọn <em>inference engine</em>. Mỗi engine có trade-off khác nhau
     về performance, ease of use, và hardware support. Từ cuối 2025, <strong>SGLang</strong> nổi lên
@@ -255,7 +255,7 @@ trtllm-build \
     </div>
   </div>
 
-  <h2 id="hardware">10.3 Hardware — GPU memory math</h2>
+  <h2 id="hardware">12.3 Hardware — GPU memory math</h2>
   <p>
     Câu hỏi thực tiễn nhất khi self-host: <strong>cần bao nhiêu GPU VRAM?</strong>
     Có 3 thành phần chiếm VRAM: model weights, KV cache, và activations trong quá trình inference.
@@ -368,7 +368,7 @@ total_vram = (model_vram + kv_total_gb) * 1.2</code></pre>
     </div>
   </div>
 
-  <h2 id="quantization">10.4 Quantization cho inference — recap từ §6</h2>
+  <h2 id="quantization">12.4 Quantization cho inference — recap từ §6</h2>
   <p>
     Quantization giảm VRAM và tăng throughput bằng cách dùng ít bits hơn để biểu diễn weights.
     Trong ngữ cảnh serving, 3 format phổ biến nhất:
@@ -403,7 +403,7 @@ total_vram = (model_vram + kv_total_gb) * 1.2</code></pre>
     </div>
   </div>
 
-  <h2 id="latency">10.5 Tối ưu latency</h2>
+  <h2 id="latency">12.5 Tối ưu latency</h2>
   <p>
     Latency của LLM inference có 2 metric quan trọng:
     <strong>TTFT</strong> (Time To First Token — người dùng chờ bao lâu trước khi thấy chữ đầu tiên)
@@ -463,7 +463,7 @@ python -m vllm.entrypoints.openai.api_server \
     </div>
   </div>
 
-  <h2 id="throughput">10.6 Tối ưu throughput — Continuous Batching &amp; Paged Attention</h2>
+  <h2 id="throughput">12.6 Tối ưu throughput — Continuous Batching &amp; Paged Attention</h2>
   <p>
     Throughput là số token generate được mỗi giây trên toàn server. Để tối ưu throughput,
     cần hiểu sự khác biệt giữa <em>static batching</em> và <em>continuous batching</em>.
@@ -591,7 +591,7 @@ python -m vllm.entrypoints.openai.api_server \
     </div>
   </div>
 
-  <h2 id="cost">10.7 Quản lý chi phí</h2>
+  <h2 id="cost">12.7 Quản lý chi phí</h2>
   <p>
     Với hosted API, chi phí là trực tiếp và dễ đo. Với self-hosted, chi phí là GPU amortization +
     electricity + engineering. Dù hình thức nào, có 4 chiến lược giảm chi phí hiệu quả nhất:
@@ -704,7 +704,7 @@ python -m vllm.entrypoints.openai.api_server \
     </div>
   </div>
 
-  <h2 id="deployment">10.8 Multi-region deployment, auto-scaling, warm pools</h2>
+  <h2 id="deployment">12.8 Multi-region deployment, auto-scaling, warm pools</h2>
   <p>
     Với hosted API, provider lo multi-region. Với self-hosted, bạn phải thiết kế:
   </p>
@@ -730,7 +730,7 @@ python -m vllm.entrypoints.openai.api_server \
     Với self-hosted model, đảm bảo model weights được replicate trước deployment.
   </p>
 
-  <h2 id="patterns">10.9 Các pattern phổ biến trong production</h2>
+  <h2 id="patterns">12.9 Các pattern phổ biến trong production</h2>
 
   <h3>Cache-First Pattern</h3>
   <pre><code><span class="kw">async def</span> <span class="fn">chat_with_cache</span>(user_message: str):

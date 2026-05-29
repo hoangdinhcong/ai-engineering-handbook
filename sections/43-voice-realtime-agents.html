@@ -1,0 +1,507 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>43 · Voice &amp; Realtime Agents — AI Engineering</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<nav class="top-nav">
+  <div class="brand"><span class="dot"></span> AI Engineering</div>
+  <div class="crumbs"><a href="../index.html">Mục lục</a> › Phần 12 · <span>43 — Voice &amp; Realtime Agents</span></div>
+  <div class="nav-actions">
+    <a href="42-edge-on-device.html">← Trước</a>
+  </div>
+</nav>
+
+<main class="page">
+
+  <section class="hero">
+    <div class="eyebrow-row"><span class="eyebrow">Phần 12 · §43</span><span class="hero-readtime">~10 phút đọc</span><a class="hero-updated" href="../KNOWLEDGE_UPDATES.md" title="Lịch sử cập nhật kiến thức">↻ 2026-05-29</a></div>
+    <h1>Voice &amp; Realtime Agents</h1>
+    <p class="lede">
+      Khi audio thành modality bình đẳng với text: speech-to-speech model, Realtime API,
+      pipeline TTS/STT/ASR, và những thứ khác biệt khi agent phải đối thoại bằng giọng nói.
+    </p>
+    <img class="hero-image" src="../images/43-voice-realtime-agents.png" alt="Hero illustration" onerror="this.style.display='none'">
+  </section>
+
+  <aside class="toc">
+    <div class="toc-title">Trong trang này</div>
+    <ul>
+      <li><a href="#tai-sao">43.1 Vì sao voice agent khác text agent</a></li>
+      <li><a href="#hai-kien-truc">43.2 Hai kiến trúc: pipeline vs speech-to-speech</a></li>
+      <li><a href="#realtime-api">43.3 Realtime API (OpenAI, Gemini Live)</a></li>
+      <li><a href="#stt-tts">43.4 STT &amp; TTS hiện đại</a></li>
+      <li><a href="#latency">43.5 Latency budget &amp; barge-in</a></li>
+      <li><a href="#tool-use">43.6 Tool use trong voice</a></li>
+      <li><a href="#eval">43.7 Eval cho voice agent</a></li>
+      <li><a href="#san-pham">43.8 Pattern sản phẩm</a></li>
+      <li><a href="#tom-tat">Tóm tắt</a></li>
+    </ul>
+  </aside>
+
+  <h2 id="tai-sao">43.1 Vì sao voice agent khác text agent</h2>
+  <p>
+    Voice không chỉ là "text-to-speech của text agent". Có 5 khác biệt cốt lõi mà nếu bỏ
+    qua sẽ làm sản phẩm voice cảm giác "khó dùng" dù model rất giỏi:
+  </p>
+  <ul>
+    <li>
+      <strong>Latency budget khắt khe</strong>: text chat user chấp nhận đợi 2–3 giây
+      cho first token; voice user cảm giác "lag" nếu đợi quá ~800ms. Anything &gt;1.5s
+      là gãy luồng đối thoại.
+    </li>
+    <li>
+      <strong>Không có "undo"</strong>: chat có thể edit message; voice một khi đã nói
+      là user nghe rồi. Hallucination thành thiệt hại trực tiếp.
+    </li>
+    <li>
+      <strong>Barge-in (interrupt)</strong>: con người ngắt lời nhau liên tục. Voice
+      agent không xử lý được interrupt sẽ cảm giác robot, "talking over me".
+    </li>
+    <li>
+      <strong>Prosody mang ngữ nghĩa</strong>: "Yeah, right" với intonation khác nhau
+      có thể khẳng định hoặc mỉa mai. Text agent mất 100% thông tin này; voice
+      agent cần model giữ được paralinguistic cue.
+    </li>
+    <li>
+      <strong>Streaming bắt buộc</strong>: không thể "đợi response xong rồi đọc";
+      TTS phải bắt đầu phát ngay khi token đầu tiên ra, parse chunk-by-chunk.
+    </li>
+  </ul>
+
+  <div class="callout important">
+    <div class="icon">!</div>
+    <div>
+      <div class="title">Voice agent là realtime system, không phải LLM app có TTS</div>
+      <p>
+        Nếu approach của bạn là "thêm TTS vào ChatGPT-clone", trải nghiệm sẽ giống IVR
+        của tổng đài 2005 — robot, slow, không hiểu khi user ngắt lời. Voice agent
+        thực thụ là một <em>realtime streaming system</em> với end-to-end latency
+        budget &lt;800ms.
+      </p>
+    </div>
+  </div>
+
+  <h2 id="hai-kien-truc">43.2 Hai kiến trúc: pipeline vs speech-to-speech</h2>
+  <p>
+    2026 có hai trường phái rõ rệt để build voice agent:
+  </p>
+
+  <div class="comparison-table">
+    <table>
+      <thead>
+        <tr>
+          <th>Tiêu chí</th>
+          <th>Pipeline (STT → LLM → TTS)</th>
+          <th>Speech-to-Speech (S2S native)</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Latency E2E</strong></td>
+          <td>1.5–3s (cộng dồn 3 step)</td>
+          <td>300–800ms</td>
+        </tr>
+        <tr>
+          <td><strong>Prosody preservation</strong></td>
+          <td>Mất — STT chỉ trả text</td>
+          <td>Giữ — model "nghe" trực tiếp</td>
+        </tr>
+        <tr>
+          <td><strong>Barge-in</strong></td>
+          <td>Phải tự xử (VAD + cancel)</td>
+          <td>Native support</td>
+        </tr>
+        <tr>
+          <td><strong>Tool/function calling</strong></td>
+          <td>Dễ — LLM tier text, đã chín</td>
+          <td>Đang dần chín (Realtime API)</td>
+        </tr>
+        <tr>
+          <td><strong>Model lựa chọn</strong></td>
+          <td>Nhiều — mix &amp; match</td>
+          <td>Ít — chủ yếu OpenAI/Google</td>
+        </tr>
+        <tr>
+          <td><strong>Cost</strong></td>
+          <td>Rẻ — 3 component có offering miễn phí/cheap</td>
+          <td>Đắt hơn — audio token billing</td>
+        </tr>
+        <tr>
+          <td><strong>Quality dialogue</strong></td>
+          <td>OK, hơi "robot"</td>
+          <td>Tự nhiên hơn rõ rệt</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>
+    <strong>Recommendation 5/2026:</strong> Bắt đầu với Pipeline để control + cost,
+    chuyển sang Speech-to-Speech khi cần dialogue quality cao (customer support
+    cao cấp, voice tutor, accessibility). Có thể <em>hybrid</em>: S2S cho conversational
+    layer, fallback pipeline khi cần tool đặc thù.
+  </p>
+
+  <svg class="diagram" viewBox="0 0 820 240" role="img" aria-label="Two architectures for voice agents">
+    <defs>
+      <marker id="va-arrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#6f7c92"/>
+      </marker>
+    </defs>
+
+    <!-- Pipeline architecture -->
+    <text x="20" y="30" font-size="13" font-weight="700" fill="#ffb86b">A · Pipeline architecture</text>
+    <g transform="translate(20,50)">
+      <rect x="0" y="0" width="100" height="50" rx="6" fill="#1d2433" stroke="#3a4357"/>
+      <text x="50" y="22" text-anchor="middle" font-size="12" fill="#e8eaed">Audio in</text>
+      <text x="50" y="38" text-anchor="middle" font-size="10" fill="#6f7c92">(mic)</text>
+      <line x1="100" y1="25" x2="135" y2="25" stroke="#6f7c92" marker-end="url(#va-arrow)"/>
+
+      <rect x="140" y="0" width="100" height="50" rx="6" fill="#1d2433" stroke="#3a4357"/>
+      <text x="190" y="22" text-anchor="middle" font-size="12" fill="#e8eaed">STT</text>
+      <text x="190" y="38" text-anchor="middle" font-size="10" fill="#6f7c92">Whisper v3</text>
+      <line x1="240" y1="25" x2="275" y2="25" stroke="#6f7c92" marker-end="url(#va-arrow)"/>
+
+      <rect x="280" y="0" width="100" height="50" rx="6" fill="#1d2433" stroke="#3a4357"/>
+      <text x="330" y="22" text-anchor="middle" font-size="12" fill="#e8eaed">LLM</text>
+      <text x="330" y="38" text-anchor="middle" font-size="10" fill="#6f7c92">GPT-5.5/Claude</text>
+      <line x1="380" y1="25" x2="415" y2="25" stroke="#6f7c92" marker-end="url(#va-arrow)"/>
+
+      <rect x="420" y="0" width="100" height="50" rx="6" fill="#1d2433" stroke="#3a4357"/>
+      <text x="470" y="22" text-anchor="middle" font-size="12" fill="#e8eaed">TTS</text>
+      <text x="470" y="38" text-anchor="middle" font-size="10" fill="#6f7c92">ElevenLabs v3</text>
+      <line x1="520" y1="25" x2="555" y2="25" stroke="#6f7c92" marker-end="url(#va-arrow)"/>
+
+      <rect x="560" y="0" width="100" height="50" rx="6" fill="#1d2433" stroke="#3a4357"/>
+      <text x="610" y="22" text-anchor="middle" font-size="12" fill="#e8eaed">Audio out</text>
+      <text x="610" y="38" text-anchor="middle" font-size="10" fill="#6f7c92">(speaker)</text>
+    </g>
+    <text x="20" y="125" font-size="11" fill="#6f7c92" font-style="italic">
+      Latency cộng dồn: ASR ~300ms + LLM ~800ms + TTS first-chunk ~400ms = 1.5s E2E
+    </text>
+
+    <!-- S2S architecture -->
+    <text x="20" y="160" font-size="13" font-weight="700" fill="#7bb6ff">B · Speech-to-Speech native</text>
+    <g transform="translate(20,180)">
+      <rect x="0" y="0" width="100" height="50" rx="6" fill="#1d2433" stroke="#3a4357"/>
+      <text x="50" y="22" text-anchor="middle" font-size="12" fill="#e8eaed">Audio in</text>
+      <text x="50" y="38" text-anchor="middle" font-size="10" fill="#6f7c92">(mic)</text>
+      <line x1="100" y1="25" x2="195" y2="25" stroke="#6f7c92" marker-end="url(#va-arrow)"/>
+
+      <rect x="200" y="-20" width="340" height="90" rx="6" fill="#1f2a3a" stroke="#7bb6ff" stroke-width="2"/>
+      <text x="370" y="10" text-anchor="middle" font-size="13" fill="#7bb6ff" font-weight="600">S2S model</text>
+      <text x="370" y="30" text-anchor="middle" font-size="11" fill="#e8eaed">GPT-5.5 Realtime · Gemini Live · Sesame CSM</text>
+      <text x="370" y="48" text-anchor="middle" font-size="11" fill="#6f7c92">audio token → audio token, prosody-aware, barge-in native</text>
+
+      <line x1="540" y1="25" x2="595" y2="25" stroke="#6f7c92" marker-end="url(#va-arrow)"/>
+      <rect x="600" y="0" width="100" height="50" rx="6" fill="#1d2433" stroke="#3a4357"/>
+      <text x="650" y="22" text-anchor="middle" font-size="12" fill="#e8eaed">Audio out</text>
+      <text x="650" y="38" text-anchor="middle" font-size="10" fill="#6f7c92">(speaker)</text>
+    </g>
+  </svg>
+
+  <h2 id="realtime-api">43.3 Realtime API (OpenAI, Gemini Live)</h2>
+  <p>
+    Cả OpenAI và Google đều có Realtime API dùng <strong>WebSocket</strong>
+    (hoặc WebRTC qua proxy) để streaming audio hai chiều — không cần dựng pipeline
+    STT/TTS riêng:
+  </p>
+
+  <pre><code><span class="cm"># OpenAI Realtime API — voice-to-voice với GPT-5.5 Realtime</span>
+<span class="kw">import</span> asyncio, base64, json
+<span class="kw">from</span> websockets <span class="kw">import</span> connect
+
+<span class="kw">async def</span> <span class="fn">voice_agent</span>():
+    url = <span class="str">"wss://api.openai.com/v1/realtime?model=gpt-5.5-realtime"</span>
+    headers = {<span class="str">"Authorization"</span>: <span class="str">f"Bearer {API_KEY}"</span>}
+    <span class="kw">async with</span> <span class="fn">connect</span>(url, extra_headers=headers) <span class="kw">as</span> ws:
+        <span class="cm"># Config: voice, instructions, tools, turn_detection (VAD)</span>
+        <span class="kw">await</span> ws.<span class="fn">send</span>(<span class="fn">json.dumps</span>({
+            <span class="str">"type"</span>: <span class="str">"session.update"</span>,
+            <span class="str">"session"</span>: {
+                <span class="str">"voice"</span>: <span class="str">"alloy"</span>,
+                <span class="str">"instructions"</span>: <span class="str">"You are a friendly support agent. Speak naturally."</span>,
+                <span class="str">"turn_detection"</span>: {<span class="str">"type"</span>: <span class="str">"server_vad"</span>, <span class="str">"threshold"</span>: 0.5},
+                <span class="str">"tools"</span>: [{<span class="str">"type"</span>: <span class="str">"function"</span>, <span class="str">"name"</span>: <span class="str">"check_order_status"</span>, ...}],
+                <span class="str">"input_audio_transcription"</span>: {<span class="str">"model"</span>: <span class="str">"whisper-v3-turbo"</span>},
+            }
+        }))
+        <span class="cm"># Stream mic audio in &amp; speaker audio out concurrently</span>
+        <span class="kw">await</span> asyncio.<span class="fn">gather</span>(<span class="fn">pump_mic</span>(ws), <span class="fn">handle_events</span>(ws))</code></pre>
+
+  <p>Vài thứ quan trọng khi dùng Realtime API:</p>
+  <ul>
+    <li>
+      <strong>Server-side VAD</strong>: model tự detect khi user dừng nói, không cần
+      bạn implement. Threshold 0.5 default; tăng để bớt nhạy với noise.
+    </li>
+    <li>
+      <strong>Input transcription</strong>: model "hiểu" audio trực tiếp, nhưng vẫn
+      cho phép request Whisper transcribe song song để log + analytics.
+    </li>
+    <li>
+      <strong>Tool calling</strong>: vẫn hoạt động bình thường, nhưng output đến qua
+      event <code>response.function_call_arguments.delta</code>. Khi tool chậm, model tự
+      "filler" ("let me check..."). Cài <code>interrupt_response: false</code> nếu không muốn
+      user ngắt được mid-tool.
+    </li>
+    <li>
+      <strong>Pricing 2026</strong> (audio token):
+      input ~$32/1M token, output ~$64/1M — đắt hơn text 10–20×. Một cuộc gọi 5 phút
+      ≈ $0.30–0.80.
+    </li>
+  </ul>
+
+  <p>
+    <strong>Gemini Live</strong> (Google) có model tương tự, kèm <em>vision-realtime</em> —
+    user có thể share camera, model nhìn + nghe + nói cùng lúc. Use case: vision-aided
+    tutoring, accessibility ("describe what you see").
+  </p>
+
+  <h2 id="stt-tts">43.4 STT &amp; TTS hiện đại</h2>
+  <p>
+    Nếu chọn pipeline (cost / flexibility), 2 component phải pick cẩn thận:
+  </p>
+
+  <h3>STT (Speech-to-Text)</h3>
+  <ul>
+    <li>
+      <strong>Whisper v3-turbo</strong> (OpenAI, 10/2025): 6× nhanh hơn Whisper v3,
+      quality không kém. Multi-lingual, có timestamp. Default cho self-host. Hỗ trợ
+      tốt tiếng Việt.
+    </li>
+    <li>
+      <strong>Deepgram Nova-3</strong>: streaming-first, latency &lt;300ms, có speaker
+      diarization. Pricing thấp hơn Whisper Cloud cho high-volume.
+    </li>
+    <li>
+      <strong>AssemblyAI Universal-2</strong>: tốt cho noisy audio, có
+      auto-PII-redaction, sentiment analysis built-in.
+    </li>
+    <li>
+      <strong>NVIDIA Parakeet TDT</strong>: open-source, chạy nhanh trên GPU, 600× realtime
+      cho transcription batch.
+    </li>
+  </ul>
+
+  <h3>TTS (Text-to-Speech)</h3>
+  <ul>
+    <li>
+      <strong>ElevenLabs v3 / Multilingual v2.5</strong>: SOTA cho tự nhiên + cảm xúc,
+      voice cloning từ 3s sample. Conversational AI suite (5/2025) bundle TTS + LLM proxy
+      + telephony.
+    </li>
+    <li>
+      <strong>Sesame CSM-1B</strong> (open-source, 3/2025): Speech-to-speech native nhỏ,
+      chạy được on-device. Tốt cho mobile app cần voice quality không gửi cloud.
+    </li>
+    <li>
+      <strong>Cartesia Sonic 2</strong>: latency 40ms first-chunk — nhanh nhất 2026,
+      dùng cho IVR cần response &lt;500ms tổng.
+    </li>
+    <li>
+      <strong>OpenAI gpt-4o-mini-tts</strong>: rẻ, ok quality, instruction-following
+      ("speak slower", "in a calm tone") — voice control bằng prompt.
+    </li>
+  </ul>
+
+  <h2 id="latency">43.5 Latency budget &amp; barge-in</h2>
+  <p>
+    Voice UX bị chi phối bởi <strong>end-to-end latency từ khi user dừng nói đến khi
+    audio response phát ra</strong>. Budget tham khảo cho dialogue tự nhiên:
+  </p>
+
+  <div class="callout note">
+    <div class="icon">≡</div>
+    <div>
+      <div class="title">Latency budget cho voice agent (target 2026)</div>
+      <ul>
+        <li><strong>&lt;500ms</strong>: feel "snappy", không nhận ra delay. Hard target cho IVR.</li>
+        <li><strong>500–800ms</strong>: comfortable, default cho assistant.</li>
+        <li><strong>800ms–1.5s</strong>: noticeable lag, user bắt đầu mất kiên nhẫn.</li>
+        <li><strong>&gt;1.5s</strong>: user nghĩ "máy hỏng" hoặc tự nói thêm — broken UX.</li>
+      </ul>
+    </div>
+  </div>
+
+  <p>Cách bóp latency xuống &lt;800ms cho pipeline:</p>
+  <ol>
+    <li>
+      <strong>VAD streaming</strong>: detect end-of-utterance tại chỗ (Silero VAD),
+      đừng đợi 1s silence rồi mới send STT.
+    </li>
+    <li>
+      <strong>STT streaming</strong>: dùng partial transcript ngay khi có chunk —
+      Whisper turbo + chunk decode, hoặc Deepgram streaming.
+    </li>
+    <li>
+      <strong>LLM streaming + early TTS</strong>: bắt đầu TTS ngay khi LLM emit
+      sentence đầu (đợi đến dấu <code>.</code> hoặc <code>?</code> rồi push vào TTS); đừng
+      đợi full response.
+    </li>
+    <li>
+      <strong>Speculative TTS</strong> (advanced): TTS pre-generate cho top-K likely
+      next sentence, drop nếu sai. Tăng cost ~20%, giảm latency 200ms.
+    </li>
+    <li>
+      <strong>Reasoning model</strong>: avoid extended thinking cho voice — thinking
+      token làm TTFT lên 2–5s. Nếu task thực sự cần reasoning, dùng "filler" ("Để
+      tôi nghĩ xíu...") để mask delay.
+    </li>
+  </ol>
+
+  <h3>Barge-in handling</h3>
+  <p>
+    Khi user ngắt lời agent đang nói, hệ thống phải:
+  </p>
+  <ul>
+    <li><strong>Detect</strong> user voice over agent audio (echo cancellation đã good).</li>
+    <li><strong>Stop TTS</strong> immediately — fade-out 100ms để không "cắt giọng" lốp đốp.</li>
+    <li><strong>Cancel in-flight LLM call</strong> — request mới sẽ override.</li>
+    <li><strong>Update context</strong>: agent phải biết "tôi đã nói được đến đâu trước khi bị ngắt" — không phải lúc nào cũng cần (Realtime API tự handle), nhưng pipeline phải tự track.</li>
+  </ul>
+
+  <h2 id="tool-use">43.6 Tool use trong voice</h2>
+  <p>
+    Voice agent thường cần tool (check booking, lookup database, submit ticket). Vài
+    pattern riêng cho voice:
+  </p>
+  <ul>
+    <li>
+      <strong>Always speak before tool call</strong>: user không nhìn loading spinner.
+      Phải có "Để tôi check..." (filler) trước khi tool chạy, không thì user nghĩ máy đứng.
+    </li>
+    <li>
+      <strong>Streaming tool result</strong>: kết quả tool dài → đừng đợi hết rồi đọc.
+      Stream từng item ("Tôi tìm thấy 3 booking. Booking đầu tiên là...").
+    </li>
+    <li>
+      <strong>Tool timeout &lt; conversation budget</strong>: tool chậm hơn 3s phải
+      có timeout + fallback. User không chờ 10s im lặng.
+    </li>
+    <li>
+      <strong>Confirm trước khi mutate</strong>: voice dễ nhầm — "xoá booking 1234" và
+      "xem booking 1234" nghe rất giống. Mutating tool (book/cancel/pay) <em>luôn</em>
+      cần confirm bằng giọng + đọc lại tham số.
+    </li>
+  </ul>
+
+  <h2 id="eval">43.7 Eval cho voice agent</h2>
+  <p>
+    Eval voice phức tạp hơn text 3× vì có 3 dimension độc lập cần đo:
+  </p>
+
+  <div class="comparison-table">
+    <table>
+      <thead><tr><th>Dimension</th><th>Metric</th><th>Tool / approach</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>ASR accuracy</strong></td>
+          <td>WER (Word Error Rate), CER (Character Error Rate cho tiếng Á)</td>
+          <td>Golden audio set + manual transcript; jiwer library</td>
+        </tr>
+        <tr>
+          <td><strong>Task success</strong></td>
+          <td>Goal completion rate, turns-to-resolution</td>
+          <td>LLM-as-judge trên full transcript + tool log</td>
+        </tr>
+        <tr>
+          <td><strong>Voice quality</strong></td>
+          <td>MOS (Mean Opinion Score), naturalness, prosody</td>
+          <td>Crowdsourced rating (Prolific), UTMOS automated</td>
+        </tr>
+        <tr>
+          <td><strong>Latency</strong></td>
+          <td>P50/P95 E2E, time-to-first-audio</td>
+          <td>OTel GenAI traces + custom audio timestamp</td>
+        </tr>
+        <tr>
+          <td><strong>Barge-in correctness</strong></td>
+          <td>% interrupts handled gracefully</td>
+          <td>Adversarial test set: deliberate interrupts</td>
+        </tr>
+        <tr>
+          <td><strong>Safety</strong></td>
+          <td>Refusal accuracy, PII leak in audio</td>
+          <td>Red-team audio prompts; output audio re-transcribed + scan</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 id="san-pham">43.8 Pattern sản phẩm 2026</h2>
+  <ul>
+    <li>
+      <strong>Voice IVR replacement</strong> (call center): pipeline + ElevenLabs +
+      Twilio. Cost &lt; human, quality dialogue đủ cho L1 support. Top vendor:
+      Bland AI, Vapi, Retell.
+    </li>
+    <li>
+      <strong>In-app voice mode</strong> (mobile): S2S native qua Realtime API,
+      hoặc on-device (Sesame CSM, Apple Foundation Models speech). Use case: ChatGPT
+      voice, Pi, Replika.
+    </li>
+    <li>
+      <strong>Voice tutor / coach</strong>: cần prosody chuẩn (correct pronunciation),
+      ElevenLabs + custom dictionary. Tools: Speak, Praktika.
+    </li>
+    <li>
+      <strong>Voice accessibility</strong>: pair với computer-use agent — user nói
+      lệnh, agent thực thi trên UI. Apple Voice Control + LLM, Microsoft Copilot
+      Voice Action.
+    </li>
+    <li>
+      <strong>Outbound voice agent</strong> (sales/scheduling): gọi điện thay người.
+      Legal sensitive — phải có disclosure "I'm an AI" và tuân FCC TCPA rules.
+    </li>
+  </ul>
+
+  <div class="callout important">
+    <div class="icon">!</div>
+    <div>
+      <div class="title">Voice cloning &amp; deepfake — handle với care</div>
+      <p>
+        ElevenLabs v3 clone giọng từ 3 giây sample. Đa số platform có "voice consent"
+        verification, nhưng workaround vẫn nhiều. Nếu sản phẩm cho phép clone, bắt
+        buộc: <strong>consent recording lưu lại 5 năm</strong>, watermark audio output
+        (ElevenLabs có Inaudible Audio Watermark), và disclosure rõ ràng. EU AI Act
+        Article 50 đã require disclosure cho generated audio từ 2026.
+      </p>
+    </div>
+  </div>
+
+  <h2 id="tom-tat">Tóm tắt</h2>
+  <ol>
+    <li>Voice agent ≠ "text agent + TTS". Khác biệt cốt lõi: latency budget &lt;800ms, barge-in, prosody, streaming bắt buộc, không có undo.</li>
+    <li>2 kiến trúc: <strong>Pipeline</strong> (STT → LLM → TTS, control + cost) vs <strong>S2S native</strong> (Realtime API, latency + dialogue quality). 2026 default: Pipeline cho enterprise, S2S cho consumer app.</li>
+    <li><strong>Realtime API</strong> (OpenAI, Gemini Live) cung cấp WebSocket S2S với server-side VAD, native tool calling, audio token billing 10–20× text.</li>
+    <li>STT pick: Whisper v3-turbo (default), Deepgram Nova-3 (streaming), AssemblyAI (noisy). TTS: ElevenLabs (quality), Cartesia (latency), Sesame CSM (on-device).</li>
+    <li>Latency budget &lt;800ms cần stream end-to-end: streaming VAD + STT partial + LLM token streaming + early TTS từ sentence đầu.</li>
+    <li>Tool use riêng cho voice: filler trước call, stream result, confirm trước mutate, hard timeout.</li>
+    <li>Eval phải đo 6 dimension độc lập: ASR (WER), task success, voice quality (MOS), latency (P95), barge-in handling, safety (PII leak in audio).</li>
+    <li>Pattern 2026: IVR replacement (call center), in-app voice (mobile S2S), voice tutor, voice accessibility, outbound (legal-sensitive).</li>
+    <li>Voice cloning có risk lớn — luôn kèm consent + watermark + disclosure; EU AI Act Article 50 require từ 2026.</li>
+  </ol>
+
+  <nav class="section-footer">
+    <a href="42-edge-on-device.html" class="prev">
+      <div class="label">← Trước</div>
+      <div class="title">42 — Edge &amp; On-device Agents</div>
+    </a>
+    <a href="../index.html" class="next">
+      <div class="label">Mục lục →</div>
+      <div class="title">Quay lại mục lục</div>
+    </a>
+  </nav>
+
+</main>
+
+<script src="../assets/glossary.js"></script>
+<script src="../assets/script.js"></script>
+</body>
+</html>

@@ -447,8 +447,8 @@
 <span class="kw">from</span> browser_use <span class="kw">import</span> Agent
 <span class="kw">from</span> langchain_anthropic <span class="kw">import</span> ChatAnthropic
 
-<span class="cm"># Khởi tạo agent với Claude 3.7 Sonnet làm backbone</span>
-llm = <span class="fn">ChatAnthropic</span>(model=<span class="str">'claude-3-7-sonnet-20250219'</span>)
+<span class="cm"># Khởi tạo agent với Claude Sonnet 4.6 làm backbone</span>
+llm = <span class="fn">ChatAnthropic</span>(model=<span class="str">'claude-sonnet-4-6'</span>)
 
 agent = <span class="fn">Agent</span>(
     task=<span class="str">"Tìm chuyến bay từ TP.HCM đến Hà Nội ngày 15/06/2026, "</span>

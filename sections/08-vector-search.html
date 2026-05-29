@@ -31,21 +31,22 @@
   <aside class="toc">
     <div class="toc-title">Trong trang này</div>
     <ul>
-      <li><a href="#basics">15.1 Vector search basics</a></li>
-      <li><a href="#indexing">15.2 Indexing algorithms</a></li>
-      <li><a href="#quantization">15.3 Quantization</a></li>
-      <li><a href="#hybrid">15.4 Hybrid retrieval</a></li>
-      <li><a href="#reranking">15.5 Reranking</a></li>
-      <li><a href="#filtering">15.6 Metadata filtering</a></li>
-      <li><a href="#multitenancy">15.7 Multitenancy patterns</a></li>
-      <li><a href="#updates">15.8 Updating indices</a></li>
-      <li><a href="#sparse">15.9 Sparse vectors (SPLADE)</a></li>
-      <li><a href="#sizing">15.10 Production sizing</a></li>
+      <li><a href="#basics">8.1 Vector search basics</a></li>
+      <li><a href="#indexing">8.2 Indexing algorithms</a></li>
+      <li><a href="#quantization">8.3 Quantization</a></li>
+      <li><a href="#hybrid">8.4 Hybrid retrieval</a></li>
+      <li><a href="#reranking">8.5 Reranking</a></li>
+      <li><a href="#filtering">8.6 Metadata filtering</a></li>
+      <li><a href="#multitenancy">8.7 Multitenancy patterns</a></li>
+      <li><a href="#updates">8.8 Updating indices</a></li>
+      <li><a href="#sparse">8.9 Sparse vectors (SPLADE)</a></li>
+      <li><a href="#contextual-retrieval">8.9b Contextual Retrieval &amp; Late Chunking</a></li>
+      <li><a href="#sizing">8.10 Production sizing</a></li>
       <li><a href="#tom-tat">Tóm tắt</a></li>
     </ul>
   </aside>
 
-  <h2 id="basics">15.1 Vector search basics</h2>
+  <h2 id="basics">8.1 Vector search basics</h2>
   <p>
     Vector search tìm kiếm các điểm gần nhau trong không gian vector nhiều chiều. "Gần nhau" có thể được đo bằng nhiều metric khác nhau:
   </p>
@@ -77,7 +78,7 @@
     Mục tiêu: cho query vector <strong>q</strong>, tìm <strong>k</strong> vectors trong corpus gần nhất với <strong>q</strong>. Với corpus nhỏ (&lt; 100k vectors), brute-force exact search đủ nhanh. Với corpus lớn hơn, cần approximate nearest neighbor (ANN) algorithms.
   </p>
 
-  <h2 id="indexing">15.2 Indexing algorithms</h2>
+  <h2 id="indexing">8.2 Indexing algorithms</h2>
 
   <!-- HNSW layered graph SVG -->
   <svg class="diagram" viewBox="0 0 760 320" role="img" aria-label="HNSW layered graph structure">
@@ -228,7 +229,7 @@
     <li><code>ef</code> (ef_search) — beam width khi query (runtime parameter). Tăng → recall tốt hơn, query chậm hơn.</li>
   </ul>
 
-  <h2 id="quantization">15.3 Quantization for vectors</h2>
+  <h2 id="quantization">8.3 Quantization for vectors</h2>
   <p>
     Quantization nén vectors để giảm memory footprint — trade recall cho storage. Critical khi corpus lớn (vài chục triệu vectors).
   </p>
@@ -250,7 +251,7 @@
     Best practice: dùng <strong>HNSW + SQ8</strong> là default tốt cho hầu hết use case — 4x memory reduction với recall loss không đáng kể. Qdrant gọi đây là "scalar quantization", pgvector dùng <code>halfvec</code> (float16, 2x reduction).
   </p>
 
-  <h2 id="hybrid">15.4 Hybrid retrieval (BM25 + Dense)</h2>
+  <h2 id="hybrid">8.4 Hybrid retrieval (BM25 + Dense)</h2>
   <p>
     Dense vector search giỏi semantic matching nhưng kém với exact keywords (product codes, names, acronyms). BM25 giỏi exact match nhưng bỏ lỡ semantic synonyms. Hybrid kết hợp cả hai.
   </p>
@@ -305,7 +306,7 @@
     Thay RRF bằng weighted sum: <code>score = α · dense_score + (1-α) · bm25_score</code>. Cần normalize scores về cùng range trước (min-max normalization per result set). Cho phép tune α theo domain — code search có thể dùng α=0.3 (favor BM25 cho exact names), doc Q&amp;A dùng α=0.7.
   </p>
 
-  <h2 id="reranking">15.5 Reranking</h2>
+  <h2 id="reranking">8.5 Reranking</h2>
   <p>
     First-stage retrieval (vector search) ưu tiên <strong>recall</strong> — lấy về nhiều ứng viên. Reranker ưu tiên <strong>precision</strong> — sort lại để top-k thực sự relevant.
   </p>
@@ -342,7 +343,7 @@
     <li>Kết quả RAG thường chứa irrelevant info → model bị distract</li>
   </ul>
 
-  <h2 id="filtering">15.6 Metadata filtering</h2>
+  <h2 id="filtering">8.6 Metadata filtering</h2>
   <p>
     Metadata filtering giới hạn search space trước hoặc sau vector search. Ví dụ: chỉ search trong documents của user X, hoặc chỉ documents created after 2024-01-01.
   </p>
@@ -369,7 +370,7 @@
     </div>
   </div>
 
-  <h2 id="multitenancy">15.7 Multitenancy patterns</h2>
+  <h2 id="multitenancy">8.7 Multitenancy patterns</h2>
 
   <!-- Multitenancy patterns SVG -->
   <svg class="diagram" viewBox="0 0 760 200" role="img" aria-label="Multitenancy patterns side-by-side">
@@ -437,7 +438,7 @@
     </table>
   </div>
 
-  <h2 id="updates">15.8 Updating indices</h2>
+  <h2 id="updates">8.8 Updating indices</h2>
 
   <h3>Incremental insert</h3>
   <p>
@@ -461,7 +462,7 @@
     <li>Drain và xóa old index</li>
   </ol>
 
-  <h2 id="sparse">15.9 Sparse vectors (SPLADE)</h2>
+  <h2 id="sparse">8.9 Sparse vectors (SPLADE)</h2>
   <p>
     <strong>SPLADE</strong> (SParse Lexical AnD Expansion) là learned sparse retrieval — model tạo ra sparse vector với hàng chục nghìn dimensions (vocab size) nhưng chỉ ~100–200 non-zero entries. Kết hợp tốt nhất của BM25 (interpretable, exact match) và dense (semantic expansion).
   </p>
@@ -472,7 +473,7 @@
     Qdrant và Pinecone hỗ trợ sparse vectors natively. Thay thế BM25 tốt hơn trong hybrid setup, đặc biệt với technical/domain text. Trade-off: cần inference model để tạo sparse vectors (chậm hơn BM25), index lớn hơn dense.
   </p>
 
-  <h2 id="contextual-retrieval">15.9b Contextual Retrieval &amp; Late Chunking</h2>
+  <h2 id="contextual-retrieval">8.9b Contextual Retrieval &amp; Late Chunking</h2>
   <p>
     <strong>Contextual Retrieval</strong> (Anthropic, tháng 9/2024) giải quyết vấn đề context loss khi chunk tài liệu: dùng LLM tạo một đoạn context ngắn cho mỗi chunk trước khi embed, giúp embedding "hiểu" chunk nằm ở đâu trong tài liệu gốc. Kết quả: giảm 49% retrieval failures khi kết hợp Contextual Embeddings + Contextual BM25; thêm reranking giảm thêm tới 67% lỗi.
   </p>
@@ -480,7 +481,7 @@
     <strong>Late Chunking</strong> (Jina AI, 2024) là kỹ thuật bổ sung — thay vì chunk trước rồi embed từng chunk độc lập, encode cả document với long-context embedding model, sau đó mới tách embeddings theo chunk boundary bằng mean pooling. Chunk embeddings thu được mang đầy đủ ngữ cảnh từ toàn bộ document. jina-embeddings-v3 hỗ trợ <code>late_chunking=True</code> qua API.
   </p>
 
-  <h2 id="sizing">15.10 Production sizing</h2>
+  <h2 id="sizing">8.10 Production sizing</h2>
 
   <h3>RAM estimation</h3>
   <p>
